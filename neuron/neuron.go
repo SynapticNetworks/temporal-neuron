@@ -108,6 +108,33 @@ type Output struct {
 	// Longer axons = longer delays (realistic brain timing)
 }
 
+// FireEvent represents a real-time neuron firing event for visualization and monitoring
+// This captures the exact moment when a biological neuron generates an action potential
+// and provides essential information about the firing event for external observers
+//
+// Biological context:
+// When a real neuron fires, it generates an action potential that propagates down
+// its axon to all connected synapses. This event is instantaneous and discrete.
+// Unlike traditional ANNs that have continuous activation values, biological
+// neurons either fire (1) or don't fire (0) - this is the "all-or-nothing" principle.
+//
+// This struct models that discrete firing event and allows external systems
+// (like visualizers, loggers, or learning algorithms) to observe when and how
+// strongly each neuron fires without interfering with the neuron's operation.
+type FireEvent struct {
+	NeuronID string // Unique identifier of the neuron that fired
+	// Allows tracking which specific neuron in a network generated this event
+
+	Value float64 // Signal strength/amplitude of the firing event
+	// Models the "strength" of the action potential
+	// In biology: action potentials have standard amplitude, but this
+	// can represent firing frequency or burst patterns
+
+	Timestamp time.Time // Precise timing of when the firing occurred
+	// Critical for studying temporal dynamics, spike-timing dependent
+	// plasticity, and network synchronization patterns
+}
+
 // Neuron represents a single processing unit inspired by biological neurons
 // Unlike traditional artificial neurons that perform instantaneous calculations,
 // this neuron models the temporal dynamics of real neural processing:
@@ -116,6 +143,10 @@ type Output struct {
 // - Sends outputs with realistic delays (like axon transmission)
 // - Supports dynamic connectivity changes (like neuroplasticity)
 type Neuron struct {
+	// === IDENTIFICATION ===
+	// Unique identifier for this neuron within a network
+	id string // Neuron identifier for tracking and reference
+
 	// === BIOLOGICAL ACTIVATION PARAMETERS ===
 	// These model the electrical properties of real neuron membranes
 
@@ -159,25 +190,88 @@ type Neuron struct {
 
 	stateMutex sync.Mutex // Protects internal state during message processing
 	// Ensures atomic updates to accumulator and timing
+
+	// === MONITORING AND OBSERVATION ===
+	// Optional channel for reporting firing events to external observers
+	fireEvents chan<- FireEvent // Optional fire event reporting channel
+	// nil = disabled (default), non-nil = reports firing events
+	// Used for visualization, learning algorithms, and analysis
+
 }
 
-// NewNeuron creates and initializes a new biologically-inspired neuron
-// This factory function sets up all the necessary components for realistic
-// neural processing with temporal dynamics and dynamic connectivity
+// NewNeuron creates and initializes a new biologically-inspired neuron with identification
+// This enhanced factory function sets up all the necessary components for realistic
+// neural processing with temporal dynamics, dynamic connectivity, and optional monitoring
+//
+// The addition of neuron identification enables:
+// - Network topology tracking and analysis
+// - Individual neuron performance monitoring
+// - Debugging and visualization of large networks
+// - Implementation of learning algorithms that need to identify specific neurons
 //
 // Parameters model key biological properties:
+// id: unique identifier for this neuron (enables tracking in networks)
 // threshold: electrical threshold for action potential generation
 // timeWindow: temporal integration window (membrane time constant)
 // fireFactor: action potential amplitude/strength
-func NewNeuron(threshold float64, timeWindow time.Duration, fireFactor float64) *Neuron {
+//
+// Biological analogy: Each neuron in the brain has a unique "identity" determined
+// by its location, connections, and role in neural circuits. This ID serves a
+// similar purpose in artificial networks, allowing external systems to track
+// and reference specific neurons within larger network structures.
+func NewNeuron(id string, threshold float64, timeWindow time.Duration, fireFactor float64) *Neuron {
 	return &Neuron{
-		threshold:  threshold,
-		timeWindow: timeWindow,
-		fireFactor: fireFactor,
-		input:      make(chan Message, 100), // Buffered channel prevents blocking
-		// Models synaptic vesicle pools
-		outputs: make(map[string]*Output), // Empty connection map
+		id:         id,                       // Unique neuron identifier for network tracking
+		threshold:  threshold,                // Firing threshold (biological: ~-55mV)
+		timeWindow: timeWindow,               // Integration window (biological: ~10-20ms)
+		fireFactor: fireFactor,               // Output amplitude scaling
+		input:      make(chan Message, 100),  // Buffered input channel
+		outputs:    make(map[string]*Output), // Dynamic output connections
+		fireEvents: nil,                      // Optional fire event reporting (disabled by default)
 	}
+}
+
+// SetFireEventChannel configures optional real-time firing event reporting
+// This method enables external monitoring of neuron firing events without
+// interfering with the neuron's core computational processes
+//
+// Biological inspiration:
+// In neuroscience research, scientists often need to monitor when individual
+// neurons fire to understand network dynamics, learning, and information processing.
+// This is typically done using techniques like:
+// - Microelectrodes that detect action potentials
+// - Calcium imaging that shows neural activity
+// - Multi-electrode arrays that monitor many neurons simultaneously
+//
+// This method provides a similar capability for artificial neural networks,
+// allowing researchers to observe firing patterns, study network dynamics,
+// and implement biologically-inspired learning algorithms.
+//
+// Usage patterns:
+// - Visualization: Real-time display of network activity
+// - Learning algorithms: Spike-timing dependent plasticity (STDP)
+// - Analysis: Network synchronization and oscillation studies
+// - Debugging: Identifying silent or hyperactive neurons
+//
+// Performance considerations:
+// - The channel is used in a non-blocking manner to prevent interference
+// - Events are sent asynchronously to avoid disrupting neural computation
+// - If the channel becomes full, events are dropped rather than blocking
+//
+// ch: Channel to receive FireEvent notifications when this neuron fires
+//
+//	Set to nil to disable fire event reporting (default state)
+//	The channel should be buffered to handle burst firing patterns
+func (n *Neuron) SetFireEventChannel(ch chan<- FireEvent) {
+	n.stateMutex.Lock()         // Protect concurrent access to fire event channel
+	defer n.stateMutex.Unlock() // Ensure lock is always released
+
+	n.fireEvents = ch
+
+	// Biological analogy: This is like placing a recording electrode near
+	// a neuron to monitor its electrical activity. The electrode doesn't
+	// interfere with the neuron's function - it just observes and reports
+	// when action potentials occur.
 }
 
 // AddOutput safely adds a new synaptic connection to this neuron
@@ -216,7 +310,7 @@ func (n *Neuron) AddOutput(id string, channel chan Message, factor float64, dela
 // This is used for neuron-to-neuron connections where we need to pass the channel
 // to AddOutput methods
 func (n *Neuron) GetInputChannel() chan Message {
-    return n.input
+	return n.input
 }
 
 // RemoveOutput safely removes a synaptic connection
@@ -383,6 +477,18 @@ func (n *Neuron) fire() {
 // Identical to fire() but assumes caller already has the necessary locks
 func (n *Neuron) fireUnsafe() {
 	outputValue := n.accumulator * n.fireFactor
+
+	// Report firing event if channel is set
+	if n.fireEvents != nil {
+		select {
+		case n.fireEvents <- FireEvent{
+			NeuronID:  n.id,
+			Value:     outputValue,
+			Timestamp: time.Now(),
+		}:
+		default: // Don't block if channel is full
+		}
+	}
 
 	// Get snapshot of outputs (minimal locking since we're already protected)
 	n.outputsMutex.RLock()
