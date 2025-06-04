@@ -212,6 +212,13 @@ func (n *Neuron) AddOutput(id string, channel chan Message, factor float64, dela
 	// neural communication and information processing
 }
 
+// GetInputChannel returns the bidirectional input channel for direct connections
+// This is used for neuron-to-neuron connections where we need to pass the channel
+// to AddOutput methods
+func (n *Neuron) GetInputChannel() chan Message {
+    return n.input
+}
+
 // RemoveOutput safely removes a synaptic connection
 // Models synaptic pruning - the brain's process of eliminating unnecessary
 // or ineffective connections to optimize neural circuits
