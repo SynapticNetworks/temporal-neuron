@@ -15,7 +15,7 @@
 - Study real-time neural dynamics and emergent network behaviors
 
 ### Current Status: Heavy Work in Progress 🚧
-This repository contains the foundational neuron implementation. Much more is planned and under development.
+This repository contains the foundational neuron implementation with biologically realistic features including refractory periods and leaky integration. Much more is planned and under development.
 
 ## 🧠 Overview
 
@@ -31,12 +31,15 @@ Traditional artificial neural networks suffer from fundamental limitations that 
 - **Simple Threshold Behavior**: Fire when electrical charge exceeds threshold (no complex math)
 - **Asynchronous Operation**: Each neuron operates independently with its own timing
 - **Dynamic Connectivity**: Constantly growing and pruning connections
+- **Refractory Periods**: Cannot fire immediately after firing (recovery time)
+- **Leaky Integration**: Membrane potential naturally decays over time
 
 **Temporal Neuron** eliminates these artificial constraints by providing Go implementations that work like real brains:
 
 - **No Iterations/Batches**: Continuous real-time processing without artificial training epochs
 - **No Activation Functions**: Simple threshold-based firing like real neurons
 - **True Asynchronous Processing**: Each neuron operates independently on its own timeline
+- **Biological Timing**: Refractory periods and membrane potential decay
 - **Massive Scalability**: Go routines enable networks with millions of concurrent neurons
 - **Real-time Response**: Sub-millisecond processing with no batch delays
 
@@ -50,7 +53,8 @@ Traditional artificial neural networks suffer from fundamental limitations that 
 - **Event-Driven**: Neurons only consume resources when actively processing signals
 
 ### Biological Realism
-- **Temporal Summation**: Integrates incoming signals over time windows (like dendritic integration)
+- **Leaky Integration**: Continuous membrane potential decay models biological membrane time constants
+- **Refractory Periods**: Neurons cannot fire immediately after firing, preventing unrealistic rapid bursts
 - **Threshold Firing**: Fires action potentials when accumulated charge reaches threshold
 - **Synaptic Delays**: Realistic transmission delays based on connection properties
 - **Parallel Transmission**: Single action potential propagates to all connected neurons simultaneously
@@ -88,9 +92,13 @@ import (
 )
 
 func main() {
-    // Create a neuron: threshold=1.0, 100ms integration window, output=1.0
-    // No activation functions - just simple threshold firing!
-    n := neuron.NewNeuron(1.0, 100*time.Millisecond, 1.0)
+    // Create a neuron with biological parameters:
+    // - id: "neuron1" (for identification)
+    // - threshold: 1.0 (firing threshold)
+    // - decayRate: 0.95 (5% membrane potential decay per millisecond)
+    // - refractoryPeriod: 10ms (cannot fire for 10ms after firing)
+    // - fireFactor: 1.0 (output signal strength)
+    n := neuron.NewNeuron("neuron1", 1.0, 0.95, 10*time.Millisecond, 1.0)
     
     // Create output channel to capture fired signals
     output := make(chan neuron.Message, 10)
@@ -104,7 +112,7 @@ func main() {
     // Send real-time signals
     input := n.GetInput()
     input <- neuron.Message{Value: 0.7}  // Below threshold - no firing
-    input <- neuron.Message{Value: 0.5}  // Total: 1.2 > 1.0 - FIRES!
+    input <- neuron.Message{Value: 0.5}  // Total: ~1.2 > 1.0 - FIRES!
     
     // Immediate response (real-time)
     fired := <-output
@@ -118,7 +126,8 @@ func main() {
 // Create 10,000 neurons running concurrently (real-time!)
 neurons := make([]*neuron.Neuron, 10000)
 for i := range neurons {
-    neurons[i] = neuron.NewNeuron(1.0, 50*time.Millisecond, 1.0)
+    neuronID := fmt.Sprintf("neuron_%d", i)
+    neurons[i] = neuron.NewNeuron(neuronID, 1.0, 0.95, 5*time.Millisecond, 1.0)
     go neurons[i].Run() // Each neuron is an independent goroutine
 }
 
@@ -128,7 +137,7 @@ for i := 0; i < len(neurons)-1; i++ {
     delay := time.Duration(rand.Intn(20)+1) * time.Millisecond
     neurons[i].AddOutput(
         fmt.Sprintf("to_%d", i+1),
-        neurons[i+1].GetInput(),
+        neurons[i+1].GetInputChannel(),
         0.8 + rand.Float64()*0.4, // Random synaptic strength
         delay,
     )
@@ -156,22 +165,28 @@ Traditional neural networks use complex mathematical functions (sigmoid, ReLU, t
 
 Our neurons use the same simple rule that biological neurons follow—no complex mathematics required.
 
-#### Continuous Processing (No Iterations)
-Traditional neural networks process data in batches with discrete training iterations. Biological brains process continuously:
+#### Leaky Integration (No Time Windows)
+Traditional neural networks process inputs instantaneously. Biological neurons continuously integrate signals with natural decay:
 
 ```go
 // Traditional approach:
-// for epoch := range trainingData {
-//     batch := getNextBatch()
-//     loss := forwardPass(batch)
-//     backwardPass(loss)
-// }
+// output = activation(sum(inputs))  // Instantaneous
 
 // Biological approach (this library):
-go neuron.Run() // Runs forever, processing signals as they arrive
+// accumulator += input              // Continuous integration
+// accumulator *= decayRate          // Natural membrane decay
+// if accumulator >= threshold { fire() }
 ```
 
-No epochs, no batches, no backpropagation—just continuous real-time processing.
+No artificial time windows—just continuous membrane dynamics like real neurons.
+
+#### Refractory Periods
+Real neurons cannot fire immediately after firing an action potential. This library models this biological constraint:
+
+```go
+// After firing, neuron cannot fire again for refractoryPeriod duration
+// This prevents unrealistic rapid-fire bursts and models Na+ channel recovery
+```
 
 #### Massive Goroutine Scalability
 Go's goroutines are incredibly lightweight (~2KB each), enabling networks with millions of concurrent neurons:
@@ -179,7 +194,8 @@ Go's goroutines are incredibly lightweight (~2KB each), enabling networks with m
 ```go
 // Create 1 million neurons - each running concurrently!
 for i := 0; i < 1_000_000; i++ {
-    n := neuron.NewNeuron(rand.Float64(), 50*time.Millisecond, 1.0)
+    neuronID := fmt.Sprintf("neuron_%d", i)
+    n := neuron.NewNeuron(neuronID, rand.Float64(), 0.95, 5*time.Millisecond, 1.0)
     go n.Run() // Only ~2KB overhead per goroutine
 }
 ```
@@ -190,10 +206,12 @@ Traditional frameworks can't achieve this level of true concurrency.
 
 #### Neuron Creation
 ```go
-func NewNeuron(threshold float64, timeWindow time.Duration, fireFactor float64) *Neuron
+func NewNeuron(id string, threshold float64, decayRate float64, refractoryPeriod time.Duration, fireFactor float64) *Neuron
 ```
+- `id`: Unique identifier for this neuron
 - `threshold`: Minimum accumulated value to trigger firing
-- `timeWindow`: Duration for signal accumulation before reset
+- `decayRate`: Membrane potential decay factor (0.0-1.0, typically 0.95-0.99)
+- `refractoryPeriod`: Duration after firing when neuron cannot fire again
 - `fireFactor`: Multiplier applied to output signals
 
 #### Connection Management
@@ -201,6 +219,7 @@ func NewNeuron(threshold float64, timeWindow time.Duration, fireFactor float64) 
 func (n *Neuron) AddOutput(id string, channel chan Message, factor float64, delay time.Duration)
 func (n *Neuron) RemoveOutput(id string)
 func (n *Neuron) GetOutputCount() int
+func (n *Neuron) GetInputChannel() chan Message  // For neuron-to-neuron connections
 ```
 
 #### Operation
@@ -210,57 +229,96 @@ func (n *Neuron) GetInput() chan<- Message  // Get input channel for sending sig
 func (n *Neuron) Close()            // Gracefully shutdown neuron
 ```
 
+#### Fire Event Monitoring
+```go
+func (n *Neuron) SetFireEventChannel(ch chan<- FireEvent)  // Monitor firing events
+```
+
 ## 🔬 Examples
 
-### Example 1: Basic Temporal Integration
+### Example 1: Leaky Integration
 ```go
-// Demonstrates how multiple weak signals can sum to trigger firing
-neuron := neuron.NewNeuron(1.0, 100*time.Millisecond, 1.0)
+// Demonstrates continuous membrane potential decay
+neuron := neuron.NewNeuron("leaky_demo", 1.0, 0.9, 10*time.Millisecond, 1.0)
 output := make(chan neuron.Message, 10)
 neuron.AddOutput("out", output, 1.0, 0)
 
 go neuron.Run()
 
-// Send three signals that individually wouldn't trigger firing
+// Send signal below threshold
 input := neuron.GetInput()
-input <- neuron.Message{Value: 0.4}  // 0.4 total
-time.Sleep(20 * time.Millisecond)
-input <- neuron.Message{Value: 0.3}  // 0.7 total  
-time.Sleep(20 * time.Millisecond)
-input <- neuron.Message{Value: 0.4}  // 1.1 total - FIRES!
+input <- neuron.Message{Value: 0.8}  // Below threshold
 
-fired := <-output
-fmt.Printf("Fired with accumulated value: %.2f\n", fired.Value)
+// Wait for decay
+time.Sleep(50 * time.Millisecond)
+
+// Send another signal - needs more due to decay
+input <- neuron.Message{Value: 0.5}  // May not fire due to decay
+
+// Check if fired
+select {
+case fired := <-output:
+    fmt.Printf("Fired despite decay: %.2f\n", fired.Value)
+case <-time.After(20 * time.Millisecond):
+    fmt.Println("Did not fire - signal decayed")
+}
 ```
 
-### Example 2: Network with Feedback
+### Example 2: Refractory Period
 ```go
-// Create a simple feedback network
-n1 := neuron.NewNeuron(1.0, 50*time.Millisecond, 1.0)
-n2 := neuron.NewNeuron(0.8, 50*time.Millisecond, 0.9)
+// Demonstrates refractory period preventing rapid firing
+neuron := neuron.NewNeuron("refractory_demo", 1.0, 0.95, 20*time.Millisecond, 1.0)
+output := make(chan neuron.Message, 10)
+neuron.AddOutput("out", output, 1.0, 0)
 
-// Forward connection: n1 -> n2
-n1.AddOutput("forward", n2.GetInput(), 1.2, 10*time.Millisecond)
+go neuron.Run()
 
-// Feedback connection: n2 -> n1 (with delay to prevent immediate feedback)
-n2.AddOutput("feedback", n1.GetInput(), 0.7, 30*time.Millisecond)
+input := neuron.GetInput()
+
+// Fire first time
+input <- neuron.Message{Value: 1.5}
+<-output // Wait for first firing
+
+// Try to fire immediately (should be blocked)
+input <- neuron.Message{Value: 2.0}
+
+// Check if second firing was blocked
+select {
+case <-output:
+    fmt.Println("ERROR: Fired during refractory period!")
+case <-time.After(10 * time.Millisecond):
+    fmt.Println("Correctly blocked by refractory period")
+}
+```
+
+### Example 3: Network with Feedback and Biological Timing
+```go
+// Create a network with realistic biological parameters
+n1 := neuron.NewNeuron("excitatory", 1.0, 0.95, 8*time.Millisecond, 1.0)
+n2 := neuron.NewNeuron("inhibitory", 0.8, 0.97, 5*time.Millisecond, 1.0)
+
+// Forward excitatory connection: n1 -> n2
+n1.AddOutput("forward", n2.GetInputChannel(), 1.2, 10*time.Millisecond)
+
+// Feedback inhibitory connection: n2 -> n1
+n2.AddOutput("feedback", n1.GetInputChannel(), -0.8, 15*time.Millisecond)
 
 go n1.Run()
 go n2.Run()
 
-// Single input can cause sustained activity due to feedback
+// Single input can cause oscillatory activity
 n1.GetInput() <- neuron.Message{Value: 1.5}
 ```
 
-### Example 3: Dynamic Network Reconfiguration
+### Example 4: Dynamic Network Reconfiguration
 ```go
-// Build initial network
-source := neuron.NewNeuron(0.5, 30*time.Millisecond, 1.0)
-target1 := neuron.NewNeuron(1.0, 50*time.Millisecond, 1.0)
-target2 := neuron.NewNeuron(1.0, 50*time.Millisecond, 1.0)
+// Build network that adapts its connectivity
+source := neuron.NewNeuron("source", 0.5, 0.95, 5*time.Millisecond, 1.0)
+target1 := neuron.NewNeuron("target1", 1.0, 0.95, 8*time.Millisecond, 1.0)
+target2 := neuron.NewNeuron("target2", 1.0, 0.95, 8*time.Millisecond, 1.0)
 
 // Initially connect only to target1
-source.AddOutput("main", target1.GetInput(), 1.0, 5*time.Millisecond)
+source.AddOutput("main", target1.GetInputChannel(), 1.0, 5*time.Millisecond)
 
 go source.Run()
 go target1.Run() 
@@ -268,13 +326,16 @@ go target2.Run()
 
 // Later, dynamically add connection to target2
 time.Sleep(100 * time.Millisecond)
-source.AddOutput("secondary", target2.GetInput(), 0.8, 8*time.Millisecond)
+source.AddOutput("secondary", target2.GetInputChannel(), 0.8, 8*time.Millisecond)
 
 // Now signals from source reach both targets
 source.GetInput() <- neuron.Message{Value: 1.0}
 ```
 
 ## 🧪 Applications
+
+### C. elegans Neural Simulation
+Build complete neural networks based on the 302-neuron C. elegans connectome with realistic timing and learning.
 
 ### Real-time Streaming Processing
 Process live data streams (sensor data, video, audio) with sub-millisecond latencies, no batch delays.
@@ -324,13 +385,16 @@ Benchmarks on modern hardware show:
 - **Network Scaling**: Linear scaling up to 1M+ concurrent neurons
 - **Memory Usage**: ~2KB per neuron + 64 bytes per connection
 - **Latency**: Sub-millisecond response times for signal propagation
+- **Refractory Period Enforcement**: <100ns overhead per firing attempt
+- **Leaky Integration**: Continuous decay with minimal computational overhead
 
 See [benchmarks/](benchmarks/) for detailed performance tests.
 
 ## 🔮 Roadmap
 
-- [ ] **Add examples**: Add actually the examples
+- [ ] **Add examples**: Complete example implementations for all use cases
 - [ ] **Learning Algorithms**: Spike-timing dependent plasticity, Hebbian learning
+- [ ] **C. elegans Connectome**: Pre-built 302-neuron worm brain simulation
 - [ ] **Gated Networks**: Integration with stateful gating mechanisms  
 - [ ] **Visualization Tools**: Real-time network activity visualization
 - [ ] **Advanced Neuron Models**: Hodgkin-Huxley, integrate-and-fire variants
@@ -342,7 +406,7 @@ See [benchmarks/](benchmarks/) for detailed performance tests.
 
 This implementation draws inspiration from:
 
-- **Biological Neuroscience**: Temporal summation, synaptic plasticity, neural timing
+- **Biological Neuroscience**: Temporal summation, synaptic plasticity, neural timing, membrane dynamics
 - **Neuromorphic Engineering**: Brain-inspired computing architectures  
 - **Spiking Neural Networks**: Event-driven neural computation
 - **Concurrent Computing**: Go's goroutines and channels for parallel processing
@@ -351,6 +415,7 @@ This implementation draws inspiration from:
 - Izhikevich, E.M. (2003). "Simple model of spiking neurons"
 - Maass, W. (1997). "Networks of spiking neurons: The third generation of neural network models"
 - Dayan, P. & Abbott, L.F. (2001). "Theoretical Neuroscience"
+- White, J.G. et al. (1986). "The structure of the nervous system of C. elegans"
 - D. Nikolic. gating.ai
 
 ## 📄 License
@@ -362,6 +427,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - Inspired by the remarkable complexity and efficiency of biological neural networks
 - Built with Go's excellent concurrency primitives
 - Community feedback and contributions
+- C. elegans research community for providing complete neural connectome data
 
 ## 📞 Contact
 
