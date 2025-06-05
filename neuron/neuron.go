@@ -154,13 +154,20 @@ type Neuron struct {
 	// Models the action potential threshold in real neurons
 	// Typically around -55mV in biology
 
-	timeWindow time.Duration // Integration time window for input accumulation
-	// Models membrane time constant and temporal summation
-	// Real neurons: typically 10-20 milliseconds
-
 	fireFactor float64 // Global output multiplier when neuron fires
 	// Models the amplitude of the action potential
 	// In biology: action potentials have standard amplitude
+
+	refractoryPeriod time.Duration // Absolute refractory period duration
+	// Models the time after firing when neuron cannot fire again
+	// In biology: Na+ channels are inactivated, preventing new action potentials
+	// C. elegans neurons: typically 5-15ms depending on neuron type
+
+	decayRate float64 // Membrane potential decay rate per time step
+	// Models the leaky nature of biological neural membranes
+	// In biology: membrane capacitance causes gradual charge dissipation
+	// Value between 0.0-1.0: 0.95 = loses 5% charge per decay interval
+	// Real neurons: membrane time constant typically 10-20ms
 
 	// === COMMUNICATION INFRASTRUCTURE ===
 	// Models the input/output structure of biological neurons
@@ -184,9 +191,10 @@ type Neuron struct {
 	// Models the membrane potential in real neurons
 	// Starts at resting potential, increases with excitation
 
-	firstMessage time.Time // Timestamp marking start of current accumulation window
-	// Models when the integration period began
-	// Used to implement temporal summation windows
+	lastFireTime time.Time // Timestamp of most recent action potential
+	// Models the refractory state timing in real neurons
+	// Used to enforce refractory period constraints
+	// Zero value indicates neuron has never fired
 
 	stateMutex sync.Mutex // Protects internal state during message processing
 	// Ensures atomic updates to accumulator and timing
@@ -200,34 +208,38 @@ type Neuron struct {
 }
 
 // NewNeuron creates and initializes a new biologically-inspired neuron with identification
-// This enhanced factory function sets up all the necessary components for realistic
-// neural processing with temporal dynamics, dynamic connectivity, and optional monitoring
+// This factory function sets up all the necessary components for realistic
+// neural processing with leaky integration, dynamic connectivity, refractory periods,
+// and optional monitoring
 //
-// The addition of neuron identification enables:
-// - Network topology tracking and analysis
-// - Individual neuron performance monitoring
-// - Debugging and visualization of large networks
-// - Implementation of learning algorithms that need to identify specific neurons
+// The leaky integration model enables:
+// - Continuous membrane potential decay (models biological membrane capacitance)
+// - Elimination of artificial time windows in favor of natural dynamics
+// - Realistic temporal summation where recent inputs have stronger influence
+// - Biologically accurate signal integration that matches real neural behavior
 //
 // Parameters model key biological properties:
 // id: unique identifier for this neuron (enables tracking in networks)
 // threshold: electrical threshold for action potential generation
-// timeWindow: temporal integration window (membrane time constant)
+// decayRate: membrane potential decay factor per time step (0.0-1.0)
+// refractoryPeriod: duration after firing when neuron cannot fire again
 // fireFactor: action potential amplitude/strength
 //
-// Biological analogy: Each neuron in the brain has a unique "identity" determined
-// by its location, connections, and role in neural circuits. This ID serves a
-// similar purpose in artificial networks, allowing external systems to track
-// and reference specific neurons within larger network structures.
-func NewNeuron(id string, threshold float64, timeWindow time.Duration, fireFactor float64) *Neuron {
+// Biological analogy: The decayRate models the membrane time constant - how quickly
+// charge leaks out through the cell membrane. In real neurons, this creates a
+// natural integration window where recent inputs have more influence than older ones.
+func NewNeuron(id string, threshold float64, decayRate float64, refractoryPeriod time.Duration, fireFactor float64) *Neuron {
 	return &Neuron{
-		id:         id,                       // Unique neuron identifier for network tracking
-		threshold:  threshold,                // Firing threshold (biological: ~-55mV)
-		timeWindow: timeWindow,               // Integration window (biological: ~10-20ms)
-		fireFactor: fireFactor,               // Output amplitude scaling
-		input:      make(chan Message, 100),  // Buffered input channel
-		outputs:    make(map[string]*Output), // Dynamic output connections
-		fireEvents: nil,                      // Optional fire event reporting (disabled by default)
+		id:               id,                       // Unique neuron identifier for network tracking
+		threshold:        threshold,                // Firing threshold (biological: ~-55mV)
+		decayRate:        decayRate,                // Membrane decay rate (biological: based on RC time constant)
+		refractoryPeriod: refractoryPeriod,         // Refractory period (biological: ~5-15ms)
+		fireFactor:       fireFactor,               // Output amplitude scaling
+		input:            make(chan Message, 100),  // Buffered input channel
+		outputs:          make(map[string]*Output), // Dynamic output connections
+		fireEvents:       nil,                      // Optional fire event reporting (disabled by default)
+		// accumulator starts at 0 (resting potential)
+		// lastFireTime initialized to zero value (never fired)
 	}
 }
 
@@ -351,131 +363,174 @@ func (n *Neuron) GetOutputCount() int {
 	return len(n.outputs)
 }
 
-// Run starts the main neuron processing loop
-// This implements the core neural computation cycle that runs continuously:
-// 1. Wait for input signals or timeout events
-// 2. Integrate incoming signals over time
-// 3. Fire when threshold conditions are met
-// 4. Reset and repeat
+// Run starts the main neuron processing loop with continuous leaky integration
+// This implements the core neural computation cycle that runs continuously with
+// biologically realistic membrane dynamics:
+// 1. Wait for input signals, decay timer events, or shutdown signals
+// 2. Apply continuous membrane potential decay (leaky integration)
+// 3. Integrate incoming signals with existing accumulated charge
+// 4. Fire when threshold conditions are met during refractory-compliant periods
+// 5. Reset and repeat
 //
 // MUST be called as a goroutine: go neuron.Run()
 // This allows the neuron to operate independently and concurrently with
 // other neurons, modeling the parallel nature of biological neural networks
+//
+// Biological processes modeled:
+// - Continuous membrane potential decay (models membrane capacitance/resistance)
+// - Asynchronous signal integration (models dendritic summation)
+// - Refractory period enforcement (models Na+ channel recovery)
+// - Real-time temporal dynamics (no artificial time windows)
 func (n *Neuron) Run() {
-	// Main event loop - the neuron's "life cycle"
-	// Continuously processes two types of events:
+	// Create decay timer for continuous membrane potential decay
+	// Models the biological membrane time constant (RC circuit behavior)
+	// Decay interval of 1ms provides good temporal resolution for C. elegans scale
+	decayInterval := 1 * time.Millisecond
+	decayTicker := time.NewTicker(decayInterval)
+	defer decayTicker.Stop()
+
+	// Main event loop - the neuron's "life cycle" with continuous biological dynamics
+	// Processes three types of events in order of biological priority:
 	for {
 		select {
 		// Event 1: New input signal received (excitatory or inhibitory)
 		// Models: synaptic transmission, neurotransmitter binding,
 		//         postsynaptic potential generation
+		// Highest priority - immediate processing like real synaptic events
 		case msg := <-n.input:
-			n.processMessage(msg)
+			n.processMessageWithDecay(msg)
 
-		// Event 2: Time window expired - reset integration period
-		// Models: membrane potential decay, end of temporal summation window
-		// Prevents indefinite accumulation and maintains realistic timing
-		case <-time.After(n.timeWindow):
-			n.resetAccumulator()
+		// Event 2: Membrane potential decay timer (continuous biological process)
+		// Models: membrane capacitance discharge, ion channel leakage,
+		//         return toward resting potential
+		// Regular biological process that occurs continuously
+		case <-decayTicker.C:
+			n.applyMembraneDecay()
+
+			// Note: Removed the artificial time window timeout from original implementation
+			// Real neurons don't have discrete "time windows" - they have continuous
+			// membrane dynamics with exponential decay characteristics
 		}
 	}
 }
 
-// processMessage handles incoming synaptic signals and manages temporal integration
-// This is the core of neural computation - how individual signals are integrated
-// over time to determine if the neuron should fire
+// applyMembraneDecay applies continuous membrane potential decay
+// Models the biological process of charge dissipation through membrane resistance
+// This replaces the artificial "time window reset" with realistic exponential decay
 //
 // Biological process modeled:
-// 1. Synaptic signal arrives at dendrite
-// 2. Creates postsynaptic potential (PSP) - small voltage change
-// 3. PSP propagates to cell body (soma)
-// 4. Multiple PSPs sum together (spatial and temporal summation)
-// 5. If total reaches threshold, action potential is triggered
-// 6. Action potential propagates down axon to all output synapses
-func (n *Neuron) processMessage(msg Message) {
-	n.stateMutex.Lock()         // Protect internal state from concurrent access
-	defer n.stateMutex.Unlock() // Ensure lock is always released
+// In real neurons, the cell membrane acts like a leaky capacitor (RC circuit).
+// Charge continuously leaks out through membrane resistance, causing the
+// membrane potential to decay exponentially toward resting potential.
+// This creates natural temporal summation where recent inputs have stronger
+// influence than older inputs.
+//
+// Mathematical model:
+// V(t) = V(0) * e^(-t/τ) where τ is the membrane time constant
+// Discrete approximation: V(t+dt) = V(t) * decayRate
+func (n *Neuron) applyMembraneDecay() {
+	n.stateMutex.Lock()
+	defer n.stateMutex.Unlock()
 
-	now := time.Now()
+	// Apply exponential decay to accumulated membrane potential
+	// Models: membrane resistance causing continuous charge leakage
+	// decayRate < 1.0 causes gradual approach to resting potential (0)
+	n.accumulator *= n.decayRate
 
-	// Initialize new integration window if this is the first signal
-	// Models: start of new temporal summation period
-	if n.accumulator == 0 {
-		n.firstMessage = now
+	// In biology: membrane potential asymptotically approaches resting potential
+	// For computational efficiency, set very small values to exactly zero
+	// This prevents accumulation of floating-point precision errors
+	if n.accumulator < 1e-10 && n.accumulator > -1e-10 {
+		n.accumulator = 0.0
 	}
 
-	// Check if we're still within the temporal integration window
-	// Models: membrane time constant - how long PSPs last before decaying
-	if now.Sub(n.firstMessage) <= n.timeWindow {
-		// Add this signal to the running total (temporal summation)
-		// Models: algebraic summation of postsynaptic potentials
-		// Excitatory signals (positive) depolarize the membrane
-		// Inhibitory signals (negative) hyperpolarize the membrane
-		n.accumulator += msg.Value
+	// Note: Unlike the original implementation, we never completely reset
+	// the accumulator to zero. This models the continuous nature of
+	// biological membrane dynamics where there are no discrete "resets"
+}
 
-		// Check if accumulated charge has reached the firing threshold
-		// Models: action potential initiation at the axon hillock
-		if n.accumulator >= n.threshold {
-			n.fireUnsafe()             // Generate action potential (already have state lock)
-			n.resetAccumulatorUnsafe() // Return to resting state
-		}
-	} else {
-		// Time window has expired - start fresh integration period
-		// Models: membrane potential decay back toward resting potential
-		// Previous charges have dissipated, start new summation
-		n.accumulator = msg.Value
-		n.firstMessage = now
+// processMessageWithDecay handles incoming synaptic signals with continuous leaky integration
+// This mimics biologically realistic membrane dynamics that eliminate artificial time windows
+//
+// Biological process modeled:
+// 1. Synaptic signal arrives at dendrite (postsynaptic potential)
+// 2. Signal adds to current membrane potential (no time window constraints)
+// 3. Continuous decay is handled separately by applyMembraneDecay()
+// 4. If accumulated potential reaches threshold, action potential is triggered
+// 5. Refractory period constraints are enforced during firing attempts
+//
+// Key difference from original: No discrete time windows or hard resets.
+// The membrane potential continuously evolves through decay and signal integration.
+func (n *Neuron) processMessageWithDecay(msg Message) {
+	n.stateMutex.Lock()
+	defer n.stateMutex.Unlock()
 
-		// Check if this single signal alone exceeds threshold
-		// Models: strong input causing immediate firing
-		if n.accumulator >= n.threshold {
-			n.fireUnsafe()
-			n.resetAccumulatorUnsafe()
-		}
+	// Directly add signal to current membrane potential
+	// Models: postsynaptic potential summing with existing membrane charge
+	// No time window checks - integration is continuous like real neurons
+	n.accumulator += msg.Value
+
+	// Check if accumulated charge has reached the firing threshold
+	// Models: action potential initiation at the axon hillock
+	// Refractory period enforcement is handled within fireUnsafe()
+	if n.accumulator >= n.threshold {
+		n.fireUnsafe()             // Generate action potential (includes refractory check)
+		n.resetAccumulatorUnsafe() // Return to resting potential after firing
 	}
+
+	// Note: No explicit time window management or firstMessage tracking needed
+	// The continuous decay process naturally handles temporal integration
+	// This more accurately reflects how biological neurons actually work
 }
 
 // fire triggers action potential propagation to all connected neurons
 // Models the all-or-nothing action potential that travels down the axon
 // and triggers neurotransmitter release at all synaptic terminals
+// With refractory period enforcement for biological realism
 //
 // Biological process:
-// 1. Action potential initiated at axon hillock
-// 2. Electrical signal propagates down main axon
-// 3. Signal reaches all axon terminals simultaneously
-// 4. Triggers neurotransmitter release at each synapse
-// 5. Each synapse may have different strength/delay characteristics
+// 1. Verify neuron is not in refractory period
+// 2. Action potential initiated at axon hillock
+// 3. Electrical signal propagates down main axon
+// 4. Signal reaches all axon terminals simultaneously
+// 5. Triggers neurotransmitter release at each synapse
+// 6. Each synapse may have different strength/delay characteristics
 func (n *Neuron) fire() {
-	// Calculate the base signal strength based on current accumulation
-	// In biology: action potentials have standard amplitude, but we model
-	// signal strength to represent firing frequency or burst patterns
 	n.stateMutex.Lock()
-	outputValue := n.accumulator * n.fireFactor
-	n.stateMutex.Unlock()
+	defer n.stateMutex.Unlock()
 
-	// Get thread-safe snapshot of current connections
-	// Prevents connections from changing during signal transmission
-	n.outputsMutex.RLock()
-	outputsCopy := make(map[string]*Output, len(n.outputs))
-	for id, output := range n.outputs {
-		outputsCopy[id] = output
-	}
-	n.outputsMutex.RUnlock()
-
-	// Send signals to all connections in parallel
-	// Models: simultaneous action potential propagation to all axon branches
-	// Each target receives the signal according to its connection properties
-	for _, output := range outputsCopy {
-		// Launch separate goroutine for each output connection
-		// This models the parallel nature of axonal transmission where
-		// one action potential simultaneously affects all connected neurons
-		go n.sendToOutput(output, outputValue)
-	}
+	// Use the internal unsafe method which includes refractory period checking
+	n.fireUnsafe()
 }
 
 // fireUnsafe is the internal firing method called when state lock is already held
+// Includes refractory period enforcement and biological timing constraints
 // Identical to fire() but assumes caller already has the necessary locks
+//
+// Biological process modeled:
+// 1. Check if neuron is in refractory period (cannot fire if recent firing occurred)
+// 2. If firing is allowed, generate action potential
+// 3. Record firing time to enforce future refractory periods
+// 4. Propagate signal to all synaptic connections
+//
+// The refractory period models the biological reality that after an action potential,
+// voltage-gated sodium channels become inactivated and require time to recover.
+// During this period, no amount of input can trigger another action potential.
 func (n *Neuron) fireUnsafe() {
+	// Check refractory period constraint
+	// Models: voltage-gated Na+ channel inactivation state
+	now := time.Now()
+	if !n.lastFireTime.IsZero() && now.Sub(n.lastFireTime) < n.refractoryPeriod {
+		// Neuron is in refractory period - firing is physically impossible
+		// In biology: Na+ channels are inactivated, K+ channels may still be open
+		// This prevents unrealistic rapid-fire bursts that don't occur in real neurons
+		return
+	}
+
+	// Record this firing event for future refractory period enforcement
+	// Models: the moment when Na+ channels become inactivated
+	n.lastFireTime = now
+
 	outputValue := n.accumulator * n.fireFactor
 
 	// Report firing event if channel is set
@@ -484,7 +539,7 @@ func (n *Neuron) fireUnsafe() {
 		case n.fireEvents <- FireEvent{
 			NeuronID:  n.id,
 			Value:     outputValue,
-			Timestamp: time.Now(),
+			Timestamp: now, // Use the same timestamp for consistency
 		}:
 		default: // Don't block if channel is full
 		}
@@ -499,6 +554,7 @@ func (n *Neuron) fireUnsafe() {
 	n.outputsMutex.RUnlock()
 
 	// Parallel transmission to all outputs
+	// Models: action potential propagating simultaneously down all axon branches
 	for _, output := range outputsCopy {
 		go n.sendToOutput(output, outputValue)
 	}
