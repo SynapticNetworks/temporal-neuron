@@ -1,0 +1,1137 @@
+=== RUN   TestHomeostaticNeuronCreation
+--- PASS: TestHomeostaticNeuronCreation (0.00s)
+=== RUN   TestSimpleNeuronCreation
+--- PASS: TestSimpleNeuronCreation (0.00s)
+=== RUN   TestHomeostaticThresholdIncrease
+    homeostatic_test.go:163: Final firing rate: 3.000000 Hz (target: 2.000000 Hz)
+    homeostatic_test.go:164: Threshold change: 1.000000 -> 1.034000 (increase: 0.034000)
+--- PASS: TestHomeostaticThresholdIncrease (1.25s)
+=== RUN   TestHomeostaticThresholdDecrease
+    homeostatic_test.go:222: Threshold change: 1.000000 -> 0.575000 (decrease: 0.425000)
+--- PASS: TestHomeostaticThresholdDecrease (1.80s)
+=== RUN   TestHomeostaticStabilization
+    homeostatic_test.go:290: Warning: Final rate (7.400000) not close to target (4.000000) - homeostasis may need more time or stronger regulation
+    homeostatic_test.go:306: Mid-test rate: 1.800000 Hz, Final rate: 7.400000 Hz (target: 4.000000 Hz)
+--- PASS: TestHomeostaticStabilization (4.00s)
+=== RUN   TestCalciumDynamics
+    homeostatic_test.go:356: Calcium levels - Initial: 0.000000, Post-fire: 0.817073, Decayed: 0.110571
+--- PASS: TestCalciumDynamics (0.11s)
+=== RUN   TestFiringHistoryTracking
+    homeostatic_test.go:408: Firing history: 5 entries, calculated rate: 1.000000 Hz
+--- PASS: TestFiringHistoryTracking (0.35s)
+=== RUN   TestHomeostaticBounds
+    homeostatic_test.go:438: Homeostatic bounds: min=0.100000, max=5.000000, base=1.000000
+    homeostatic_test.go:459: Final threshold: 4.328000 (within bounds: 0.100000 - 5.000000)
+--- PASS: TestHomeostaticBounds (1.50s)
+=== RUN   TestHomeostaticParameterSetting
+    homeostatic_test.go:503: Parameter update: target 5.000000->10.000000, strength 0.100000->0.500000
+    homeostatic_test.go:504: Threshold reset: 1.000000 -> 1.000000 (base: 1.000000)
+--- PASS: TestHomeostaticParameterSetting (0.00s)
+=== RUN   TestHomeostaticVsSimpleNeuron
+    homeostatic_test.go:570: Simple neuron: threshold 1.000000 -> 1.000000 (unchanged: true)
+    homeostatic_test.go:572: Homeostatic neuron: threshold 1.000000 -> 1.030000 (changed: true, rate: 6.000000 Hz)
+--- PASS: TestHomeostaticVsSimpleNeuron (1.50s)
+=== RUN   TestHomeostaticStabilityOverTime
+    homeostatic_test.go:647: Warning: Final rate (1.600000) not close to target (5.000000) after long-term run
+    homeostatic_test.go:650: Long-term stability test completed
+    homeostatic_test.go:651: Target rate: 5.000000 Hz
+    homeostatic_test.go:652: Final rate: 1.600000 Hz
+    homeostatic_test.go:653: Threshold evolution: 0.938000 -> 1.663600
+--- PASS: TestHomeostaticStabilityOverTime (10.04s)
+=== RUN   TestNeuronCreation
+--- PASS: TestNeuronCreation (0.00s)
+=== RUN   TestNeuronInputChannel
+--- PASS: TestNeuronInputChannel (0.00s)
+=== RUN   TestOutputManagement
+--- PASS: TestOutputManagement (0.00s)
+=== RUN   TestThresholdFiring
+--- PASS: TestThresholdFiring (0.02s)
+=== RUN   TestLeakyIntegration
+--- PASS: TestLeakyIntegration (0.04s)
+=== RUN   TestRefractoryPeriod
+--- PASS: TestRefractoryPeriod (0.04s)
+=== RUN   TestContinuousDecay
+--- PASS: TestContinuousDecay (0.06s)
+=== RUN   TestTemporalIntegration
+--- PASS: TestTemporalIntegration (0.05s)
+=== RUN   TestOutputFactorAndDelay
+--- PASS: TestOutputFactorAndDelay (0.02s)
+=== RUN   TestMultipleOutputs
+--- PASS: TestMultipleOutputs (0.07s)
+=== RUN   TestConcurrentAccess
+--- PASS: TestConcurrentAccess (1.52s)
+=== RUN   TestResetAfterFiring
+--- PASS: TestResetAfterFiring (0.03s)
+=== RUN   TestInhibitorySignals
+--- PASS: TestInhibitorySignals (0.05s)
+=== RUN   TestFireEventReporting
+--- PASS: TestFireEventReporting (0.03s)
+=== RUN   TestRefractoryPeriodPreventsRapidFiring
+--- PASS: TestRefractoryPeriodPreventsRapidFiring (0.38s)
+=== RUN   TestDecayRateEffects
+--- PASS: TestDecayRateEffects (0.10s)
+=== RUN   TestCloseBehavior
+--- PASS: TestCloseBehavior (0.02s)
+=== RUN   TestSTDPWithHomeostasis
+    stdp_integration_test.go:65: === STDP + HOMEOSTASIS INTEGRATION TEST ===
+    stdp_integration_test.go:66: Target firing rate: 5.0 Hz
+    stdp_integration_test.go:67: Homeostasis strength: 0.2
+    stdp_integration_test.go:68: STDP learning rate: 0.020
+    stdp_integration_test.go:74: Initial threshold: 1.000
+    stdp_integration_test.go:75: Initial calcium: 0.000
+    stdp_integration_test.go:78: 
+        --- Phase 1: Baseline Activity ---
+    stdp_integration_test.go:94: Mid-phase threshold: 0.833 (change: -0.167)
+    stdp_integration_test.go:95: Mid-phase firing rate: 4.0 Hz (target: 5.0 Hz)
+    stdp_integration_test.go:96: Mid-phase calcium: 4.727
+    stdp_integration_test.go:99: 
+        --- Phase 2: STDP Learning with Homeostasis ---
+    stdp_integration_test.go:129: 
+        --- Final Results ---
+    stdp_integration_test.go:130: Final threshold: 0.778 (total change: -0.222)
+    stdp_integration_test.go:131: Final firing rate: 3.0 Hz (target: 5.0 Hz)
+    stdp_integration_test.go:132: Final calcium: 2.290
+    stdp_integration_test.go:140: ✓ Homeostatic regulation maintained firing rate near target
+    stdp_integration_test.go:148: ✓ Homeostatic threshold adjustment occurred
+    stdp_integration_test.go:166: ✓ Adequate firing activity for learning (35 events)
+    stdp_integration_test.go:169: ✓ STDP and homeostasis coexisted successfully
+--- PASS: TestSTDPWithHomeostasis (8.42s)
+=== RUN   TestSTDPHomeostasisTimescales
+    stdp_integration_test.go:203: === STDP/HOMEOSTASIS TIMESCALE TEST ===
+    stdp_integration_test.go:209: Applying rapid STDP learning events...
+    stdp_integration_test.go:222: Threshold immediately after STDP: 0.9850 (change: -0.0150)
+    stdp_integration_test.go:226: Waiting for homeostatic adjustment...
+    stdp_integration_test.go:232: Threshold after homeostatic delay: 0.8830 (change: -0.1170)
+    stdp_integration_test.go:234: Firing rate after delay: 1.00 Hz
+    stdp_integration_test.go:241: ✓ Homeostatic adjustment occurred on slower timescale
+    stdp_integration_test.go:249: ✓ Some threshold dynamics observed during learning period
+    stdp_integration_test.go:252: ✓ Timescale test completed
+--- PASS: TestSTDPHomeostasisTimescales (2.40s)
+=== RUN   TestTwoNeuronSTDPNetwork
+    stdp_integration_test.go:304: === TWO-NEURON STDP NETWORK TEST ===
+    stdp_integration_test.go:305: Initial connection weight: 0.80
+    stdp_integration_test.go:311: 
+        --- Phase 1: Baseline (uncorrelated activity) ---
+    stdp_integration_test.go:326: Baseline post-neuron firing rate: 1.60 Hz
+    stdp_integration_test.go:329: 
+        --- Phase 2: Causal Learning Pattern ---
+    stdp_integration_test.go:344: 
+        --- Phase 3: Testing Learned Response ---
+    stdp_integration_test.go:375: Post-learning response rate: 50.0% (4/8 tests)
+    stdp_integration_test.go:376: Final post-neuron firing rate: 3.80 Hz
+    stdp_integration_test.go:380: ✓ STDP learning successful - post-neuron responds to pre-neuron
+    stdp_integration_test.go:387: ✓ Post-neuron maintained reasonable firing rate
+    stdp_integration_test.go:392: ✓ Two-neuron STDP network test completed
+--- PASS: TestTwoNeuronSTDPNetwork (6.55s)
+=== RUN   TestThreeNeuronChainSTDP
+    stdp_integration_test.go:454: === THREE-NEURON CHAIN STDP TEST ===
+    stdp_integration_test.go:455: Chain: input → intermediate → output
+    stdp_integration_test.go:456: Initial weights: 0.90 → 0.90
+    stdp_integration_test.go:461: 
+        --- Training Phase: Chain Activation ---
+    stdp_integration_test.go:481: 
+        --- Test Phase: Chain Responsiveness ---
+    stdp_integration_test.go:526: Response rates after learning:
+    stdp_integration_test.go:527:   Intermediate neuron: 90.0% (9/10)
+    stdp_integration_test.go:528:   Output neuron: 80.0% (8/10)
+    stdp_integration_test.go:529:   Complete chain: 100.0% (10/10)
+    stdp_integration_test.go:533: ✓ Strong input→intermediate connection learned
+    stdp_integration_test.go:539: ✓ Intermediate→output connection functional
+    stdp_integration_test.go:545: ✓ End-to-end chain learning successful
+    stdp_integration_test.go:556: 
+        Final neuron states:
+    stdp_integration_test.go:557:   Intermediate: 2.20 Hz, threshold 1.127
+    stdp_integration_test.go:558:   Output: 2.20 Hz, threshold 1.164
+    stdp_integration_test.go:560: ✓ Three-neuron chain STDP test completed
+--- PASS: TestThreeNeuronChainSTDP (8.27s)
+=== RUN   TestSTDPCompetitiveLearnig
+    stdp_integration_test.go:629: === COMPETITIVE LEARNING STDP TEST ===
+    stdp_integration_test.go:630: Three inputs (A, B, C) competing for influence
+    stdp_integration_test.go:631: Initial weights: 0.60 each
+    stdp_integration_test.go:638: 
+        --- Training Phase: Input A Correlated, B & C Random ---
+    stdp_integration_test.go:677: 
+        --- Test Phase: Individual Input Responsiveness ---
+    stdp_integration_test.go:711: Response rates after competitive learning:
+    stdp_integration_test.go:712:   Input A (correlated): 37.5%
+    stdp_integration_test.go:713:   Input B (random): 50.0%
+    stdp_integration_test.go:714:   Input C (anti-causal): 50.0%
+    stdp_integration_test.go:720: Note: Competitive advantage not clearly established
+    stdp_integration_test.go:736: 
+        Final post-neuron state: 2.20 Hz, threshold 1.205
+    stdp_integration_test.go:738: ✓ Competitive learning STDP test completed
+--- PASS: TestSTDPCompetitiveLearnig (12.54s)
+=== RUN   TestSTDPNetworkStability
+    stdp_integration_test.go:827: === NETWORK STABILITY TEST ===
+    stdp_integration_test.go:828: Network: 2 inputs → 2 processing → 1 output
+    stdp_integration_test.go:829: All connections have STDP learning enabled
+    stdp_integration_test.go:840: 
+        --- Extended Operation: Varied Activity Patterns ---
+    stdp_integration_test.go:905: Sample 1/16: Output rate 0.80 Hz
+    stdp_integration_test.go:905: Sample 5/16: Output rate 5.80 Hz
+    stdp_integration_test.go:905: Sample 9/16: Output rate 11.20 Hz
+    stdp_integration_test.go:905: Sample 13/16: Output rate 11.20 Hz
+    stdp_integration_test.go:915: 
+        --- Stability Analysis ---
+    stdp_integration_test.go:933: proc1: rate 8.40 Hz, threshold 1.450
+    stdp_integration_test.go:933: proc2: rate 8.40 Hz, threshold 1.455
+    stdp_integration_test.go:933: output: rate 10.40 Hz, threshold 2.202
+    stdp_integration_test.go:976: proc1 variability: CV=0.460 (mean=5.88, std=2.70)
+    stdp_integration_test.go:976: proc2 variability: CV=0.453 (mean=5.97, std=2.71)
+    stdp_integration_test.go:976: output variability: CV=0.438 (mean=8.34, std=3.65)
+    stdp_integration_test.go:988: ✓ Network remained stable throughout extended operation
+    stdp_integration_test.go:1004: ✓ Learning activity detected (threshold adaptations)
+    stdp_integration_test.go:1009: ✓ Network stability test completed
+--- PASS: TestSTDPNetworkStability (8.46s)
+=== RUN   TestSTDPTemporalPatternLearning
+    stdp_integration_test.go:1080: === TEMPORAL PATTERN LEARNING TEST ===
+    stdp_integration_test.go:1081: Training detector neuron to recognize specific temporal sequence
+    stdp_integration_test.go:1096: 
+        --- Training Phase: Target Pattern A-B-C-D ---
+    stdp_integration_test.go:1127: 
+        --- Test Phase: Pattern Recognition ---
+    stdp_integration_test.go:1204: Pattern recognition results:
+    stdp_integration_test.go:1205:   Target pattern A→B→C→D: 87.5%
+    stdp_integration_test.go:1206:   Reversed pattern D→C→B→A: 87.5%
+    stdp_integration_test.go:1207:   Scrambled timing: 100.0%
+    stdp_integration_test.go:1208:   Single input: 25.0%
+    stdp_integration_test.go:1214: Note: Pattern selectivity not clearly established
+    stdp_integration_test.go:1218: ✓ Strong response to learned target pattern
+    stdp_integration_test.go:1224: ✓ Reduced response to incomplete pattern
+    stdp_integration_test.go:1230: 
+        Detector final state: 4.60 Hz, threshold 2.775
+    stdp_integration_test.go:1232: ✓ Temporal pattern learning test completed
+--- PASS: TestSTDPTemporalPatternLearning (14.05s)
+=== RUN   TestSTDPNetworkPerformance
+    stdp_integration_test.go:1320: === STDP NETWORK PERFORMANCE TEST ===
+    stdp_integration_test.go:1321: Network: 6 inputs → 4 processing → 2 outputs
+    stdp_integration_test.go:1322: Total STDP connections: 32
+    stdp_integration_test.go:1340: 
+        --- High-Intensity Activity Phase ---
+    stdp_integration_test.go:1391: Performance check at 0.5s: sample rate 0.0 Hz
+    stdp_integration_test.go:1391: Performance check at 1.0s: sample rate 2.0 Hz
+    stdp_integration_test.go:1391: Performance check at 1.5s: sample rate 3.6 Hz
+    stdp_integration_test.go:1391: Performance check at 2.1s: sample rate 6.2 Hz
+    stdp_integration_test.go:1391: Performance check at 2.5s: sample rate 8.8 Hz
+    stdp_integration_test.go:1391: Performance check at 3.0s: sample rate 11.2 Hz
+    stdp_integration_test.go:1391: Performance check at 3.5s: sample rate 13.6 Hz
+    stdp_integration_test.go:1391: Performance check at 4.0s: sample rate 16.8 Hz
+    stdp_integration_test.go:1403: 
+        --- Performance Results ---
+    stdp_integration_test.go:1404: Test duration: 4.04 seconds
+    stdp_integration_test.go:1426: Average firing rates:
+    stdp_integration_test.go:1427:   Input layer: 0.0 Hz
+    stdp_integration_test.go:1428:   Processing layer: 17.1 Hz
+    stdp_integration_test.go:1429:   Output layer: 16.4 Hz
+    stdp_integration_test.go:1433: ✓ Processing layer maintained reasonable activity levels
+    stdp_integration_test.go:1439: ✓ Output layer remained active
+    stdp_integration_test.go:1456: ✓ No extreme threshold changes detected
+    stdp_integration_test.go:1463: Estimated STDP learning events: 221
+    stdp_integration_test.go:1469: ✓ Network performance test completed successfully
+--- PASS: TestSTDPNetworkPerformance (4.04s)
+=== RUN   TestSTDPRobustnessRegressionBaseline
+    stdp_robustness_test.go:43: === STDP REGRESSION BASELINE TEST ===
+    stdp_robustness_test.go:44: This test locks in exact STDP weight changes for standard patterns
+    stdp_robustness_test.go:45: ANY changes in results indicate potential regression - review carefully!
+    stdp_robustness_test.go:133: Testing 9 baseline patterns with tight tolerances
+=== RUN   TestSTDPRobustnessRegressionBaseline/StrongLTP
+    stdp_robustness_test.go:137: Testing: Strong LTP at optimal timing
+    stdp_robustness_test.go:138: Timing difference: -5ms
+    stdp_robustness_test.go:139: Expected weight change: 0.007788
+    stdp_robustness_test.go:144: Actual weight change: 0.007788
+    stdp_robustness_test.go:145: Difference from baseline: 0.000000008
+    stdp_robustness_test.go:156: ✓ Baseline maintained for Strong LTP at optimal timing
+=== RUN   TestSTDPRobustnessRegressionBaseline/ModerateLTP
+    stdp_robustness_test.go:137: Testing: Moderate LTP at medium timing
+    stdp_robustness_test.go:138: Timing difference: -15ms
+    stdp_robustness_test.go:139: Expected weight change: 0.004724
+    stdp_robustness_test.go:144: Actual weight change: 0.004724
+    stdp_robustness_test.go:145: Difference from baseline: -0.000000334
+    stdp_robustness_test.go:156: ✓ Baseline maintained for Moderate LTP at medium timing
+=== RUN   TestSTDPRobustnessRegressionBaseline/WeakLTP
+    stdp_robustness_test.go:137: Testing: Weak LTP at longer timing
+    stdp_robustness_test.go:138: Timing difference: -30ms
+    stdp_robustness_test.go:139: Expected weight change: 0.002231
+    stdp_robustness_test.go:144: Actual weight change: 0.002231
+    stdp_robustness_test.go:145: Difference from baseline: 0.000000302
+    stdp_robustness_test.go:156: ✓ Baseline maintained for Weak LTP at longer timing
+=== RUN   TestSTDPRobustnessRegressionBaseline/StrongLTD
+    stdp_robustness_test.go:137: Testing: Strong LTD at optimal timing
+    stdp_robustness_test.go:138: Timing difference: 5ms
+    stdp_robustness_test.go:139: Expected weight change: -0.007788
+    stdp_robustness_test.go:144: Actual weight change: -0.007788
+    stdp_robustness_test.go:145: Difference from baseline: -0.000000008
+    stdp_robustness_test.go:156: ✓ Baseline maintained for Strong LTD at optimal timing
+=== RUN   TestSTDPRobustnessRegressionBaseline/ModerateLTD
+    stdp_robustness_test.go:137: Testing: Moderate LTD at medium timing
+    stdp_robustness_test.go:138: Timing difference: 15ms
+    stdp_robustness_test.go:139: Expected weight change: -0.004724
+    stdp_robustness_test.go:144: Actual weight change: -0.004724
+    stdp_robustness_test.go:145: Difference from baseline: 0.000000334
+    stdp_robustness_test.go:156: ✓ Baseline maintained for Moderate LTD at medium timing
+=== RUN   TestSTDPRobustnessRegressionBaseline/WeakLTD
+    stdp_robustness_test.go:137: Testing: Weak LTD at longer timing
+    stdp_robustness_test.go:138: Timing difference: 30ms
+    stdp_robustness_test.go:139: Expected weight change: -0.002231
+    stdp_robustness_test.go:144: Actual weight change: -0.002231
+    stdp_robustness_test.go:145: Difference from baseline: -0.000000302
+    stdp_robustness_test.go:156: ✓ Baseline maintained for Weak LTD at longer timing
+=== RUN   TestSTDPRobustnessRegressionBaseline/NoChange_BoundaryNegative
+    stdp_robustness_test.go:137: Testing: No change at negative window boundary
+    stdp_robustness_test.go:138: Timing difference: -50ms
+    stdp_robustness_test.go:139: Expected weight change: 0.000000
+    stdp_robustness_test.go:144: Actual weight change: 0.000000
+    stdp_robustness_test.go:145: Difference from baseline: 0.000000000
+    stdp_robustness_test.go:156: ✓ Baseline maintained for No change at negative window boundary
+=== RUN   TestSTDPRobustnessRegressionBaseline/NoChange_BoundaryPositive
+    stdp_robustness_test.go:137: Testing: No change at positive window boundary
+    stdp_robustness_test.go:138: Timing difference: 50ms
+    stdp_robustness_test.go:139: Expected weight change: 0.000000
+    stdp_robustness_test.go:144: Actual weight change: 0.000000
+    stdp_robustness_test.go:145: Difference from baseline: 0.000000000
+    stdp_robustness_test.go:156: ✓ Baseline maintained for No change at positive window boundary
+=== RUN   TestSTDPRobustnessRegressionBaseline/NoChange_OutsideWindow
+    stdp_robustness_test.go:137: Testing: No change well outside window
+    stdp_robustness_test.go:138: Timing difference: 100ms
+    stdp_robustness_test.go:139: Expected weight change: 0.000000
+    stdp_robustness_test.go:144: Actual weight change: 0.000000
+    stdp_robustness_test.go:145: Difference from baseline: 0.000000000
+    stdp_robustness_test.go:156: ✓ Baseline maintained for No change well outside window
+=== NAME  TestSTDPRobustnessRegressionBaseline
+    stdp_robustness_test.go:161: ✓ STDP regression baseline test completed
+    stdp_robustness_test.go:162: All patterns match expected baseline values
+--- PASS: TestSTDPRobustnessRegressionBaseline (0.00s)
+    --- PASS: TestSTDPRobustnessRegressionBaseline/StrongLTP (0.00s)
+    --- PASS: TestSTDPRobustnessRegressionBaseline/ModerateLTP (0.00s)
+    --- PASS: TestSTDPRobustnessRegressionBaseline/WeakLTP (0.00s)
+    --- PASS: TestSTDPRobustnessRegressionBaseline/StrongLTD (0.00s)
+    --- PASS: TestSTDPRobustnessRegressionBaseline/ModerateLTD (0.00s)
+    --- PASS: TestSTDPRobustnessRegressionBaseline/WeakLTD (0.00s)
+    --- PASS: TestSTDPRobustnessRegressionBaseline/NoChange_BoundaryNegative (0.00s)
+    --- PASS: TestSTDPRobustnessRegressionBaseline/NoChange_BoundaryPositive (0.00s)
+    --- PASS: TestSTDPRobustnessRegressionBaseline/NoChange_OutsideWindow (0.00s)
+=== RUN   TestSTDPRobustnessParameterBoundaries
+    stdp_robustness_test.go:171: === STDP PARAMETER BOUNDARIES TEST ===
+    stdp_robustness_test.go:172: Testing edge cases and boundary conditions for STDP parameters
+=== RUN   TestSTDPRobustnessParameterBoundaries/ZeroLearningRate
+    stdp_robustness_test.go:190: ✓ Zero learning rate correctly produces no weight change
+=== RUN   TestSTDPRobustnessParameterBoundaries/NegativeLearningRate
+    stdp_robustness_test.go:215: ✓ Negative learning rate correctly inverts STDP polarity
+=== RUN   TestSTDPRobustnessParameterBoundaries/VerySmallTimeConstant
+    stdp_robustness_test.go:239: ✓ Small time constant produces sharp STDP window
+=== RUN   TestSTDPRobustnessParameterBoundaries/ZeroTimeConstant
+    stdp_robustness_test.go:264: Zero time constant result: -0.000000
+    stdp_robustness_test.go:265: ✓ Zero time constant handled without panic
+=== RUN   TestSTDPRobustnessParameterBoundaries/ZeroWindowSize
+    stdp_robustness_test.go:285: ✓ Zero window size correctly blocks all plasticity
+=== RUN   TestSTDPRobustnessParameterBoundaries/ExtremeAsymmetryRatios
+    stdp_robustness_test.go:306: Asymmetry ratio 0.000: LTP=0.000000, LTD=-0.006065
+    stdp_robustness_test.go:306: Asymmetry ratio 0.001: LTP=0.000006, LTD=-0.006065
+    stdp_robustness_test.go:306: Asymmetry ratio 1000.000: LTP=6.065307, LTD=-0.006065
+    stdp_robustness_test.go:306: Asymmetry ratio +Inf: LTP=+Inf, LTD=-0.006065
+    stdp_robustness_test.go:313: ✓ Extreme asymmetry ratios handled robustly
+=== NAME  TestSTDPRobustnessParameterBoundaries
+    stdp_robustness_test.go:316: ✓ Parameter boundary testing completed
+--- PASS: TestSTDPRobustnessParameterBoundaries (0.00s)
+    --- PASS: TestSTDPRobustnessParameterBoundaries/ZeroLearningRate (0.00s)
+    --- PASS: TestSTDPRobustnessParameterBoundaries/NegativeLearningRate (0.00s)
+    --- PASS: TestSTDPRobustnessParameterBoundaries/VerySmallTimeConstant (0.00s)
+    --- PASS: TestSTDPRobustnessParameterBoundaries/ZeroTimeConstant (0.00s)
+    --- PASS: TestSTDPRobustnessParameterBoundaries/ZeroWindowSize (0.00s)
+    --- PASS: TestSTDPRobustnessParameterBoundaries/ExtremeAsymmetryRatios (0.00s)
+=== RUN   TestSTDPRobustnessConcurrentModification
+    stdp_robustness_test.go:325: === STDP CONCURRENT MODIFICATION TEST ===
+    stdp_robustness_test.go:326: Testing thread safety of STDP parameter changes during active learning
+    stdp_robustness_test.go:410: ✓ Concurrent STDP parameter modification completed without deadlock or panic
+    stdp_robustness_test.go:411: ✓ Thread safety validation successful
+--- PASS: TestSTDPRobustnessConcurrentModification (2.09s)
+=== RUN   TestSTDPRobustnessMemoryManagement
+    stdp_robustness_test.go:420: === STDP MEMORY MANAGEMENT TEST ===
+    stdp_robustness_test.go:421: Testing memory efficiency and cleanup with large spike histories
+=== RUN   TestSTDPRobustnessMemoryManagement/LargePreSpikeHistory
+    stdp_robustness_test.go:450: Adding 10,000 pre-synaptic spikes
+    stdp_robustness_test.go:458: Spike history length after 10k spikes: 50
+    stdp_robustness_test.go:470: ✓ Large pre-spike history managed efficiently
+=== RUN   TestSTDPRobustnessMemoryManagement/OldSpikeCleanup
+    stdp_robustness_test.go:484: History length after old spikes: 50
+    stdp_robustness_test.go:489: History length after recent spike: 1
+    stdp_robustness_test.go:496: ✓ Old spike cleanup working correctly
+=== RUN   TestSTDPRobustnessMemoryManagement/RapidSpikeGeneration
+    stdp_robustness_test.go:519: Final history length after rapid generation: 100
+    stdp_robustness_test.go:520: ✓ Rapid spike generation handled efficiently
+=== NAME  TestSTDPRobustnessMemoryManagement
+    stdp_robustness_test.go:523: ✓ STDP memory management tests completed
+--- PASS: TestSTDPRobustnessMemoryManagement (1.65s)
+    --- PASS: TestSTDPRobustnessMemoryManagement/LargePreSpikeHistory (1.39s)
+    --- PASS: TestSTDPRobustnessMemoryManagement/OldSpikeCleanup (0.00s)
+    --- PASS: TestSTDPRobustnessMemoryManagement/RapidSpikeGeneration (0.26s)
+=== RUN   TestSTDPRobustnessExtremeInputs
+    stdp_robustness_test.go:532: === STDP EXTREME INPUTS TEST ===
+    stdp_robustness_test.go:533: Testing STDP robustness with extreme and unusual inputs
+=== RUN   TestSTDPRobustnessExtremeInputs/ExtremeTimingDifferences
+    stdp_robustness_test.go:570: Timing -24h0m0s: change = 0.000000
+    stdp_robustness_test.go:570: Timing -1h0m0s: change = 0.000000
+    stdp_robustness_test.go:570: Timing -1ns: change = 0.010000
+    stdp_robustness_test.go:570: Timing 0s: change = -0.010000
+    stdp_robustness_test.go:570: Timing 1ns: change = -0.010000
+    stdp_robustness_test.go:570: Timing 1h0m0s: change = 0.000000
+    stdp_robustness_test.go:570: Timing 24h0m0s: change = 0.000000
+    stdp_robustness_test.go:573: ✓ Extreme timing differences handled robustly
+=== RUN   TestSTDPRobustnessExtremeInputs/RapidFireSpikes
+    stdp_robustness_test.go:605: Weight change from rapid burst: -0.608034
+    stdp_robustness_test.go:612: ✓ Rapid fire spike patterns handled appropriately
+=== RUN   TestSTDPRobustnessExtremeInputs/WeightAtBoundaries
+    stdp_robustness_test.go:655: ✓ Weight boundaries properly enforced under extreme conditions
+=== NAME  TestSTDPRobustnessExtremeInputs
+    stdp_robustness_test.go:658: ✓ Extreme inputs testing completed
+--- PASS: TestSTDPRobustnessExtremeInputs (0.06s)
+    --- PASS: TestSTDPRobustnessExtremeInputs/ExtremeTimingDifferences (0.00s)
+    --- PASS: TestSTDPRobustnessExtremeInputs/RapidFireSpikes (0.06s)
+    --- PASS: TestSTDPRobustnessExtremeInputs/WeightAtBoundaries (0.00s)
+=== RUN   TestSTDPRobustnessIntegrationRobustness
+    stdp_robustness_test.go:667: === STDP INTEGRATION ROBUSTNESS TEST ===
+    stdp_robustness_test.go:668: Testing STDP robustness in combination with other neuron features
+=== RUN   TestSTDPRobustnessIntegrationRobustness/STDPWithRapidHomeostaticChanges
+    stdp_robustness_test.go:713: Initial firing rate: 3.20 Hz
+    stdp_robustness_test.go:714: Final firing rate: 4.40 Hz
+    stdp_robustness_test.go:715: Threshold change: -0.621000
+    stdp_robustness_test.go:722: ✓ STDP + homeostasis combination remains functional under stress
+=== RUN   TestSTDPRobustnessIntegrationRobustness/STDPDuringNetworkShutdown
+    stdp_robustness_test.go:765: ✓ Network shutdown handled gracefully with active STDP
+=== RUN   TestSTDPRobustnessIntegrationRobustness/STDPWithRefractoryConflicts
+    stdp_robustness_test.go:800: ✓ STDP + refractory period conflicts handled appropriately
+=== RUN   TestSTDPRobustnessIntegrationRobustness/DynamicConnectionsDuringSTDP
+    stdp_robustness_test.go:844: Final output count: 2
+    stdp_robustness_test.go:846: ✓ Dynamic connection changes during STDP handled safely
+=== NAME  TestSTDPRobustnessIntegrationRobustness
+    stdp_robustness_test.go:849: ✓ STDP integration robustness tests completed
+--- PASS: TestSTDPRobustnessIntegrationRobustness (6.46s)
+    --- PASS: TestSTDPRobustnessIntegrationRobustness/STDPWithRapidHomeostaticChanges (2.39s)
+    --- PASS: TestSTDPRobustnessIntegrationRobustness/STDPDuringNetworkShutdown (0.57s)
+    --- PASS: TestSTDPRobustnessIntegrationRobustness/STDPWithRefractoryConflicts (1.40s)
+    --- PASS: TestSTDPRobustnessIntegrationRobustness/DynamicConnectionsDuringSTDP (2.09s)
+=== RUN   TestSTDPRobustnessGoldenMaster
+    stdp_robustness_test.go:858: === STDP GOLDEN MASTER TEST ===
+    stdp_robustness_test.go:859: Comprehensive STDP behavior capture for regression detection
+    stdp_robustness_test.go:860: This test should NEVER change unless STDP algorithm is intentionally modified
+    stdp_robustness_test.go:924: Testing 21 timing points for golden master validation
+    stdp_robustness_test.go:950: ✓ ALL GOLDEN MASTER VALUES VERIFIED
+    stdp_robustness_test.go:951: ✓ STDP algorithm behavior is consistent with baseline
+=== RUN   TestSTDPRobustnessGoldenMaster/STDPCurveProperties
+    stdp_robustness_test.go:984: ✓ STDP curve properties validated
+=== NAME  TestSTDPRobustnessGoldenMaster
+    stdp_robustness_test.go:987: ✓ Golden master test completed
+--- PASS: TestSTDPRobustnessGoldenMaster (0.00s)
+    --- PASS: TestSTDPRobustnessGoldenMaster/STDPCurveProperties (0.00s)
+=== RUN   TestSTDPRobustnessReproducibility
+    stdp_robustness_test.go:995: === STDP REPRODUCIBILITY TEST ===
+    stdp_robustness_test.go:996: Ensuring deterministic STDP behavior across multiple runs
+    stdp_robustness_test.go:1047: ✓ Perfect reproducibility across 100 runs
+    stdp_robustness_test.go:1048: ✓ STDP calculations are deterministic
+    stdp_robustness_test.go:1054: ✓ Reproducibility test completed
+--- PASS: TestSTDPRobustnessReproducibility (0.00s)
+=== RUN   TestSTDPRobustnessNumericalStability
+    stdp_robustness_test.go:1063: === STDP NUMERICAL STABILITY TEST ===
+    stdp_robustness_test.go:1064: Testing floating-point precision and numerical stability
+=== RUN   TestSTDPRobustnessNumericalStability/VerySmallTimeDifferences
+    stdp_robustness_test.go:1107: Timing 1ns: LTP=0.010000000, LTD=-0.010000000
+    stdp_robustness_test.go:1107: Timing 10ns: LTP=0.009999995, LTD=-0.009999995
+    stdp_robustness_test.go:1107: Timing 100ns: LTP=0.009999950, LTD=-0.009999950
+    stdp_robustness_test.go:1107: Timing 1µs: LTP=0.009999500, LTD=-0.009999500
+    stdp_robustness_test.go:1107: Timing 10µs: LTP=0.009995001, LTD=-0.009995001
+    stdp_robustness_test.go:1107: Timing 100µs: LTP=0.009950125, LTD=-0.009950125
+    stdp_robustness_test.go:1110: ✓ Small time differences handled with numerical stability
+=== RUN   TestSTDPRobustnessNumericalStability/AccumulatedPrecision
+    stdp_robustness_test.go:1148: Weight after 10k iterations: 0.100000000
+    stdp_robustness_test.go:1149: Total change: -0.900000000
+    stdp_robustness_test.go:1156: ✓ Accumulated operations maintain numerical stability
+=== RUN   TestSTDPRobustnessNumericalStability/BoundaryPrecision
+    stdp_robustness_test.go:1174: Boundary timing -50.000001ms: result=0.000000000
+    stdp_robustness_test.go:1174: Boundary timing -50ms: result=0.000000000
+    stdp_robustness_test.go:1174: Boundary timing -49.999999ms: result=0.000820850
+    stdp_robustness_test.go:1174: Boundary timing 49.999999ms: result=-0.000820850
+    stdp_robustness_test.go:1174: Boundary timing 50ms: result=0.000000000
+    stdp_robustness_test.go:1174: Boundary timing 50.000001ms: result=0.000000000
+    stdp_robustness_test.go:1182: ✓ Boundary conditions handled with precision
+=== NAME  TestSTDPRobustnessNumericalStability
+    stdp_robustness_test.go:1185: ✓ Numerical stability tests completed
+--- PASS: TestSTDPRobustnessNumericalStability (0.00s)
+    --- PASS: TestSTDPRobustnessNumericalStability/VerySmallTimeDifferences (0.00s)
+    --- PASS: TestSTDPRobustnessNumericalStability/AccumulatedPrecision (0.00s)
+    --- PASS: TestSTDPRobustnessNumericalStability/BoundaryPrecision (0.00s)
+=== RUN   TestSTDPLongTermDepression
+=== RUN   TestSTDPLongTermDepression/Strong_LTD
+    stdp_test.go:326: Test: Post-spike 2ms before pre-spike should cause strong LTD
+    stdp_test.go:327: Time difference: +2ms (post before pre)
+    stdp_test.go:328: Weight change: -0.009048
+    stdp_test.go:335: ✓ Correct LTD: negative weight change for anti-causal timing
+=== RUN   TestSTDPLongTermDepression/Moderate_LTD
+    stdp_test.go:326: Test: Post-spike 5ms before pre-spike should cause moderate LTD
+    stdp_test.go:327: Time difference: +5ms (post before pre)
+    stdp_test.go:328: Weight change: -0.007788
+    stdp_test.go:335: ✓ Correct LTD: negative weight change for anti-causal timing
+=== RUN   TestSTDPLongTermDepression/Weak_LTD
+    stdp_test.go:326: Test: Post-spike 20ms before pre-spike should cause weak LTD
+    stdp_test.go:327: Time difference: +20ms (post before pre)
+    stdp_test.go:328: Weight change: -0.003679
+    stdp_test.go:335: ✓ Correct LTD: negative weight change for anti-causal timing
+=== RUN   TestSTDPLongTermDepression/Very_Weak_LTD
+    stdp_test.go:326: Test: Post-spike 40ms before pre-spike should cause very weak LTD
+    stdp_test.go:327: Time difference: +40ms (post before pre)
+    stdp_test.go:328: Weight change: -0.001353
+    stdp_test.go:335: ✓ Correct LTD: negative weight change for anti-causal timing
+=== RUN   TestSTDPLongTermDepression/No_Change_Outside_Window
+    stdp_test.go:326: Test: Post-spike 60ms before pre-spike should cause no change (outside window)
+    stdp_test.go:327: Time difference: +60ms (post before pre)
+    stdp_test.go:328: Weight change: 0.000000
+    stdp_test.go:349: ✓ Correct: no change outside learning window
+=== RUN   TestSTDPLongTermDepression/No_Change_Far_Outside
+    stdp_test.go:326: Test: Post-spike 100ms before pre-spike should definitely cause no change
+    stdp_test.go:327: Time difference: +100ms (post before pre)
+    stdp_test.go:328: Weight change: 0.000000
+    stdp_test.go:349: ✓ Correct: no change outside learning window
+=== NAME  TestSTDPLongTermDepression
+    stdp_test.go:356: 
+        === LTD BIOLOGICAL VALIDATION ===
+    stdp_test.go:357: Strongest LTD occurred at Δt = +2ms with magnitude 0.009048
+    stdp_test.go:361: ✓ Peak LTD at small timing difference - matches biological data
+    stdp_test.go:372: ✓ LTD magnitude decreases with timing distance: 0.009048 > 0.007788
+    stdp_test.go:372: ✓ LTD magnitude decreases with timing distance: 0.007788 > 0.003679
+    stdp_test.go:372: ✓ LTD magnitude decreases with timing distance: 0.003679 > 0.001353
+--- PASS: TestSTDPLongTermDepression (0.00s)
+    --- PASS: TestSTDPLongTermDepression/Strong_LTD (0.00s)
+    --- PASS: TestSTDPLongTermDepression/Moderate_LTD (0.00s)
+    --- PASS: TestSTDPLongTermDepression/Weak_LTD (0.00s)
+    --- PASS: TestSTDPLongTermDepression/Very_Weak_LTD (0.00s)
+    --- PASS: TestSTDPLongTermDepression/No_Change_Outside_Window (0.00s)
+    --- PASS: TestSTDPLongTermDepression/No_Change_Far_Outside (0.00s)
+=== RUN   TestSTDPLongTermPotentiation
+=== RUN   TestSTDPLongTermPotentiation/Strong_LTP
+    stdp_test.go:458: Test: Pre-spike 2ms before post-spike should cause strong LTP
+    stdp_test.go:459: Time difference: -2ms (pre before post)
+    stdp_test.go:460: Weight change: 0.013573
+    stdp_test.go:467: ✓ Correct LTP: positive weight change for causal timing
+=== RUN   TestSTDPLongTermPotentiation/Moderate_LTP
+    stdp_test.go:458: Test: Pre-spike 5ms before post-spike should cause moderate LTP
+    stdp_test.go:459: Time difference: -5ms (pre before post)
+    stdp_test.go:460: Weight change: 0.011682
+    stdp_test.go:467: ✓ Correct LTP: positive weight change for causal timing
+=== RUN   TestSTDPLongTermPotentiation/Good_LTP
+    stdp_test.go:458: Test: Pre-spike 10ms before post-spike should cause good LTP
+    stdp_test.go:459: Time difference: -10ms (pre before post)
+    stdp_test.go:460: Weight change: 0.009098
+    stdp_test.go:467: ✓ Correct LTP: positive weight change for causal timing
+=== RUN   TestSTDPLongTermPotentiation/Weak_LTP
+    stdp_test.go:458: Test: Pre-spike 20ms before post-spike should cause weak LTP
+    stdp_test.go:459: Time difference: -20ms (pre before post)
+    stdp_test.go:460: Weight change: 0.005518
+    stdp_test.go:467: ✓ Correct LTP: positive weight change for causal timing
+=== RUN   TestSTDPLongTermPotentiation/Very_Weak_LTP
+    stdp_test.go:458: Test: Pre-spike 40ms before post-spike should cause very weak LTP
+    stdp_test.go:459: Time difference: -40ms (pre before post)
+    stdp_test.go:460: Weight change: 0.002030
+    stdp_test.go:467: ✓ Correct LTP: positive weight change for causal timing
+=== RUN   TestSTDPLongTermPotentiation/No_Change_Outside_Window
+    stdp_test.go:458: Test: Pre-spike 60ms before post-spike should cause no change (outside window)
+    stdp_test.go:459: Time difference: -60ms (pre before post)
+    stdp_test.go:460: Weight change: 0.000000
+    stdp_test.go:481: ✓ Correct: no change outside learning window
+=== RUN   TestSTDPLongTermPotentiation/No_Change_Far_Outside
+    stdp_test.go:458: Test: Pre-spike 100ms before post-spike should definitely cause no change
+    stdp_test.go:459: Time difference: -100ms (pre before post)
+    stdp_test.go:460: Weight change: 0.000000
+    stdp_test.go:481: ✓ Correct: no change outside learning window
+=== NAME  TestSTDPLongTermPotentiation
+    stdp_test.go:488: 
+        === LTP BIOLOGICAL VALIDATION ===
+    stdp_test.go:489: Strongest LTP occurred at Δt = -2ms with magnitude 0.013573
+    stdp_test.go:493: ✓ Peak LTP at small timing difference - matches biological data
+    stdp_test.go:503: ✓ LTP magnitude decreases with timing distance: 0.013573 > 0.011682
+    stdp_test.go:503: ✓ LTP magnitude decreases with timing distance: 0.011682 > 0.009098
+    stdp_test.go:503: ✓ LTP magnitude decreases with timing distance: 0.009098 > 0.005518
+    stdp_test.go:503: ✓ LTP magnitude decreases with timing distance: 0.005518 > 0.002030
+--- PASS: TestSTDPLongTermPotentiation (0.00s)
+    --- PASS: TestSTDPLongTermPotentiation/Strong_LTP (0.00s)
+    --- PASS: TestSTDPLongTermPotentiation/Moderate_LTP (0.00s)
+    --- PASS: TestSTDPLongTermPotentiation/Good_LTP (0.00s)
+    --- PASS: TestSTDPLongTermPotentiation/Weak_LTP (0.00s)
+    --- PASS: TestSTDPLongTermPotentiation/Very_Weak_LTP (0.00s)
+    --- PASS: TestSTDPLongTermPotentiation/No_Change_Outside_Window (0.00s)
+    --- PASS: TestSTDPLongTermPotentiation/No_Change_Far_Outside (0.00s)
+=== RUN   TestSTDPWeightChangeZeroTimeDiff
+    stdp_test.go:526: Simultaneous spike timing (Δt = 0)
+    stdp_test.go:527: Weight change: -0.010000
+    stdp_test.go:533: ✓ Numerically stable result for simultaneous spikes
+    stdp_test.go:540: ✓ Reasonable magnitude for simultaneous spike timing
+    stdp_test.go:547: Implementation choice: simultaneous spikes cause LTD
+--- PASS: TestSTDPWeightChangeZeroTimeDiff (0.00s)
+=== RUN   TestSTDPWeightChangeOutsideWindow
+    stdp_test.go:579: Testing timings outside STDP window (±50ms)
+=== RUN   TestSTDPWeightChangeOutsideWindow/Timing_-60ms
+    stdp_test.go:585: Δt = -60ms, weight change = 0.0000000000
+    stdp_test.go:592: ✓ Correct: no plasticity outside temporal window
+=== RUN   TestSTDPWeightChangeOutsideWindow/Timing_-51ms
+    stdp_test.go:585: Δt = -51ms, weight change = 0.0000000000
+    stdp_test.go:592: ✓ Correct: no plasticity outside temporal window
+=== RUN   TestSTDPWeightChangeOutsideWindow/Timing_-50ms
+    stdp_test.go:585: Δt = -50ms, weight change = 0.0000000000
+    stdp_test.go:592: ✓ Correct: no plasticity outside temporal window
+=== RUN   TestSTDPWeightChangeOutsideWindow/Timing_50ms
+    stdp_test.go:585: Δt = 50ms, weight change = 0.0000000000
+    stdp_test.go:592: ✓ Correct: no plasticity outside temporal window
+=== RUN   TestSTDPWeightChangeOutsideWindow/Timing_51ms
+    stdp_test.go:585: Δt = 51ms, weight change = 0.0000000000
+    stdp_test.go:592: ✓ Correct: no plasticity outside temporal window
+=== RUN   TestSTDPWeightChangeOutsideWindow/Timing_60ms
+    stdp_test.go:585: Δt = 60ms, weight change = 0.0000000000
+    stdp_test.go:592: ✓ Correct: no plasticity outside temporal window
+=== RUN   TestSTDPWeightChangeOutsideWindow/Timing_-200ms
+    stdp_test.go:585: Δt = -200ms, weight change = 0.0000000000
+    stdp_test.go:592: ✓ Correct: no plasticity outside temporal window
+=== RUN   TestSTDPWeightChangeOutsideWindow/Timing_200ms
+    stdp_test.go:585: Δt = 200ms, weight change = 0.0000000000
+    stdp_test.go:592: ✓ Correct: no plasticity outside temporal window
+=== NAME  TestSTDPWeightChangeOutsideWindow
+    stdp_test.go:597: 
+        === TEMPORAL WINDOW VALIDATION ===
+    stdp_test.go:598: ✓ STDP confined to biologically realistic temporal window
+    stdp_test.go:599: ✓ No spurious plasticity from temporally distant spikes
+--- PASS: TestSTDPWeightChangeOutsideWindow (0.00s)
+    --- PASS: TestSTDPWeightChangeOutsideWindow/Timing_-60ms (0.00s)
+    --- PASS: TestSTDPWeightChangeOutsideWindow/Timing_-51ms (0.00s)
+    --- PASS: TestSTDPWeightChangeOutsideWindow/Timing_-50ms (0.00s)
+    --- PASS: TestSTDPWeightChangeOutsideWindow/Timing_50ms (0.00s)
+    --- PASS: TestSTDPWeightChangeOutsideWindow/Timing_51ms (0.00s)
+    --- PASS: TestSTDPWeightChangeOutsideWindow/Timing_60ms (0.00s)
+    --- PASS: TestSTDPWeightChangeOutsideWindow/Timing_-200ms (0.00s)
+    --- PASS: TestSTDPWeightChangeOutsideWindow/Timing_200ms (0.00s)
+=== RUN   TestSTDPAsymmetryRatio
+=== RUN   TestSTDPAsymmetryRatio/LTP_Dominant
+    stdp_test.go:651: === LTP twice as strong as LTD ===
+    stdp_test.go:652: Biological context: Common in young synapses and during development
+    stdp_test.go:653: Asymmetry ratio setting: 2.00
+    stdp_test.go:661: LTP change (Δt=-10ms): 0.012131
+    stdp_test.go:662: LTD change (Δt=+10ms): -0.006065
+    stdp_test.go:674: Observed LTP/|LTD| ratio: 2.000
+    stdp_test.go:682: ✓ Asymmetry ratio matches expected value
+    stdp_test.go:690: ✓ LTP correctly dominates over LTD
+=== RUN   TestSTDPAsymmetryRatio/Symmetric
+    stdp_test.go:651: === Equal LTP and LTD magnitudes ===
+    stdp_test.go:652: Biological context: Observed in mature cortical synapses
+    stdp_test.go:653: Asymmetry ratio setting: 1.00
+    stdp_test.go:661: LTP change (Δt=-10ms): 0.006065
+    stdp_test.go:662: LTD change (Δt=+10ms): -0.006065
+    stdp_test.go:674: Observed LTP/|LTD| ratio: 1.000
+    stdp_test.go:682: ✓ Asymmetry ratio matches expected value
+=== RUN   TestSTDPAsymmetryRatio/LTD_Dominant
+    stdp_test.go:651: === LTD twice as strong as LTP ===
+    stdp_test.go:652: Biological context: Can occur with certain neuromodulatory states
+    stdp_test.go:653: Asymmetry ratio setting: 0.50
+    stdp_test.go:661: LTP change (Δt=-10ms): 0.003033
+    stdp_test.go:662: LTD change (Δt=+10ms): -0.006065
+    stdp_test.go:674: Observed LTP/|LTD| ratio: 0.500
+    stdp_test.go:682: ✓ Asymmetry ratio matches expected value
+    stdp_test.go:696: ✓ LTD correctly dominates over LTP
+--- PASS: TestSTDPAsymmetryRatio (0.00s)
+    --- PASS: TestSTDPAsymmetryRatio/LTP_Dominant (0.00s)
+    --- PASS: TestSTDPAsymmetryRatio/Symmetric (0.00s)
+    --- PASS: TestSTDPAsymmetryRatio/LTD_Dominant (0.00s)
+=== RUN   TestSTDPTimeConstantEffects
+=== RUN   TestSTDPTimeConstantEffects/Fast_Synapses
+    stdp_test.go:759: === Sharp, narrow STDP window (τ = 8ms) ===
+    stdp_test.go:760: Biological type: Fast-spiking interneurons, some inhibitory synapses
+    stdp_test.go:770: Δt =   -5ms: weight change =  0.00803
+    stdp_test.go:770: Δt =  -15ms: weight change =  0.00230
+    stdp_test.go:770: Δt =  -30ms: weight change =  0.00035
+    stdp_test.go:770: Δt =    5ms: weight change = -0.00535
+    stdp_test.go:770: Δt =   15ms: weight change = -0.00153
+    stdp_test.go:770: Δt =   30ms: weight change = -0.00024
+    stdp_test.go:774: 
+        Decay profile analysis:
+    stdp_test.go:788: Peak LTP: 0.00803, Peak |LTD|: 0.00535
+    stdp_test.go:795: ✓ LTP decays with increasing |Δt|: 0.00803 > 0.00230
+    stdp_test.go:795: ✓ LTP decays with increasing |Δt|: 0.00230 > 0.00035
+=== RUN   TestSTDPTimeConstantEffects/Standard_Synapses
+    stdp_test.go:759: === Typical cortical STDP window (τ = 20ms) ===
+    stdp_test.go:760: Biological type: Excitatory cortical pyramidal cell synapses
+    stdp_test.go:770: Δt =   -5ms: weight change =  0.01168
+    stdp_test.go:770: Δt =  -15ms: weight change =  0.00709
+    stdp_test.go:770: Δt =  -30ms: weight change =  0.00335
+    stdp_test.go:770: Δt =    5ms: weight change = -0.00779
+    stdp_test.go:770: Δt =   15ms: weight change = -0.00472
+    stdp_test.go:770: Δt =   30ms: weight change = -0.00223
+    stdp_test.go:774: 
+        Decay profile analysis:
+    stdp_test.go:788: Peak LTP: 0.01168, Peak |LTD|: 0.00779
+    stdp_test.go:795: ✓ LTP decays with increasing |Δt|: 0.01168 > 0.00709
+    stdp_test.go:795: ✓ LTP decays with increasing |Δt|: 0.00709 > 0.00335
+=== RUN   TestSTDPTimeConstantEffects/Slow_Synapses
+    stdp_test.go:759: === Broad, gentle STDP window (τ = 40ms) ===
+    stdp_test.go:760: Biological type: Some modulatory synapses, developmental synapses
+    stdp_test.go:770: Δt =   -5ms: weight change =  0.01324
+    stdp_test.go:770: Δt =  -15ms: weight change =  0.01031
+    stdp_test.go:770: Δt =  -30ms: weight change =  0.00709
+    stdp_test.go:770: Δt =    5ms: weight change = -0.00882
+    stdp_test.go:770: Δt =   15ms: weight change = -0.00687
+    stdp_test.go:770: Δt =   30ms: weight change = -0.00472
+    stdp_test.go:774: 
+        Decay profile analysis:
+    stdp_test.go:788: Peak LTP: 0.01324, Peak |LTD|: 0.00882
+    stdp_test.go:795: ✓ LTP decays with increasing |Δt|: 0.01324 > 0.01031
+    stdp_test.go:795: ✓ LTP decays with increasing |Δt|: 0.01031 > 0.00709
+=== NAME  TestSTDPTimeConstantEffects
+    stdp_test.go:805: 
+        === TIME CONSTANT COMPARISON ===
+    stdp_test.go:813: τ = 8ms: weight change = 0.00230 (at Δt = -15ms)
+    stdp_test.go:813: τ = 20ms: weight change = 0.00709 (at Δt = -15ms)
+    stdp_test.go:813: τ = 40ms: weight change = 0.01031 (at Δt = -15ms)
+--- PASS: TestSTDPTimeConstantEffects (0.00s)
+    --- PASS: TestSTDPTimeConstantEffects/Fast_Synapses (0.00s)
+    --- PASS: TestSTDPTimeConstantEffects/Standard_Synapses (0.00s)
+    --- PASS: TestSTDPTimeConstantEffects/Slow_Synapses (0.00s)
+=== RUN   TestSynapticWeightBounds
+    stdp_test.go:852: === SYNAPTIC WEIGHT BOUNDS TEST ===
+    stdp_test.go:853: Initial weight: 1.000
+    stdp_test.go:854: Weight bounds: [0.100, 2.000]
+=== RUN   TestSynapticWeightBounds/Upper_Bound_Test
+    stdp_test.go:863: Step 1: 1.000 → 1.200 (attempted +0.2)
+    stdp_test.go:863: Step 2: 1.200 → 1.400 (attempted +0.2)
+    stdp_test.go:863: Step 3: 1.400 → 1.600 (attempted +0.2)
+    stdp_test.go:863: Step 4: 1.600 → 1.800 (attempted +0.2)
+    stdp_test.go:863: Step 5: 1.800 → 2.000 (attempted +0.2)
+    stdp_test.go:871: ✓ Weight saturated at upper bound after 5 steps
+=== RUN   TestSynapticWeightBounds/Lower_Bound_Test
+    stdp_test.go:887: Step 1: 1.000 → 0.800 (attempted -0.2)
+    stdp_test.go:887: Step 2: 0.800 → 0.600 (attempted -0.2)
+    stdp_test.go:887: Step 3: 0.600 → 0.400 (attempted -0.2)
+    stdp_test.go:887: Step 4: 0.400 → 0.200 (attempted -0.2)
+    stdp_test.go:887: Step 5: 0.200 → 0.100 (attempted -0.2)
+    stdp_test.go:895: ✓ Weight saturated at lower bound after 5 steps
+=== NAME  TestSynapticWeightBounds
+    stdp_test.go:901: 
+        === BIOLOGICAL VALIDATION ===
+    stdp_test.go:902: ✓ Synaptic weights respect biological bounds
+    stdp_test.go:903: ✓ No negative synaptic strengths (unidirectional transmission)
+    stdp_test.go:904: ✓ No infinite strengthening (receptor saturation modeled)
+--- PASS: TestSynapticWeightBounds (0.00s)
+    --- PASS: TestSynapticWeightBounds/Upper_Bound_Test (0.00s)
+    --- PASS: TestSynapticWeightBounds/Lower_Bound_Test (0.00s)
+=== RUN   TestSynapticWeightAccumulation
+=== RUN   TestSynapticWeightAccumulation/Consistent_LTP
+    stdp_test.go:959: === Repeated causal pairings should strengthen synapse ===
+    stdp_test.go:960: Timing pattern: Δt = -10ms
+    stdp_test.go:961: Number of events: 10
+    stdp_test.go:962: Initial weight: 1.0000
+    stdp_test.go:980: Event 1: weight = 1.0091 (Δ = +0.0091)
+    stdp_test.go:980: Event 2: weight = 1.0182 (Δ = +0.0182)
+    stdp_test.go:980: Event 3: weight = 1.0273 (Δ = +0.0273)
+    stdp_test.go:980: Event 4: weight = 1.0364 (Δ = +0.0364)
+    stdp_test.go:980: Event 5: weight = 1.0455 (Δ = +0.0455)
+    stdp_test.go:980: Event 10: weight = 1.0910 (Δ = +0.0910)
+    stdp_test.go:989: Final weight: 1.0910
+    stdp_test.go:990: Total change: +0.0910 (9.1%)
+    stdp_test.go:998: ✓ Synapse strengthened as expected
+    stdp_test.go:2111: === BIOLOGICAL VALIDATION FOR Consistent_LTP ===
+    stdp_test.go:2129: ✓ Weight change (9.1%) within biological range
+    stdp_test.go:2146: Learning Events: 10 (LTP: 10, LTD: 0)
+    stdp_test.go:2147: Weight: 1.0000 → 1.0910 (Δ=+0.0910, 9.1%)
+    stdp_test.go:2153: Timing: avg=10ms, range=10ms to 10ms (σ=0s)
+    stdp_test.go:2156: Plasticity: LTP=0.0091, LTD=0.0091, ratio=0.00
+=== RUN   TestSynapticWeightAccumulation/Consistent_LTD
+    stdp_test.go:959: === Repeated anti-causal pairings should weaken synapse ===
+    stdp_test.go:960: Timing pattern: Δt = 10ms
+    stdp_test.go:961: Number of events: 10
+    stdp_test.go:962: Initial weight: 1.0000
+    stdp_test.go:980: Event 1: weight = 0.9939 (Δ = -0.0061)
+    stdp_test.go:980: Event 2: weight = 0.9879 (Δ = -0.0121)
+    stdp_test.go:980: Event 3: weight = 0.9818 (Δ = -0.0182)
+    stdp_test.go:980: Event 4: weight = 0.9757 (Δ = -0.0243)
+    stdp_test.go:980: Event 5: weight = 0.9697 (Δ = -0.0303)
+    stdp_test.go:980: Event 10: weight = 0.9393 (Δ = -0.0607)
+    stdp_test.go:989: Final weight: 0.9393
+    stdp_test.go:990: Total change: -0.0607 (-6.1%)
+    stdp_test.go:1004: ✓ Synapse weakened as expected
+    stdp_test.go:2111: === BIOLOGICAL VALIDATION FOR Consistent_LTD ===
+    stdp_test.go:2129: ✓ Weight change (-6.1%) within biological range
+    stdp_test.go:2146: Learning Events: 10 (LTP: 0, LTD: 10)
+    stdp_test.go:2147: Weight: 1.0000 → 0.9393 (Δ=-0.0607, -6.1%)
+    stdp_test.go:2153: Timing: avg=10ms, range=10ms to 10ms (σ=0s)
+    stdp_test.go:2156: Plasticity: LTP=0.0061, LTD=0.0061, ratio=0.00
+--- PASS: TestSynapticWeightAccumulation (0.00s)
+    --- PASS: TestSynapticWeightAccumulation/Consistent_LTP (0.00s)
+    --- PASS: TestSynapticWeightAccumulation/Consistent_LTD (0.00s)
+=== RUN   TestSynapticWeightSaturation
+=== RUN   TestSynapticWeightSaturation/Near_Maximum
+    stdp_test.go:1076: === Weight near maximum should resist further strengthening ===
+    stdp_test.go:1077: Initial weight: 1.900
+    stdp_test.go:1078: Attempted change: +0.200
+    stdp_test.go:1079: Actual change: +0.100
+    stdp_test.go:1080: Final weight: 2.000
+    stdp_test.go:1087: ✓ Weight remains within bounds
+    stdp_test.go:1092: ✓ Weight change reduced due to saturation (0.100 < 0.200)
+=== RUN   TestSynapticWeightSaturation/Near_Minimum
+    stdp_test.go:1076: === Weight near minimum should resist further weakening ===
+    stdp_test.go:1077: Initial weight: 0.200
+    stdp_test.go:1078: Attempted change: -0.200
+    stdp_test.go:1079: Actual change: -0.100
+    stdp_test.go:1080: Final weight: 0.100
+    stdp_test.go:1087: ✓ Weight remains within bounds
+    stdp_test.go:1092: ✓ Weight change reduced due to saturation (0.100 < 0.200)
+=== RUN   TestSynapticWeightSaturation/At_Maximum
+    stdp_test.go:1076: === Weight at maximum should not increase further ===
+    stdp_test.go:1077: Initial weight: 2.000
+    stdp_test.go:1078: Attempted change: +0.500
+    stdp_test.go:1079: Actual change: +0.000
+    stdp_test.go:1080: Final weight: 2.000
+    stdp_test.go:1087: ✓ Weight remains within bounds
+    stdp_test.go:1092: ✓ Weight change reduced due to saturation (0.000 < 0.500)
+    stdp_test.go:1101: ✓ Weight at maximum correctly resists strengthening
+=== RUN   TestSynapticWeightSaturation/At_Minimum
+    stdp_test.go:1076: === Weight at minimum should not decrease further ===
+    stdp_test.go:1077: Initial weight: 0.100
+    stdp_test.go:1078: Attempted change: -0.500
+    stdp_test.go:1079: Actual change: +0.000
+    stdp_test.go:1080: Final weight: 0.100
+    stdp_test.go:1087: ✓ Weight remains within bounds
+    stdp_test.go:1092: ✓ Weight change reduced due to saturation (0.000 < 0.500)
+    stdp_test.go:1109: ✓ Weight at minimum correctly resists weakening
+--- PASS: TestSynapticWeightSaturation (0.00s)
+    --- PASS: TestSynapticWeightSaturation/Near_Maximum (0.00s)
+    --- PASS: TestSynapticWeightSaturation/Near_Minimum (0.00s)
+    --- PASS: TestSynapticWeightSaturation/At_Maximum (0.00s)
+    --- PASS: TestSynapticWeightSaturation/At_Minimum (0.00s)
+=== RUN   TestPreSpikeRecording
+    stdp_test.go:1142: === PRE-SYNAPTIC SPIKE RECORDING TEST ===
+    stdp_test.go:1155: Recorded spike 1 at 12:27:28.349
+    stdp_test.go:1156: History length: 1
+    stdp_test.go:1157: Last spike: 12:27:28.349
+    stdp_test.go:1155: Recorded spike 2 at 12:27:28.359
+    stdp_test.go:1156: History length: 2
+    stdp_test.go:1157: Last spike: 12:27:28.359
+    stdp_test.go:1155: Recorded spike 3 at 12:27:28.374
+    stdp_test.go:1156: History length: 3
+    stdp_test.go:1157: Last spike: 12:27:28.374
+    stdp_test.go:1155: Recorded spike 4 at 12:27:28.379
+    stdp_test.go:1156: History length: 4
+    stdp_test.go:1157: Last spike: 12:27:28.379
+    stdp_test.go:1175: 
+        ✓ Pre-synaptic spike recording working correctly
+    stdp_test.go:1176: ✓ Chronological order maintained
+    stdp_test.go:1177: ✓ Recent spike tracking accurate
+--- PASS: TestPreSpikeRecording (0.00s)
+=== RUN   TestPreSpikeHistoryCleanup
+    stdp_test.go:1203: === SPIKE HISTORY CLEANUP TEST ===
+    stdp_test.go:1204: Window size: 50ms
+    stdp_test.go:1225: Added spike 1: Very old spike (should be cleaned) (offset: -100ms)
+    stdp_test.go:1225: Added spike 2: Old spike (should be cleaned) (offset: -75ms)
+    stdp_test.go:1225: Added spike 3: Recent spike (should be kept) (offset: -40ms)
+    stdp_test.go:1225: Added spike 4: Recent spike (should be kept) (offset: -20ms)
+    stdp_test.go:1225: Added spike 5: Very recent spike (should be kept) (offset: -5ms)
+    stdp_test.go:1228: Initial history length: 5
+    stdp_test.go:1234: After cleanup history length: 4
+    stdp_test.go:1248: ✓ Correct number of spikes retained after cleanup
+    stdp_test.go:1259: ✓ All remaining spikes within learning window
+    stdp_test.go:1260: ✓ Memory usage optimized through cleanup
+--- PASS: TestPreSpikeHistoryCleanup (0.00s)
+=== RUN   TestPreSpikeHistoryLimiting
+    stdp_test.go:1287: === SPIKE HISTORY LIMITING TEST ===
+    stdp_test.go:1288: Maximum history size: 10
+    stdp_test.go:1309: Added spike 1, history length: 1
+    stdp_test.go:1309: Added spike 2, history length: 2
+    stdp_test.go:1309: Added spike 3, history length: 3
+    stdp_test.go:1309: Added spike 4, history length: 4
+    stdp_test.go:1309: Added spike 5, history length: 5
+    stdp_test.go:1309: Added spike 6, history length: 6
+    stdp_test.go:1309: Added spike 7, history length: 7
+    stdp_test.go:1309: Added spike 8, history length: 8
+    stdp_test.go:1309: Added spike 9, history length: 9
+    stdp_test.go:1309: Added spike 10, history length: 10
+    stdp_test.go:1309: Added spike 11, history length: 10
+    stdp_test.go:1309: Added spike 12, history length: 10
+    stdp_test.go:1309: Added spike 13, history length: 10
+    stdp_test.go:1309: Added spike 14, history length: 10
+    stdp_test.go:1309: Added spike 15, history length: 10
+    stdp_test.go:1316: ✓ History size within limit: 10 ≤ 10
+    stdp_test.go:1327: ✓ Most recent 10 spikes preserved
+    stdp_test.go:1328: ✓ Oldest spikes discarded to maintain efficiency
+--- PASS: TestPreSpikeHistoryLimiting (0.00s)
+=== RUN   TestMultiplePreSpikes
+    stdp_test.go:1358: === BURST FIRING PATTERN TEST ===
+    stdp_test.go:1365: Recording burst pattern:
+    stdp_test.go:1369: Burst spike 1 at +0s
+    stdp_test.go:1369: Burst spike 2 at +3ms
+    stdp_test.go:1369: Burst spike 3 at +7ms
+    stdp_test.go:1369: Burst spike 4 at +12ms
+    stdp_test.go:1369: Burst spike 5 at +18ms
+    stdp_test.go:1372: Total spikes in burst: 5
+    stdp_test.go:1376: Post-synaptic spike at +35ms
+    stdp_test.go:1385: Weight change from burst: -0.013663
+    stdp_test.go:1386: Initial weight: 1.0000 → Final weight: 0.9863
+    stdp_test.go:1392: ✓ Burst pattern recorded: 5 spikes
+    stdp_test.go:1399: ✓ STDP applied to burst pattern
+    stdp_test.go:1403: 
+        Burst timing analysis:
+    stdp_test.go:1407: Spike 1: Δt = 35ms, expected STDP = -0.001738
+    stdp_test.go:1407: Spike 2: Δt = 32ms, expected STDP = -0.002019
+    stdp_test.go:1407: Spike 3: Δt = 28ms, expected STDP = -0.002466
+    stdp_test.go:1407: Spike 4: Δt = 23ms, expected STDP = -0.003166
+    stdp_test.go:1407: Spike 5: Δt = 17ms, expected STDP = -0.004274
+    stdp_test.go:1410: ✓ Burst firing patterns handled correctly
+--- PASS: TestMultiplePreSpikes (0.00s)
+=== RUN   TestPostSpikeSTDPApplication
+    stdp_test.go:1445: === POST-SYNAPTIC STDP APPLICATION TEST ===
+    stdp_test.go:1466: Pre-spike 1: Strong LTP timing (Δt = -15ms)
+    stdp_test.go:1466: Pre-spike 2: Optimal LTP timing (Δt = -5ms)
+    stdp_test.go:1466: Pre-spike 3: LTD timing (Δt = 5ms)
+    stdp_test.go:1466: Pre-spike 4: Weak LTD timing (Δt = 25ms)
+    stdp_test.go:1466: Pre-spike 5: Outside window (Δt = -60ms)
+    stdp_test.go:1470: Initial synaptic weight: 1.0000
+    stdp_test.go:1474: Post-synaptic spike at baseline time
+    stdp_test.go:1481: Final synaptic weight: 1.0035
+    stdp_test.go:1482: Total weight change: +0.003468
+    stdp_test.go:1485: 
+        Individual STDP contributions:
+    stdp_test.go:1494: Spike 1: Δt=15ms, STDP=-0.004724 (Strong LTP timing)
+    stdp_test.go:1494: Spike 2: Δt=5ms, STDP=-0.007788 (Optimal LTP timing)
+    stdp_test.go:1494: Spike 3: Δt=-5ms, STDP=0.011682 (LTD timing)
+    stdp_test.go:1494: Spike 4: Δt=-25ms, STDP=0.004298 (Weak LTD timing)
+    stdp_test.go:1494: Spike 5: Δt=60ms, STDP=0.000000 (Outside window)
+    stdp_test.go:1498: Expected total change: 0.003468
+    stdp_test.go:1499: Actual total change: 0.003468
+    stdp_test.go:1505: ✓ STDP successfully applied to multiple pre-synaptic spikes
+    stdp_test.go:1514: ✓ Weight change matches expected STDP calculation
+--- PASS: TestPostSpikeSTDPApplication (0.00s)
+=== RUN   TestPostSpikeTimingWindow
+    stdp_test.go:1546: === STDP TIMING WINDOW TEST ===
+    stdp_test.go:1547: Window size: ±30ms
+    stdp_test.go:1571: Spike 1: Far outside window (old) (Δt = -50ms)
+    stdp_test.go:1571: Spike 2: Just outside window (old) (Δt = -35ms)
+    stdp_test.go:1571: Spike 3: Inside window (LTP) (Δt = -25ms)
+    stdp_test.go:1571: Spike 4: Inside window (LTP) (Δt = -10ms)
+    stdp_test.go:1571: Spike 5: Inside window (LTD) (Δt = 10ms)
+    stdp_test.go:1571: Spike 6: Inside window (LTD) (Δt = 25ms)
+    stdp_test.go:1571: Spike 7: Just outside window (future) (Δt = 35ms)
+    stdp_test.go:1571: Spike 8: Far outside window (future) (Δt = 50ms)
+    stdp_test.go:1574: Total pre-spikes recorded: 3
+    stdp_test.go:1584: Weight change: 0.004298
+    stdp_test.go:1593: Contributing spike: Δt=-25ms, STDP=0.004298
+    stdp_test.go:1593: Contributing spike: Δt=-35ms, STDP=0.000000
+    stdp_test.go:1593: Contributing spike: Δt=-50ms, STDP=0.000000
+    stdp_test.go:1596: Expected change from recorded spikes: 0.004298
+    stdp_test.go:1608: ✓ STDP calculations match expected values
+    stdp_test.go:1611: ✓ STDP timing window correctly enforced
+--- PASS: TestPostSpikeTimingWindow (0.00s)
+=== RUN   TestBasicNeuronPairLearning
+    stdp_test.go:1658: === NEURON PAIR LEARNING TEST ===
+    stdp_test.go:1665: Initial synaptic weight: 1.0000
+=== RUN   TestBasicNeuronPairLearning/Causal_Pattern
+    stdp_test.go:1692: Testing: Pre-neuron fires, then post-neuron (LTP expected)
+    stdp_test.go:1711: Trial 1 completed
+    stdp_test.go:1711: Trial 2 completed
+    stdp_test.go:1711: Trial 3 completed
+    stdp_test.go:1711: Trial 4 completed
+    stdp_test.go:1711: Trial 5 completed
+    stdp_test.go:1719: ✓ Learning pattern completed: Pre-neuron fires, then post-neuron (LTP expected)
+=== RUN   TestBasicNeuronPairLearning/Anti_Causal_Pattern
+    stdp_test.go:1692: Testing: Post-neuron fires, then pre-neuron (LTD expected)
+    stdp_test.go:1711: Trial 1 completed
+    stdp_test.go:1711: Trial 2 completed
+    stdp_test.go:1711: Trial 3 completed
+    stdp_test.go:1711: Trial 4 completed
+    stdp_test.go:1711: Trial 5 completed
+    stdp_test.go:1719: ✓ Learning pattern completed: Post-neuron fires, then pre-neuron (LTD expected)
+=== NAME  TestBasicNeuronPairLearning
+    stdp_test.go:1723: ✓ Basic neuron pair learning test completed
+    stdp_test.go:1724: Note: Weight inspection requires additional monitoring infrastructure
+--- PASS: TestBasicNeuronPairLearning (0.90s)
+    --- PASS: TestBasicNeuronPairLearning/Causal_Pattern (0.44s)
+    --- PASS: TestBasicNeuronPairLearning/Anti_Causal_Pattern (0.46s)
+=== RUN   TestCausalConnectionStrengthening
+    stdp_test.go:1738: === CAUSAL CONNECTION STRENGTHENING TEST ===
+=== RUN   TestCausalConnectionStrengthening/Timing_-2ms
+    stdp_test.go:1784: Testing causal timing: pre→post with Δt = -2ms
+    stdp_test.go:1804: Pairing 1: weight = 1.0136
+    stdp_test.go:1804: Pairing 2: weight = 1.0271
+    stdp_test.go:1804: Pairing 3: weight = 1.0407
+    stdp_test.go:1804: Pairing 4: weight = 1.0543
+    stdp_test.go:1804: Pairing 5: weight = 1.0679
+    stdp_test.go:1804: Pairing 10: weight = 1.1357
+    stdp_test.go:1812: Initial weight: 1.0000
+    stdp_test.go:1813: Final weight: 1.1357
+    stdp_test.go:1814: Total strengthening: +0.1357 (13.6%)
+    stdp_test.go:1820: ✓ Causal pattern caused strengthening
+    stdp_test.go:2111: === BIOLOGICAL VALIDATION FOR Timing_-2ms ===
+    stdp_test.go:2129: ✓ Weight change (13.6%) within biological range
+    stdp_test.go:2146: Learning Events: 10 (LTP: 10, LTD: 0)
+    stdp_test.go:2147: Weight: 1.0000 → 1.1357 (Δ=+0.1357, 13.6%)
+    stdp_test.go:2153: Timing: avg=10ms, range=10ms to 10ms (σ=0s)
+    stdp_test.go:2156: Plasticity: LTP=0.0136, LTD=0.0136, ratio=0.00
+    stdp_test.go:1838: ✓ LTP events dominated: 10 LTP vs 0 LTD
+=== RUN   TestCausalConnectionStrengthening/Timing_-5ms
+    stdp_test.go:1784: Testing causal timing: pre→post with Δt = -5ms
+    stdp_test.go:1804: Pairing 1: weight = 1.0117
+    stdp_test.go:1804: Pairing 2: weight = 1.0234
+    stdp_test.go:1804: Pairing 3: weight = 1.0350
+    stdp_test.go:1804: Pairing 4: weight = 1.0467
+    stdp_test.go:1804: Pairing 5: weight = 1.0584
+    stdp_test.go:1804: Pairing 10: weight = 1.1168
+    stdp_test.go:1812: Initial weight: 1.0000
+    stdp_test.go:1813: Final weight: 1.1168
+    stdp_test.go:1814: Total strengthening: +0.1168 (11.7%)
+    stdp_test.go:1820: ✓ Causal pattern caused strengthening
+    stdp_test.go:2111: === BIOLOGICAL VALIDATION FOR Timing_-5ms ===
+    stdp_test.go:2129: ✓ Weight change (11.7%) within biological range
+    stdp_test.go:2146: Learning Events: 10 (LTP: 10, LTD: 0)
+    stdp_test.go:2147: Weight: 1.0000 → 1.1168 (Δ=+0.1168, 11.7%)
+    stdp_test.go:2153: Timing: avg=10ms, range=10ms to 10ms (σ=0s)
+    stdp_test.go:2156: Plasticity: LTP=0.0117, LTD=0.0117, ratio=0.00
+    stdp_test.go:1838: ✓ LTP events dominated: 10 LTP vs 0 LTD
+=== RUN   TestCausalConnectionStrengthening/Timing_-10ms
+    stdp_test.go:1784: Testing causal timing: pre→post with Δt = -10ms
+    stdp_test.go:1804: Pairing 1: weight = 1.0091
+    stdp_test.go:1804: Pairing 2: weight = 1.0182
+    stdp_test.go:1804: Pairing 3: weight = 1.0273
+    stdp_test.go:1804: Pairing 4: weight = 1.0364
+    stdp_test.go:1804: Pairing 5: weight = 1.0455
+    stdp_test.go:1804: Pairing 10: weight = 1.0910
+    stdp_test.go:1812: Initial weight: 1.0000
+    stdp_test.go:1813: Final weight: 1.0910
+    stdp_test.go:1814: Total strengthening: +0.0910 (9.1%)
+    stdp_test.go:1820: ✓ Causal pattern caused strengthening
+    stdp_test.go:2111: === BIOLOGICAL VALIDATION FOR Timing_-10ms ===
+    stdp_test.go:2129: ✓ Weight change (9.1%) within biological range
+    stdp_test.go:2146: Learning Events: 10 (LTP: 10, LTD: 0)
+    stdp_test.go:2147: Weight: 1.0000 → 1.0910 (Δ=+0.0910, 9.1%)
+    stdp_test.go:2153: Timing: avg=10ms, range=10ms to 10ms (σ=0s)
+    stdp_test.go:2156: Plasticity: LTP=0.0091, LTD=0.0091, ratio=0.00
+    stdp_test.go:1838: ✓ LTP events dominated: 10 LTP vs 0 LTD
+=== RUN   TestCausalConnectionStrengthening/Timing_-20ms
+    stdp_test.go:1784: Testing causal timing: pre→post with Δt = -20ms
+    stdp_test.go:1804: Pairing 1: weight = 1.0055
+    stdp_test.go:1804: Pairing 2: weight = 1.0110
+    stdp_test.go:1804: Pairing 3: weight = 1.0166
+    stdp_test.go:1804: Pairing 4: weight = 1.0221
+    stdp_test.go:1804: Pairing 5: weight = 1.0276
+    stdp_test.go:1804: Pairing 10: weight = 1.0552
+    stdp_test.go:1812: Initial weight: 1.0000
+    stdp_test.go:1813: Final weight: 1.0552
+    stdp_test.go:1814: Total strengthening: +0.0552 (5.5%)
+    stdp_test.go:1820: ✓ Causal pattern caused strengthening
+    stdp_test.go:2111: === BIOLOGICAL VALIDATION FOR Timing_-20ms ===
+    stdp_test.go:2129: ✓ Weight change (5.5%) within biological range
+    stdp_test.go:2146: Learning Events: 10 (LTP: 10, LTD: 0)
+    stdp_test.go:2147: Weight: 1.0000 → 1.0552 (Δ=+0.0552, 5.5%)
+    stdp_test.go:2153: Timing: avg=10ms, range=10ms to 10ms (σ=0s)
+    stdp_test.go:2156: Plasticity: LTP=0.0055, LTD=0.0055, ratio=0.00
+    stdp_test.go:1838: ✓ LTP events dominated: 10 LTP vs 0 LTD
+--- PASS: TestCausalConnectionStrengthening (0.00s)
+    --- PASS: TestCausalConnectionStrengthening/Timing_-2ms (0.00s)
+    --- PASS: TestCausalConnectionStrengthening/Timing_-5ms (0.00s)
+    --- PASS: TestCausalConnectionStrengthening/Timing_-10ms (0.00s)
+    --- PASS: TestCausalConnectionStrengthening/Timing_-20ms (0.00s)
+=== RUN   TestAntiCausalConnectionWeakening
+    stdp_test.go:1855: === ANTI-CAUSAL CONNECTION WEAKENING TEST ===
+=== RUN   TestAntiCausalConnectionWeakening/Timing_2ms
+    stdp_test.go:1901: Testing anti-causal timing: post→pre with Δt = +2ms
+    stdp_test.go:1919: Pairing 1: weight = 0.9910
+    stdp_test.go:1919: Pairing 2: weight = 0.9819
+    stdp_test.go:1919: Pairing 3: weight = 0.9729
+    stdp_test.go:1919: Pairing 4: weight = 0.9638
+    stdp_test.go:1919: Pairing 5: weight = 0.9548
+    stdp_test.go:1919: Pairing 15: weight = 0.8643
+    stdp_test.go:1927: Initial weight: 1.0000
+    stdp_test.go:1928: Final weight: 0.8643
+    stdp_test.go:1929: Total weakening: -0.1357 (-13.6%)
+    stdp_test.go:1935: ✓ Anti-causal pattern caused weakening
+    stdp_test.go:1943: ✓ Weight respected minimum bound
+    stdp_test.go:2111: === BIOLOGICAL VALIDATION FOR Timing_2ms ===
+    stdp_test.go:2129: ✓ Weight change (-13.6%) within biological range
+    stdp_test.go:2146: Learning Events: 15 (LTP: 0, LTD: 15)
+    stdp_test.go:2147: Weight: 1.0000 → 0.8643 (Δ=-0.1357, -13.6%)
+    stdp_test.go:2153: Timing: avg=10ms, range=10ms to 10ms (σ=0s)
+    stdp_test.go:2156: Plasticity: LTP=0.0090, LTD=0.0090, ratio=0.00
+    stdp_test.go:1961: ✓ LTD events dominated: 15 LTD vs 0 LTP
+=== RUN   TestAntiCausalConnectionWeakening/Timing_5ms
+    stdp_test.go:1901: Testing anti-causal timing: post→pre with Δt = +5ms
+    stdp_test.go:1919: Pairing 1: weight = 0.9922
+    stdp_test.go:1919: Pairing 2: weight = 0.9844
+    stdp_test.go:1919: Pairing 3: weight = 0.9766
+    stdp_test.go:1919: Pairing 4: weight = 0.9688
+    stdp_test.go:1919: Pairing 5: weight = 0.9611
+    stdp_test.go:1919: Pairing 15: weight = 0.8832
+    stdp_test.go:1927: Initial weight: 1.0000
+    stdp_test.go:1928: Final weight: 0.8832
+    stdp_test.go:1929: Total weakening: -0.1168 (-11.7%)
+    stdp_test.go:1935: ✓ Anti-causal pattern caused weakening
+    stdp_test.go:1943: ✓ Weight respected minimum bound
+    stdp_test.go:2111: === BIOLOGICAL VALIDATION FOR Timing_5ms ===
+    stdp_test.go:2129: ✓ Weight change (-11.7%) within biological range
+    stdp_test.go:2146: Learning Events: 15 (LTP: 0, LTD: 15)
+    stdp_test.go:2147: Weight: 1.0000 → 0.8832 (Δ=-0.1168, -11.7%)
+    stdp_test.go:2153: Timing: avg=10ms, range=10ms to 10ms (σ=0s)
+    stdp_test.go:2156: Plasticity: LTP=0.0078, LTD=0.0078, ratio=0.00
+    stdp_test.go:1961: ✓ LTD events dominated: 15 LTD vs 0 LTP
+=== RUN   TestAntiCausalConnectionWeakening/Timing_10ms
+    stdp_test.go:1901: Testing anti-causal timing: post→pre with Δt = +10ms
+    stdp_test.go:1919: Pairing 1: weight = 0.9939
+    stdp_test.go:1919: Pairing 2: weight = 0.9879
+    stdp_test.go:1919: Pairing 3: weight = 0.9818
+    stdp_test.go:1919: Pairing 4: weight = 0.9757
+    stdp_test.go:1919: Pairing 5: weight = 0.9697
+    stdp_test.go:1919: Pairing 15: weight = 0.9090
+    stdp_test.go:1927: Initial weight: 1.0000
+    stdp_test.go:1928: Final weight: 0.9090
+    stdp_test.go:1929: Total weakening: -0.0910 (-9.1%)
+    stdp_test.go:1935: ✓ Anti-causal pattern caused weakening
+    stdp_test.go:1943: ✓ Weight respected minimum bound
+    stdp_test.go:2111: === BIOLOGICAL VALIDATION FOR Timing_10ms ===
+    stdp_test.go:2129: ✓ Weight change (-9.1%) within biological range
+    stdp_test.go:2146: Learning Events: 15 (LTP: 0, LTD: 15)
+    stdp_test.go:2147: Weight: 1.0000 → 0.9090 (Δ=-0.0910, -9.1%)
+    stdp_test.go:2153: Timing: avg=10ms, range=10ms to 10ms (σ=0s)
+    stdp_test.go:2156: Plasticity: LTP=0.0061, LTD=0.0061, ratio=0.00
+    stdp_test.go:1961: ✓ LTD events dominated: 15 LTD vs 0 LTP
+=== RUN   TestAntiCausalConnectionWeakening/Timing_20ms
+    stdp_test.go:1901: Testing anti-causal timing: post→pre with Δt = +20ms
+    stdp_test.go:1919: Pairing 1: weight = 0.9963
+    stdp_test.go:1919: Pairing 2: weight = 0.9926
+    stdp_test.go:1919: Pairing 3: weight = 0.9890
+    stdp_test.go:1919: Pairing 4: weight = 0.9853
+    stdp_test.go:1919: Pairing 5: weight = 0.9816
+    stdp_test.go:1919: Pairing 15: weight = 0.9448
+    stdp_test.go:1927: Initial weight: 1.0000
+    stdp_test.go:1928: Final weight: 0.9448
+    stdp_test.go:1929: Total weakening: -0.0552 (-5.5%)
+    stdp_test.go:1935: ✓ Anti-causal pattern caused weakening
+    stdp_test.go:1943: ✓ Weight respected minimum bound
+    stdp_test.go:2111: === BIOLOGICAL VALIDATION FOR Timing_20ms ===
+    stdp_test.go:2129: ✓ Weight change (-5.5%) within biological range
+    stdp_test.go:2146: Learning Events: 15 (LTP: 0, LTD: 15)
+    stdp_test.go:2147: Weight: 1.0000 → 0.9448 (Δ=-0.0552, -5.5%)
+    stdp_test.go:2153: Timing: avg=10ms, range=10ms to 10ms (σ=0s)
+    stdp_test.go:2156: Plasticity: LTP=0.0037, LTD=0.0037, ratio=0.00
+    stdp_test.go:1961: ✓ LTD events dominated: 15 LTD vs 0 LTP
+--- PASS: TestAntiCausalConnectionWeakening (0.00s)
+    --- PASS: TestAntiCausalConnectionWeakening/Timing_2ms (0.00s)
+    --- PASS: TestAntiCausalConnectionWeakening/Timing_5ms (0.00s)
+    --- PASS: TestAntiCausalConnectionWeakening/Timing_10ms (0.00s)
+    --- PASS: TestAntiCausalConnectionWeakening/Timing_20ms (0.00s)
+=== RUN   TestSTDPEnableDisable
+    stdp_test.go:1998: === STDP ENABLE/DISABLE TEST ===
+=== RUN   TestSTDPEnableDisable/STDP_Enabled
+    stdp_test.go:2023: STDP enabled: 1.0000 → 0.9697 (Δ = -0.0303)
+    stdp_test.go:2029: ✓ Learning occurred when STDP enabled
+=== RUN   TestSTDPEnableDisable/STDP_Disabled
+    stdp_test.go:2053: STDP disabled: 1.0000 → 1.0000 (Δ = +0.0000)
+    stdp_test.go:2059: ✓ No learning when STDP disabled
+=== RUN   TestSTDPEnableDisable/Config_Disabled
+    stdp_test.go:2087: Config disabled: 1.0000 → 1.0000 (Δ = +0.0000)
+    stdp_test.go:2093: ✓ No learning when config disabled
+=== NAME  TestSTDPEnableDisable
+    stdp_test.go:2097: ✓ STDP enable/disable controls working correctly
+--- PASS: TestSTDPEnableDisable (0.00s)
+    --- PASS: TestSTDPEnableDisable/STDP_Enabled (0.00s)
+    --- PASS: TestSTDPEnableDisable/STDP_Disabled (0.00s)
+    --- PASS: TestSTDPEnableDisable/Config_Disabled (0.00s)
+PASS
+ok  	github.com/SynapticNetworks/temporal-neuron/neuron	99.493s

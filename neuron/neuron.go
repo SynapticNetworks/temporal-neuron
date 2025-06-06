@@ -141,18 +141,22 @@ type Message struct {
 	// Essential for learning in networks with multiple inputs per neuron
 }
 
-// calculateSTDPWeight computes the STDP weight change based on spike timing
+// calculateSTDPWeightChange computes the STDP weight change based on spike timing
 // This implements the core STDP learning rule with exponential timing windows
 //
 // Biological STDP Rule (CORRECTED):
-//   - If pre-synaptic spike occurs before post-synaptic spike (Δt > 0):
+//   - If pre-synaptic spike occurs before post-synaptic spike (Δt < 0):
 //     → Long-Term Potentiation (LTP) → synaptic strengthening
-//   - If post-synaptic spike occurs before pre-synaptic spike (Δt < 0):
+//   - If post-synaptic spike occurs before pre-synaptic spike (Δt > 0):
 //     → Long-Term Depression (LTD) → synaptic weakening
 //
+// Time difference convention: Δt = post_spike_time - pre_spike_time
+//   - Δt < 0: pre fired before post (causal) → LTP (strengthen)
+//   - Δt > 0: post fired before pre (non-causal) → LTD (weaken)
+//
 // Mathematical Model:
-// For Δt > 0 (pre before post): ΔW = +A_LTP * AsymmetryRatio * exp(-Δt / τ_LTP)
-// For Δt < 0 (post before pre): ΔW = -A_LTD * exp(Δt / τ_LTD)
+// For Δt < 0 (pre before post): ΔW = +A_LTP * AsymmetryRatio * exp(Δt / τ_LTP)
+// For Δt > 0 (post before pre): ΔW = -A_LTD * exp(-Δt / τ_LTD)
 //
 // Parameters:
 // timeDifference: post-spike time - pre-spike time (can be positive or negative)
@@ -166,7 +170,7 @@ func calculateSTDPWeightChange(timeDifference time.Duration, config STDPConfig) 
 	// Check if timing difference is within the STDP window
 	windowMs := config.WindowSize.Seconds() * 1000.0
 
-	// FIXED: Use non-strict inequality to exclude boundary values
+	// Use non-strict inequality to exclude boundary values
 	if deltaT <= -windowMs || deltaT >= windowMs {
 		return 0.0 // No plasticity outside the timing window (inclusive boundary)
 	}
@@ -174,18 +178,20 @@ func calculateSTDPWeightChange(timeDifference time.Duration, config STDPConfig) 
 	// Time constant in milliseconds
 	tauMs := config.TimeConstant.Seconds() * 1000.0
 
-	if deltaT > 0 {
-		// Pre-synaptic spike before post-synaptic spike (Δt > 0)
+	if deltaT < 0 {
+		// Pre-synaptic spike before post-synaptic spike (Δt < 0)
 		// This is causal: pre-neuron helped cause post-neuron to fire
 		// Result: Long-Term Potentiation (LTP) - strengthen the synapse
 		// Apply asymmetry ratio to LTP (ratio > 1 makes LTP stronger)
-		return config.LearningRate * config.AsymmetryRatio * math.Exp(-deltaT/tauMs)
+		// Note: deltaT is negative, so we use +deltaT/tauMs for positive exponent
+		return config.LearningRate * config.AsymmetryRatio * math.Exp(deltaT/tauMs)
 	} else {
-		// Post-synaptic spike before pre-synaptic spike (Δt < 0)
+		// Post-synaptic spike before pre-synaptic spike (Δt > 0)
 		// This is non-causal: pre-neuron did not contribute to post-neuron firing
 		// Result: Long-Term Depression (LTD) - weaken the synapse
 		// LTD strength is not modified by asymmetry ratio
-		return -config.LearningRate * math.Exp(deltaT/tauMs)
+		// Note: deltaT is positive, so we use -deltaT/tauMs for negative exponent
+		return -config.LearningRate * math.Exp(-deltaT/tauMs)
 	}
 }
 

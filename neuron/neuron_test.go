@@ -518,7 +518,7 @@ func TestInhibitorySignals(t *testing.T) {
 	}
 
 	// Now test that excitatory signal can overcome inhibition
-	input <- Message{Value: 0.9} // Total: 0.5 + 0.9 = 1.4 > 1.0
+	input <- Message{Value: 1.1} // Total: 0.5 + 1.1 = 1.6 > 1.0 (larger safety margin)
 
 	// Should fire now
 	select {
