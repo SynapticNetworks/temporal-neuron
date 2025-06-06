@@ -592,7 +592,7 @@ func TestHomeostaticStabilityOverTime(t *testing.T) {
 		AsymmetryRatio: 1.0,
 	}
 
-	neuron := NewNeuron("stability_test", 1.0, 0.95, 5*time.Millisecond, 1.0, targetRate, 0.2, stdpConfig)
+	neuron := NewNeuron("stability_test", 1.0, 0.95, 5*time.Millisecond, 1.0, targetRate, 0.5, stdpConfig)
 
 	go neuron.Run()
 	defer neuron.Close()

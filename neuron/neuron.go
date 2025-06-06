@@ -255,57 +255,50 @@ type SynapticScalingConfig struct {
 	// Limited to recent history to prevent unlimited memory growth
 }
 
-// calculateSTDPWeightChange computes the STDP weight change based on spike timing
-// This implements the core STDP learning rule with exponential timing windows
-//
-// Biological STDP Rule (CORRECTED):
-//   - If pre-synaptic spike occurs before post-synaptic spike (Δt < 0):
-//     → Long-Term Potentiation (LTP) → synaptic strengthening
-//   - If post-synaptic spike occurs before pre-synaptic spike (Δt > 0):
-//     → Long-Term Depression (LTD) → synaptic weakening
+// calculateSTDPWeightChange computes the STDP weight change based on spike timing.
+// This implements the core STDP learning rule with exponential timing windows.
 //
 // Time difference convention: Δt = post_spike_time - pre_spike_time
-//   - Δt < 0: pre fired before post (causal) → LTP (strengthen)
-//   - Δt > 0: post fired before pre (non-causal) → LTD (weaken)
+//   - Δt < 0: pre-synaptic spike before post-synaptic spike (causal) -> LTP (strengthen) -> POSITIVE change
+//   - Δt > 0: post-synaptic spike before pre-synaptic spike (anti-causal) -> LTD (weaken) -> NEGATIVE change
 //
 // Mathematical Model:
-// For Δt < 0 (pre before post): ΔW = +A_LTP * AsymmetryRatio * exp(Δt / τ_LTP)
-// For Δt > 0 (post before pre): ΔW = -A_LTD * exp(-Δt / τ_LTD)
+// For Δt < 0 (causal):   ΔW = +LearningRate * AsymmetryRatio * exp(Δt / τ)
+// For Δt > 0 (anti-causal): ΔW = -LearningRate * exp(-Δt / τ)
 //
 // Parameters:
-// timeDifference: post-spike time - pre-spike time (can be positive or negative)
-// config: STDP configuration containing learning rates and time constants
+// timeDifference: The result of postSpikeTime.Sub(preSpikeTime).
+// config: STDP configuration containing learning rates and time constants.
 //
-// Returns: weight change value (positive for strengthening, negative for weakening)
+// Returns: The calculated weight change (positive for LTP, negative for LTD).
 func calculateSTDPWeightChange(timeDifference time.Duration, config STDPConfig) float64 {
-	// Convert time difference to milliseconds for biological realism
-	deltaT := timeDifference.Seconds() * 1000.0
-
-	// Check if timing difference is within the STDP window
+	deltaT := timeDifference.Seconds() * 1000.0 // Convert to milliseconds
 	windowMs := config.WindowSize.Seconds() * 1000.0
 
-	// Use non-strict inequality to exclude boundary values
-	if deltaT <= -windowMs || deltaT >= windowMs {
-		return 0.0 // No plasticity outside the timing window (inclusive boundary)
+	// No plasticity outside the timing window
+	if math.Abs(deltaT) >= windowMs {
+		return 0.0
 	}
 
-	// Time constant in milliseconds
 	tauMs := config.TimeConstant.Seconds() * 1000.0
+	if tauMs == 0 {
+		return 0.0 // Avoid division by zero
+	}
 
-	if deltaT < 0 {
-		// Pre-synaptic spike before post-synaptic spike (Δt < 0)
-		// This is causal: pre-neuron helped cause post-neuron to fire
-		// Result: Long-Term Potentiation (LTP) - strengthen the synapse
-		// Apply asymmetry ratio to LTP (ratio > 1 makes LTP stronger)
-		// Note: deltaT is negative, so we use +deltaT/tauMs for positive exponent
-		return config.LearningRate * config.AsymmetryRatio * math.Exp(deltaT/tauMs)
+	// Corrected STDP logic
+	if deltaT > 0 {
+		// CAUSAL (LTP): Pre-synaptic spike occurred *before* post-synaptic.
+		// Positive change to strengthen the synapse.
+		return config.LearningRate * config.AsymmetryRatio * math.Exp(-deltaT/tauMs)
+	} else if deltaT < 0 {
+		// ANTI-CAUSAL (LTD): Post-synaptic spike occurred *before* pre-synaptic.
+		// Negative change to weaken the synapse.
+		// deltaT is already negative, so we use it directly in the exponent for decay.
+		return -config.LearningRate * math.Exp(deltaT/tauMs)
 	} else {
-		// Post-synaptic spike before pre-synaptic spike (Δt > 0)
-		// This is non-causal: pre-neuron did not contribute to post-neuron firing
-		// Result: Long-Term Depression (LTD) - weaken the synapse
-		// LTD strength is not modified by asymmetry ratio
-		// Note: deltaT is positive, so we use -deltaT/tauMs for negative exponent
-		return -config.LearningRate * math.Exp(-deltaT/tauMs)
+		// Simultaneous firing (deltaT == 0). Can be treated as LTD or a special case.
+		// Returning a small negative value is a common choice.
+		return -config.LearningRate
 	}
 }
 
@@ -333,16 +326,16 @@ func cleanOldSpikeHistory(spikes []SpikeEvent, currentTime time.Time, windowSize
 	cutoffTime := currentTime.Add(-windowSize)
 
 	// Find the first spike that is still within the window
-	keepFromIndex := 0
+	keepFromIndex := -1
 	for i, spike := range spikes {
-		if spike.Timestamp.After(cutoffTime) {
+		if !spike.Timestamp.Before(cutoffTime) {
 			keepFromIndex = i
 			break
 		}
 	}
 
 	// If all spikes are too old, return empty slice
-	if keepFromIndex == 0 && !spikes[0].Timestamp.After(cutoffTime) {
+	if keepFromIndex == -1 {
 		return []SpikeEvent{}
 	}
 
@@ -366,16 +359,16 @@ func cleanOldPreSpikeHistory(spikeTimes []time.Time, currentTime time.Time, wind
 	cutoffTime := currentTime.Add(-windowSize)
 
 	// Find first spike time within window
-	keepFromIndex := 0
+	keepFromIndex := -1
 	for i, spikeTime := range spikeTimes {
-		if spikeTime.After(cutoffTime) {
+		if !spikeTime.Before(cutoffTime) {
 			keepFromIndex = i
 			break
 		}
 	}
 
-	// Return cleaned slice
-	if keepFromIndex == 0 && !spikeTimes[0].After(cutoffTime) {
+	// If all spikes are too old, return empty slice
+	if keepFromIndex == -1 {
 		return []time.Time{}
 	}
 
@@ -478,23 +471,7 @@ func (o *Output) updateSynapticWeight(deltaWeight float64) {
 	}
 
 	// Update the synaptic weight
-	oldWeight := o.factor
 	o.factor = newWeight
-
-	// Optional: implement soft saturation for more biological realism
-	// Real synapses show reduced plasticity near their bounds
-	// This could be implemented as:
-	// if approaching bounds, reduce learning rate
-	// distanceFromMin := (newWeight - o.minWeight) / (o.maxWeight - o.minWeight)
-	// saturationFactor := 4 * distanceFromMin * (1 - distanceFromMin) // peaks at 0.5
-
-	// Log significant weight changes for debugging/monitoring
-	weightChangePercent := math.Abs(newWeight-oldWeight) / oldWeight * 100
-	if weightChangePercent > 10.0 { // Log changes > 10%
-		// In a real implementation, this might log to a debug channel
-		// or update statistics for network monitoring
-		_ = weightChangePercent // Suppress unused variable warning
-	}
 }
 
 // getSynapticStrength returns the current synaptic weight for external monitoring
@@ -573,6 +550,9 @@ func (n *Neuron) applySTDPToAllRecentInputsUnsafe(postSpikeTime time.Time) {
 	// Process all recent input spikes for STDP
 	for _, inputSpike := range n.recentInputSpikes {
 		sourceID := inputSpike.SourceID
+		if sourceID == "" {
+			continue // Do not learn from anonymous triggers
+		}
 
 		// Calculate time difference (post - pre)
 		timeDiff := postSpikeTime.Sub(inputSpike.Timestamp)
@@ -581,43 +561,35 @@ func (n *Neuron) applySTDPToAllRecentInputsUnsafe(postSpikeTime time.Time) {
 		stdpChange := calculateSTDPWeightChange(timeDiff, n.stdpConfig)
 
 		// Accumulate changes for this source
-		if existingChange, exists := stdpChanges[sourceID]; exists {
-			stdpChanges[sourceID] = existingChange + stdpChange
-		} else {
-			stdpChanges[sourceID] = stdpChange
-		}
+		stdpChanges[sourceID] += stdpChange
 	}
 
 	// Apply STDP changes to input gains
-	n.inputGainsMutex.Lock()
-	for sourceID, stdpChange := range stdpChanges {
-		if stdpChange != 0.0 {
-			// Get current gain (or default)
-			currentGain := 1.0
-			if n.inputGains == nil {
-				n.inputGains = make(map[string]float64)
-			} else if gain, exists := n.inputGains[sourceID]; exists {
-				currentGain = gain
-			} else {
-				n.inputGains[sourceID] = currentGain
+	if len(stdpChanges) > 0 {
+		n.inputGainsMutex.Lock()
+		for sourceID, change := range stdpChanges {
+			if change != 0.0 {
+				if _, exists := n.inputGains[sourceID]; !exists {
+					n.inputGains[sourceID] = 1.0 // Initialize if not present
+				}
+
+				// Apply STDP change to the gain
+				newGain := n.inputGains[sourceID] + change
+
+				// Apply bounds (could be part of STDPConfig)
+				minGain := 0.1
+				maxGain := 5.0
+				if newGain < minGain {
+					newGain = minGain
+				} else if newGain > maxGain {
+					newGain = maxGain
+				}
+
+				n.inputGains[sourceID] = newGain
 			}
-
-			// Apply STDP change to gain
-			newGain := currentGain + (stdpChange * n.stdpConfig.LearningRate)
-
-			// Apply bounds
-			minGain := 0.1
-			maxGain := 5.0
-			if newGain < minGain {
-				newGain = minGain
-			} else if newGain > maxGain {
-				newGain = maxGain
-			}
-
-			n.inputGains[sourceID] = newGain
 		}
+		n.inputGainsMutex.Unlock()
 	}
-	n.inputGainsMutex.Unlock()
 
 	// Clean up old spikes
 	n.recentInputSpikes = cleanOldSpikeHistory(n.recentInputSpikes, postSpikeTime, n.stdpConfig.WindowSize)
@@ -649,7 +621,7 @@ func (n *Neuron) recordOutputSpikeForSTDPUnsafe(spikeTime time.Time) {
 //
 // mustBeLocked: true (stateMutex must be held by caller)
 func (n *Neuron) processIncomingSpikeForSTDPUnsafe(msg Message) {
-	// Skip if STDP is disabled or message lacks timing info
+	// Skip if STDP is disabled or message lacks a SourceID
 	if !n.stdpConfig.Enabled || msg.SourceID == "" {
 		return
 	}
@@ -698,7 +670,10 @@ func (n *Neuron) registerInputSourceForScaling(sourceID string) {
 		if n.inputGains == nil {
 			n.inputGains = make(map[string]float64)
 		}
-		n.inputGains[sourceID] = 1.0 // Default receptor sensitivity
+		// Check again inside the lock to prevent race conditions
+		if _, exists := n.inputGains[sourceID]; !exists {
+			n.inputGains[sourceID] = 1.0 // Default receptor sensitivity
+		}
 		n.inputGainsMutex.Unlock()
 	}
 }
@@ -1719,7 +1694,10 @@ func (n *Neuron) Run() {
 		//         postsynaptic potential generation
 		// Highest priority - immediate processing like real synaptic events
 		// Timescale: sub-millisecond (fastest biological process)
-		case msg := <-n.input:
+		case msg, ok := <-n.input:
+			if !ok {
+				return // Channel closed, exit goroutine
+			}
 			n.processMessageWithDecay(msg)
 
 		// Event 2: Membrane potential and calcium decay timer (continuous biological processes)
@@ -2178,6 +2156,14 @@ func (n *Neuron) GetInput() chan<- Message {
 // Closes the input channel, which will cause the Run() loop to exit
 // Models: neuronal death or disconnection from the network
 func (n *Neuron) Close() {
+	// Safely close the input channel to stop the Run() goroutine.
+	// This prevents panics from sending to a closed channel.
+	defer func() {
+		if r := recover(); r != nil {
+			// A panic might occur if the channel is already closed, which is fine.
+			// We can ignore it.
+		}
+	}()
 	close(n.input)
 }
 

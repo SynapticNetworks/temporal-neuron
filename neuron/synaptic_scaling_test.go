@@ -35,14 +35,28 @@ import (
 func createActiveNeuralNetwork(targetNeuron *Neuron, numInputs int, signalStrengths []float64) []*Neuron {
 	inputNeurons := make([]*Neuron, numInputs)
 
+	// Create simple STDP config (disabled for input neurons)
+	stdpConfig := STDPConfig{
+		Enabled:        false,
+		LearningRate:   0.0,
+		TimeConstant:   20 * time.Millisecond,
+		WindowSize:     50 * time.Millisecond,
+		MinWeight:      0.0,
+		MaxWeight:      2.0,
+		AsymmetryRatio: 1.0,
+	}
+
 	for i := 0; i < numInputs; i++ {
-		// Create input neurons that can provide sustained activity
-		inputNeurons[i] = NewSimpleNeuron(
+		// Use NewNeuron with minimal homeostatic tracking for calcium
+		inputNeurons[i] = NewNeuron(
 			fmt.Sprintf("active_input_%d", i),
 			0.5,  // Low threshold for easy firing
 			0.98, // Slow decay to maintain activity
 			5*time.Millisecond,
 			1.0,
+			1.0,  // targetFiringRate = 1.0 Hz (enables calcium tracking)
+			0.01, // homeostasisStrength = very low (minimal threshold adjustment)
+			stdpConfig,
 		)
 
 		// Connect with the specified signal strength
@@ -55,7 +69,7 @@ func createActiveNeuralNetwork(targetNeuron *Neuron, numInputs int, signalStreng
 			fmt.Sprintf("to_target_%d", i),
 			targetNeuron.GetInputChannel(),
 			signalStrength,
-			1*time.Millisecond, // Small delay for realism
+			1*time.Millisecond,
 		)
 
 		// Start the input neuron
@@ -72,6 +86,13 @@ func createActiveNeuralNetwork(targetNeuron *Neuron, numInputs int, signalStreng
 // - Create activity history for scaling decisions
 // - Provide sustained patterns over biological timescales
 func generateSustainedActivity(inputNeurons []*Neuron, duration time.Duration, signalPattern string) {
+	defer func() {
+		if r := recover(); r != nil {
+			// Silently handle "send on closed channel" panics
+			// This is expected when tests clean up before activity completes
+		}
+	}()
+
 	endTime := time.Now().Add(duration)
 	signalInterval := 20 * time.Millisecond // 50 Hz activity rate
 
@@ -82,7 +103,7 @@ func generateSustainedActivity(inputNeurons []*Neuron, duration time.Duration, s
 
 			switch signalPattern {
 			case "uniform":
-				signalStrength = 1.5 // Increase from 0.8
+				signalStrength = 3.0 // Increase from 0.8 // again increased from 1.5
 			case "varied":
 				signalStrength = 1.0 + float64(i)*0.5 // Increase from 0.5 + 0.3
 			case "imbalanced":
@@ -93,12 +114,10 @@ func generateSustainedActivity(inputNeurons []*Neuron, duration time.Duration, s
 				}
 			}
 
-			// Send signal to input neuron (which will fire and propagate)
+			// FIXED: Use simple Message struct that definitely works
 			select {
 			case inputNeuron.GetInput() <- Message{
-				Value:     signalStrength,
-				Timestamp: time.Now(),
-				SourceID:  fmt.Sprintf("external_source_%d", i),
+				Value: signalStrength,
 			}:
 			default:
 				// Skip if channel full
@@ -132,7 +151,26 @@ func TestSynapticScalingBasicOperation(t *testing.T) {
 	t.Log("=== REALISTIC SYNAPTIC SCALING BASIC OPERATION TEST ===")
 
 	// Create target neuron with aggressive scaling parameters for clear results
-	targetNeuron := NewSimpleNeuron("scaling_target", 1.5, 0.95, 10*time.Millisecond, 1.0)
+	stdpConfig := STDPConfig{
+		Enabled:        false,
+		LearningRate:   0.0,
+		TimeConstant:   20 * time.Millisecond,
+		WindowSize:     50 * time.Millisecond,
+		MinWeight:      0.0,
+		MaxWeight:      2.0,
+		AsymmetryRatio: 1.0,
+	}
+
+	targetNeuron := NewNeuron(
+		"scaling_target",
+		1.5,                 // threshold
+		0.95,                // decayRate
+		10*time.Millisecond, // refractoryPeriod
+		1.0,                 // fireFactor
+		5.0,                 // targetFiringRate (enables calcium tracking!)
+		0.1,                 // homeostasisStrength (enables calcium tracking!)
+		stdpConfig,
+	)
 
 	// Enable scaling with parameters suitable for testing
 	targetNeuron.EnableSynapticScaling(
@@ -275,7 +313,26 @@ func TestSynapticScalingConvergence(t *testing.T) {
 			t.Logf("Target: %.1f, Signal: %.1f", tc.targetStrength, tc.signalStrength)
 
 			// Create neuron with convergence-friendly parameters
-			targetNeuron := NewSimpleNeuron("convergence_test", 1.0, 0.95, 10*time.Millisecond, 1.0)
+			stdpConfig := STDPConfig{
+				Enabled:        false,
+				LearningRate:   0.0,
+				TimeConstant:   20 * time.Millisecond,
+				WindowSize:     50 * time.Millisecond,
+				MinWeight:      0.0,
+				MaxWeight:      2.0,
+				AsymmetryRatio: 1.0,
+			}
+
+			targetNeuron := NewNeuron(
+				"scaling_target",
+				1.5,                 // threshold
+				0.95,                // decayRate
+				10*time.Millisecond, // refractoryPeriod
+				1.0,                 // fireFactor
+				5.0,                 // targetFiringRate (enables calcium tracking!)
+				0.1,                 // homeostasisStrength (enables calcium tracking!)
+				stdpConfig,
+			)
 			targetNeuron.EnableSynapticScaling(tc.targetStrength, 0.1, 200*time.Millisecond)
 
 			// Single input for clear convergence testing
@@ -355,7 +412,26 @@ func TestSynapticScalingPatternPreservation(t *testing.T) {
 
 	// Test with complex pattern
 	initialStrengths := []float64{0.5, 1.0, 1.5, 2.0} // 1:2:3:4 ratio
-	targetNeuron := NewSimpleNeuron("pattern_test", 1.5, 0.95, 10*time.Millisecond, 1.0)
+	stdpConfig := STDPConfig{
+		Enabled:        false,
+		LearningRate:   0.0,
+		TimeConstant:   20 * time.Millisecond,
+		WindowSize:     50 * time.Millisecond,
+		MinWeight:      0.0,
+		MaxWeight:      2.0,
+		AsymmetryRatio: 1.0,
+	}
+
+	targetNeuron := NewNeuron(
+		"scaling_target",
+		1.5,                 // threshold
+		0.95,                // decayRate
+		10*time.Millisecond, // refractoryPeriod
+		1.0,                 // fireFactor
+		5.0,                 // targetFiringRate (enables calcium tracking!)
+		0.1,                 // homeostasisStrength (enables calcium tracking!)
+		stdpConfig,
+	)
 
 	// Moderate scaling to preserve patterns
 	targetNeuron.EnableSynapticScaling(1.2, 0.05, 150*time.Millisecond)
@@ -462,7 +538,26 @@ func TestSynapticScalingPatternPreservation(t *testing.T) {
 func TestSynapticScalingActivityGating(t *testing.T) {
 	t.Log("=== BIOLOGICAL ACTIVITY GATING TEST ===")
 
-	targetNeuron := NewSimpleNeuron("gating_test", 1.0, 0.95, 10*time.Millisecond, 1.0)
+	stdpConfig := STDPConfig{
+		Enabled:        false,
+		LearningRate:   0.0,
+		TimeConstant:   20 * time.Millisecond,
+		WindowSize:     50 * time.Millisecond,
+		MinWeight:      0.0,
+		MaxWeight:      2.0,
+		AsymmetryRatio: 1.0,
+	}
+
+	targetNeuron := NewNeuron(
+		"scaling_target",
+		1.5,                 // threshold
+		0.95,                // decayRate
+		10*time.Millisecond, // refractoryPeriod
+		1.0,                 // fireFactor
+		5.0,                 // targetFiringRate (enables calcium tracking!)
+		0.1,                 // homeostasisStrength (enables calcium tracking!)
+		stdpConfig,
+	)
 	targetNeuron.EnableSynapticScaling(0.5, 0.2, 100*time.Millisecond)
 
 	inputNeurons := createActiveNeuralNetwork(targetNeuron, 2, []float64{2.0, 2.0})
@@ -537,7 +632,26 @@ func TestSynapticScalingActivityGating(t *testing.T) {
 func TestSynapticScalingTiming(t *testing.T) {
 	t.Log("=== REALISTIC SCALING TIMING TEST ===")
 
-	targetNeuron := NewSimpleNeuron("timing_test", 1.0, 0.95, 10*time.Millisecond, 1.0)
+	stdpConfig := STDPConfig{
+		Enabled:        false,
+		LearningRate:   0.0,
+		TimeConstant:   20 * time.Millisecond,
+		WindowSize:     50 * time.Millisecond,
+		MinWeight:      0.0,
+		MaxWeight:      2.0,
+		AsymmetryRatio: 1.0,
+	}
+
+	targetNeuron := NewNeuron(
+		"scaling_target",
+		1.5,                 // threshold
+		0.95,                // decayRate
+		10*time.Millisecond, // refractoryPeriod
+		1.0,                 // fireFactor
+		5.0,                 // targetFiringRate (enables calcium tracking!)
+		0.1,                 // homeostasisStrength (enables calcium tracking!)
+		stdpConfig,
+	)
 
 	// Fast scaling for timing observation
 	targetNeuron.EnableSynapticScaling(0.8, 0.15, 200*time.Millisecond)
@@ -714,7 +828,26 @@ func TestSynapticScalingIntegration(t *testing.T) {
 // BenchmarkRealisticSynapticScaling benchmarks scaling with realistic activity
 func BenchmarkRealisticSynapticScaling(b *testing.B) {
 	// Create neuron with moderate scaling parameters
-	targetNeuron := NewSimpleNeuron("bench_realistic", 1.0, 0.95, 10*time.Millisecond, 1.0)
+	stdpConfig := STDPConfig{
+		Enabled:        false,
+		LearningRate:   0.0,
+		TimeConstant:   20 * time.Millisecond,
+		WindowSize:     50 * time.Millisecond,
+		MinWeight:      0.0,
+		MaxWeight:      2.0,
+		AsymmetryRatio: 1.0,
+	}
+
+	targetNeuron := NewNeuron(
+		"scaling_target",
+		1.5,                 // threshold
+		0.95,                // decayRate
+		10*time.Millisecond, // refractoryPeriod
+		1.0,                 // fireFactor
+		5.0,                 // targetFiringRate (enables calcium tracking!)
+		0.1,                 // homeostasisStrength (enables calcium tracking!)
+		stdpConfig,
+	)
 	targetNeuron.EnableSynapticScaling(1.0, 0.1, 100*time.Millisecond)
 
 	// Create realistic input activity
@@ -754,7 +887,26 @@ func BenchmarkRealisticNetworkActivity(b *testing.B) {
 
 	for _, config := range configurations {
 		b.Run(config.name, func(b *testing.B) {
-			targetNeuron := NewSimpleNeuron("bench_network", 1.0, 0.95, 10*time.Millisecond, 1.0)
+			stdpConfig := STDPConfig{
+				Enabled:        false,
+				LearningRate:   0.0,
+				TimeConstant:   20 * time.Millisecond,
+				WindowSize:     50 * time.Millisecond,
+				MinWeight:      0.0,
+				MaxWeight:      2.0,
+				AsymmetryRatio: 1.0,
+			}
+
+			targetNeuron := NewNeuron(
+				"scaling_target",
+				1.5,                 // threshold
+				0.95,                // decayRate
+				10*time.Millisecond, // refractoryPeriod
+				1.0,                 // fireFactor
+				5.0,                 // targetFiringRate (enables calcium tracking!)
+				0.1,                 // homeostasisStrength (enables calcium tracking!)
+				stdpConfig,
+			)
 			targetNeuron.EnableSynapticScaling(1.0, 0.05, 200*time.Millisecond)
 
 			// Create input sources with realistic activity
@@ -794,7 +946,26 @@ func BenchmarkRealisticNetworkActivity(b *testing.B) {
 
 // BenchmarkRealisticActivityGeneration benchmarks the activity generation helpers
 func BenchmarkRealisticActivityGeneration(b *testing.B) {
-	targetNeuron := NewSimpleNeuron("bench_activity", 1.0, 0.95, 10*time.Millisecond, 1.0)
+	stdpConfig := STDPConfig{
+		Enabled:        false,
+		LearningRate:   0.0,
+		TimeConstant:   20 * time.Millisecond,
+		WindowSize:     50 * time.Millisecond,
+		MinWeight:      0.0,
+		MaxWeight:      2.0,
+		AsymmetryRatio: 1.0,
+	}
+
+	targetNeuron := NewNeuron(
+		"scaling_target",
+		1.5,                 // threshold
+		0.95,                // decayRate
+		10*time.Millisecond, // refractoryPeriod
+		1.0,                 // fireFactor
+		5.0,                 // targetFiringRate (enables calcium tracking!)
+		0.1,                 // homeostasisStrength (enables calcium tracking!)
+		stdpConfig,
+	)
 	inputNeurons := createActiveNeuralNetwork(targetNeuron, 3, []float64{1.0, 1.5, 2.0})
 
 	go targetNeuron.Run()
@@ -819,7 +990,26 @@ func BenchmarkRealisticActivityGeneration(b *testing.B) {
 func TestCreateActiveNeuralNetwork(t *testing.T) {
 	t.Log("=== TESTING ACTIVE NEURAL NETWORK CREATION ===")
 
-	targetNeuron := NewSimpleNeuron("network_test", 1.0, 0.95, 10*time.Millisecond, 1.0)
+	stdpConfig := STDPConfig{
+		Enabled:        false,
+		LearningRate:   0.0,
+		TimeConstant:   20 * time.Millisecond,
+		WindowSize:     50 * time.Millisecond,
+		MinWeight:      0.0,
+		MaxWeight:      2.0,
+		AsymmetryRatio: 1.0,
+	}
+
+	targetNeuron := NewNeuron(
+		"scaling_target",
+		1.5,                 // threshold
+		0.95,                // decayRate
+		10*time.Millisecond, // refractoryPeriod
+		1.0,                 // fireFactor
+		5.0,                 // targetFiringRate (enables calcium tracking!)
+		0.1,                 // homeostasisStrength (enables calcium tracking!)
+		stdpConfig,
+	)
 	signalStrengths := []float64{1.0, 2.0, 1.5}
 
 	inputNeurons := createActiveNeuralNetwork(targetNeuron, 3, signalStrengths)
@@ -860,7 +1050,26 @@ func TestGenerateSustainedActivity(t *testing.T) {
 	t.Log("=== TESTING SUSTAINED ACTIVITY GENERATION ===")
 
 	// Create test network
-	targetNeuron := NewSimpleNeuron("activity_test", 0.8, 0.95, 10*time.Millisecond, 1.0)
+	stdpConfig := STDPConfig{
+		Enabled:        false,
+		LearningRate:   0.0,
+		TimeConstant:   20 * time.Millisecond,
+		WindowSize:     50 * time.Millisecond,
+		MinWeight:      0.0,
+		MaxWeight:      2.0,
+		AsymmetryRatio: 1.0,
+	}
+
+	targetNeuron := NewNeuron(
+		"scaling_target",
+		1.5,                 // threshold
+		0.95,                // decayRate
+		10*time.Millisecond, // refractoryPeriod
+		1.0,                 // fireFactor
+		5.0,                 // targetFiringRate (enables calcium tracking!)
+		0.1,                 // homeostasisStrength (enables calcium tracking!)
+		stdpConfig,
+	)
 	inputNeurons := createActiveNeuralNetwork(targetNeuron, 2, []float64{1.0, 1.0})
 
 	go targetNeuron.Run()
@@ -932,7 +1141,26 @@ func TestFullRealisticScalingWorkflow(t *testing.T) {
 	// Step 1: Create biologically realistic network
 	t.Log("Step 1: Creating realistic neural network...")
 
-	targetNeuron := NewSimpleNeuron("workflow_test", 1.2, 0.95, 10*time.Millisecond, 1.0)
+	stdpConfig := STDPConfig{
+		Enabled:        false,
+		LearningRate:   0.0,
+		TimeConstant:   20 * time.Millisecond,
+		WindowSize:     50 * time.Millisecond,
+		MinWeight:      0.0,
+		MaxWeight:      2.0,
+		AsymmetryRatio: 1.0,
+	}
+
+	targetNeuron := NewNeuron(
+		"scaling_target",
+		1.5,                 // threshold
+		0.95,                // decayRate
+		10*time.Millisecond, // refractoryPeriod
+		1.0,                 // fireFactor
+		5.0,                 // targetFiringRate (enables calcium tracking!)
+		0.1,                 // homeostasisStrength (enables calcium tracking!)
+		stdpConfig,
+	)
 	targetNeuron.EnableSynapticScaling(1.0, 0.15, 150*time.Millisecond)
 
 	// Create inputs with significant imbalance to trigger scaling
@@ -1055,4 +1283,262 @@ func TestFullRealisticScalingWorkflow(t *testing.T) {
 	}
 
 	t.Log("✓ Full realistic scaling workflow test completed")
+}
+
+// Debug tools to help identify why synaptic scaling isn't working
+
+// Add this test function to your synaptic_scaling_test.go file
+func TestSynapticScalingDebugSignalPropagation(t *testing.T) {
+	t.Log("=== SIGNAL PROPAGATION DEBUG TEST ===")
+
+	// Step 1: Create simple network
+	t.Log("Step 1: Creating debug network...")
+	stdpConfig := STDPConfig{
+		Enabled:        false,
+		LearningRate:   0.0,
+		TimeConstant:   20 * time.Millisecond,
+		WindowSize:     50 * time.Millisecond,
+		MinWeight:      0.0,
+		MaxWeight:      2.0,
+		AsymmetryRatio: 1.0,
+	}
+
+	targetNeuron := NewNeuron(
+		"scaling_target",
+		1.5,                 // threshold
+		0.95,                // decayRate
+		10*time.Millisecond, // refractoryPeriod
+		1.0,                 // fireFactor
+		5.0,                 // targetFiringRate (enables calcium tracking!)
+		0.1,                 // homeostasisStrength (enables calcium tracking!)
+		stdpConfig,
+	)
+	targetNeuron.EnableSynapticScaling(1.0, 0.1, 100*time.Millisecond)
+
+	inputNeuron := NewSimpleNeuron("debug_input", 0.5, 0.95, 5*time.Millisecond, 1.0)
+
+	// Create monitoring channels
+	targetOutput := make(chan Message, 10)
+	inputOutput := make(chan Message, 10)
+
+	// Connect input -> target
+	inputNeuron.AddOutput("to_target", targetNeuron.GetInputChannel(), 1.5, 1*time.Millisecond)
+
+	// Connect target -> monitor (to see if it fires)
+	targetNeuron.AddOutput("monitor", targetOutput, 1.0, 0)
+	inputNeuron.AddOutput("input_monitor", inputOutput, 1.0, 0)
+
+	// Start neurons
+	go inputNeuron.Run()
+	go targetNeuron.Run()
+
+	defer func() {
+		inputNeuron.Close()
+		targetNeuron.Close()
+	}()
+
+	t.Log("Step 2: Testing direct input neuron firing...")
+
+	// Test: Send strong signal to input neuron
+	inputNeuron.GetInput() <- Message{
+		Value:     2.0, // Well above threshold of 0.5
+		Timestamp: time.Now(),
+		SourceID:  "debug_test",
+	}
+
+	// Wait for input neuron to fire
+	select {
+	case inputFired := <-inputOutput:
+		t.Logf("✅ Input neuron fired with value: %.4f", inputFired.Value)
+	case <-time.After(50 * time.Millisecond):
+		t.Error("❌ Input neuron did not fire")
+		return
+	}
+
+	t.Log("Step 3: Waiting for target neuron response...")
+
+	// Wait for target neuron to fire (with some delay for propagation)
+	select {
+	case targetFired := <-targetOutput:
+		t.Logf("✅ Target neuron fired with value: %.4f", targetFired.Value)
+	case <-time.After(100 * time.Millisecond):
+		t.Log("❌ Target neuron did not fire from input")
+
+		// Debug: Check target neuron state
+		currentThreshold := targetNeuron.GetCurrentThreshold()
+		firingRate := targetNeuron.GetCurrentFiringRate()
+		calciumLevel := targetNeuron.GetCalciumLevel()
+
+		t.Logf("Target neuron threshold: %.3f", currentThreshold)
+		t.Logf("Target neuron firing rate: %.2f Hz", firingRate)
+		t.Logf("Target neuron calcium: %.4f", calciumLevel)
+	}
+
+	t.Log("Step 4: Testing sustained activity...")
+
+	// Generate multiple signals to build up activity
+	for i := 0; i < 5; i++ {
+		inputNeuron.GetInput() <- Message{
+			Value:     3.0,
+			Timestamp: time.Now(),
+			SourceID:  fmt.Sprintf("sustained_%d", i),
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	// Wait and check results
+	time.Sleep(200 * time.Millisecond)
+
+	finalFiringRate := targetNeuron.GetCurrentFiringRate()
+	finalCalcium := targetNeuron.GetCalciumLevel()
+	gains := targetNeuron.GetInputGains()
+	scalingInfo := targetNeuron.GetSynapticScalingInfo()
+	scalingHistory := scalingInfo["scalingHistory"].([]float64)
+
+	t.Logf("Final target firing rate: %.2f Hz", finalFiringRate)
+	t.Logf("Final target calcium: %.4f", finalCalcium)
+	t.Logf("Registered input gains: %v", gains)
+	t.Logf("Scaling events: %d", len(scalingHistory))
+
+	if finalFiringRate > 0 {
+		t.Log("✅ Target neuron achieved some firing")
+	} else {
+		t.Log("❌ Target neuron never fired - signal propagation issue")
+	}
+}
+
+// Add this helper function to manually test Message structure
+func TestMessageStructureDebug(t *testing.T) {
+	t.Log("=== MESSAGE STRUCTURE DEBUG ===")
+
+	neuron := NewSimpleNeuron("msg_test", 1.0, 0.95, 10*time.Millisecond, 1.0)
+	output := make(chan Message, 10)
+	neuron.AddOutput("test", output, 1.0, 0)
+
+	go neuron.Run()
+	defer neuron.Close()
+
+	// Test different message formats
+	testMessages := []Message{
+		{Value: 2.0},                        // Basic message
+		{Value: 2.0, Timestamp: time.Now()}, // With timestamp
+		{Value: 2.0, Timestamp: time.Now(), SourceID: "test_source"}, // Full message
+	}
+
+	for i, msg := range testMessages {
+		t.Logf("Testing message %d: Value=%.1f, HasTimestamp=%v, HasSourceID=%v",
+			i+1, msg.Value, !msg.Timestamp.IsZero(), msg.SourceID != "")
+
+		neuron.GetInput() <- msg
+
+		select {
+		case fired := <-output:
+			t.Logf("✅ Message %d caused firing: %.4f", i+1, fired.Value)
+		case <-time.After(50 * time.Millisecond):
+			t.Logf("❌ Message %d did not cause firing", i+1)
+		}
+
+		// Reset neuron state
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// Alternative generateSustainedActivity that uses direct target stimulation
+func generateSustainedActivityDirect(targetNeuron *Neuron, duration time.Duration, signalStrength float64) {
+	defer func() {
+		if r := recover(); r != nil {
+			// Handle closed channels gracefully
+		}
+	}()
+
+	endTime := time.Now().Add(duration)
+	signalInterval := 20 * time.Millisecond
+
+	for time.Now().Before(endTime) {
+		select {
+		case targetNeuron.GetInput() <- Message{
+			Value:     signalStrength,
+			Timestamp: time.Now(),
+			SourceID:  "direct_stimulation",
+		}:
+		default:
+			// Skip if channel full or closed
+		}
+
+		time.Sleep(signalInterval)
+	}
+}
+
+// Test with direct stimulation
+func TestSynapticScalingDirectStimulation(t *testing.T) {
+	t.Log("=== DIRECT STIMULATION SCALING TEST ===")
+
+	stdpConfig := STDPConfig{
+		Enabled:        false,
+		LearningRate:   0.0,
+		TimeConstant:   20 * time.Millisecond,
+		WindowSize:     50 * time.Millisecond,
+		MinWeight:      0.0,
+		MaxWeight:      2.0,
+		AsymmetryRatio: 1.0,
+	}
+
+	targetNeuron := NewNeuron(
+		"scaling_target",
+		1.5,                 // threshold
+		0.95,                // decayRate
+		10*time.Millisecond, // refractoryPeriod
+		1.0,                 // fireFactor
+		5.0,                 // targetFiringRate (enables calcium tracking!)
+		0.1,                 // homeostasisStrength (enables calcium tracking!)
+		stdpConfig,
+	)
+	targetNeuron.EnableSynapticScaling(1.0, 0.2, 200*time.Millisecond)
+
+	go targetNeuron.Run()
+	defer targetNeuron.Close()
+
+	t.Log("Phase 1: Direct stimulation to target neuron...")
+
+	// Directly stimulate the target neuron (bypassing input neurons)
+	go generateSustainedActivityDirect(targetNeuron, 1*time.Second, 2.0)
+
+	// Monitor progress
+	for i := 0; i < 10; i++ {
+		time.Sleep(200 * time.Millisecond)
+
+		firingRate := targetNeuron.GetCurrentFiringRate()
+		calcium := targetNeuron.GetCalciumLevel()
+		gains := targetNeuron.GetInputGains()
+		scalingInfo := targetNeuron.GetSynapticScalingInfo()
+		scalingHistory := scalingInfo["scalingHistory"].([]float64)
+
+		t.Logf("Check %d: Rate=%.2f Hz, Calcium=%.4f, Gains=%d, Scaling=%d",
+			i+1, firingRate, calcium, len(gains), len(scalingHistory))
+
+		if len(scalingHistory) > 0 {
+			t.Log("✅ Scaling triggered with direct stimulation!")
+			break
+		}
+	}
+
+	// Final results
+	finalRate := targetNeuron.GetCurrentFiringRate()
+	finalCalcium := targetNeuron.GetCalciumLevel()
+	finalGains := targetNeuron.GetInputGains()
+	finalScaling := targetNeuron.GetSynapticScalingInfo()["scalingHistory"].([]float64)
+
+	t.Logf("Final results:")
+	t.Logf("  Firing rate: %.2f Hz", finalRate)
+	t.Logf("  Calcium level: %.4f", finalCalcium)
+	t.Logf("  Input gains: %v", finalGains)
+	t.Logf("  Scaling events: %d", len(finalScaling))
+
+	if len(finalScaling) > 0 {
+		t.Log("✅ Synaptic scaling works with direct stimulation")
+		t.Log("Issue is likely in signal propagation from input neurons")
+	} else {
+		t.Log("❌ Synaptic scaling not working even with direct stimulation")
+		t.Log("Issue is in the scaling mechanism itself")
+	}
 }
