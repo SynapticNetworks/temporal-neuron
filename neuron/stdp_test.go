@@ -1641,10 +1641,17 @@ func TestBasicNeuronPairLearning(t *testing.T) {
 
 	// Set up post-neuron to receive from connection
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				// Handle "send on closed channel" panic during test cleanup
+			}
+		}()
+
 		for msg := range connection {
 			select {
 			case postNeuron.GetInputChannel() <- msg:
 			default:
+				// Channel full or closed
 			}
 		}
 	}()
