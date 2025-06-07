@@ -285,16 +285,17 @@ func calculateSTDPWeightChange(timeDifference time.Duration, config STDPConfig) 
 		return 0.0 // Avoid division by zero
 	}
 
-	// Corrected STDP logic
-	if deltaT > 0 {
-		// CAUSAL (LTP): Pre-synaptic spike occurred *before* post-synaptic.
+	// CORRECTED STDP logic
+	if deltaT < 0 {
+		// CAUSAL (LTP): Pre-synaptic spike occurred *before* post-synaptic (deltaT < 0).
 		// Positive change to strengthen the synapse.
-		return config.LearningRate * config.AsymmetryRatio * math.Exp(-deltaT/tauMs)
-	} else if deltaT < 0 {
-		// ANTI-CAUSAL (LTD): Post-synaptic spike occurred *before* pre-synaptic.
+		// deltaT is negative, so exp(deltaT/tau) naturally decays as |deltaT| increases
+		return config.LearningRate * config.AsymmetryRatio * math.Exp(deltaT/tauMs)
+	} else if deltaT > 0 {
+		// ANTI-CAUSAL (LTD): Post-synaptic spike occurred *before* pre-synaptic (deltaT > 0).
 		// Negative change to weaken the synapse.
-		// deltaT is already negative, so we use it directly in the exponent for decay.
-		return -config.LearningRate * math.Exp(deltaT/tauMs)
+		// deltaT is positive, so we use -deltaT/tau for the decay
+		return -config.LearningRate * math.Exp(-deltaT/tauMs)
 	} else {
 		// Simultaneous firing (deltaT == 0). Can be treated as LTD or a special case.
 		// Returning a small negative value is a common choice.
@@ -530,7 +531,7 @@ func (n *Neuron) addRecentInputSpikeUnsafe(spike SpikeEvent) {
 	}
 }
 
-// applySTDPToAllRecentInputs applies STDP learning to all recent input synapses
+// applySTDPToAllRecentInputsUnsafe applies STDP learning to all recent input synapses
 // Called when this neuron fires to strengthen/weaken incoming connections
 //
 // Biological process:
@@ -554,8 +555,18 @@ func (n *Neuron) applySTDPToAllRecentInputsUnsafe(postSpikeTime time.Time) {
 			continue // Do not learn from anonymous triggers
 		}
 
-		// Calculate time difference (post - pre)
-		timeDiff := postSpikeTime.Sub(inputSpike.Timestamp)
+		// CORRECTED: Calculate time difference (pre - post) for STDP function
+		// This ensures that causal timing (pre before post) gives negative values
+		// which the STDP function correctly interprets as LTP
+		timeDiff := inputSpike.Timestamp.Sub(postSpikeTime) // pre - post
+
+		// NOTE: This is the opposite of the previous calculation:
+		// OLD (wrong): timeDiff := postSpikeTime.Sub(inputSpike.Timestamp) // post - pre
+		// NEW (correct): timeDiff := inputSpike.Timestamp.Sub(postSpikeTime) // pre - post
+		//
+		// With this correction:
+		// - If input spike was 8ms BEFORE neuron firing: timeDiff = -8ms → LTP (positive)
+		// - If input spike was 8ms AFTER neuron firing: timeDiff = +8ms → LTD (negative)
 
 		// Calculate STDP change for this spike pair
 		stdpChange := calculateSTDPWeightChange(timeDiff, n.stdpConfig)

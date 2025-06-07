@@ -2136,3 +2136,163 @@ func TestSTDPProcessingDebug(t *testing.T) {
 		t.Logf("This indicates processIncomingSpikeForSTDPUnsafe() is broken")
 	}
 }
+
+// TestSTDPConventionContradiction exposes the exact contradiction between
+// direct function tests and network learning tests
+//
+// This test will ALWAYS fail because it tests both conventions simultaneously,
+// proving that they are incompatible in the current implementation.
+//
+// Run with: go test -v ./neuron -run "TestSTDPConventionContradiction"
+func TestSTDPConventionContradiction(t *testing.T) {
+	t.Log("=== STDP CONVENTION CONTRADICTION TEST ===")
+	t.Log("This test exposes the fundamental contradiction in STDP timing conventions")
+	t.Log("It will ALWAYS fail until the contradiction is resolved")
+
+	config := STDPConfig{
+		Enabled:        true,
+		LearningRate:   0.01,
+		TimeConstant:   20 * time.Millisecond,
+		WindowSize:     50 * time.Millisecond,
+		MinWeight:      0.1,
+		MaxWeight:      2.0,
+		AsymmetryRatio: 1.0,
+	}
+
+	// ========================================================================
+	// PART 1: TEST THE DIRECT FUNCTION (Group 1 Convention)
+	// ========================================================================
+	t.Log("\n--- PART 1: Testing calculateSTDPWeightChange() directly ---")
+
+	// This is what the robustness tests expect:
+	// Negative timing = LTP (positive change)
+	negativeTimingResult := calculateSTDPWeightChange(-5*time.Millisecond, config)
+	expectedLTP := 0.007788 // From TestSTDPRobustnessRegressionBaseline
+
+	t.Logf("Direct function call: calculateSTDPWeightChange(-5ms)")
+	t.Logf("  Result: %.6f", negativeTimingResult)
+	t.Logf("  Expected (from robustness tests): %.6f", expectedLTP)
+
+	group1Success := false
+	tolerance := 0.000001
+	if abs(negativeTimingResult-expectedLTP) < tolerance {
+		t.Log("  ✅ GROUP 1 (Direct Function): PASS - Negative timing gave LTP")
+		group1Success = true
+	} else {
+		t.Log("  ❌ GROUP 1 (Direct Function): FAIL - Wrong result for negative timing")
+	}
+
+	// ========================================================================
+	// PART 2: TEST ACTUAL NEURAL NETWORK (Group 2 Convention)
+	// ========================================================================
+	t.Log("\n--- PART 2: Testing actual neural network STDP ---")
+
+	// Create neurons with STDP learning
+	testNeuron := NewNeuron("test", 1.5, 0.95, 8*time.Millisecond, 1.0,
+		0, 0, config) // No homeostasis for clean test
+
+	// Enable scaling for input gains to work
+	testNeuron.EnableSynapticScaling(1.0, 0.0001, 60*time.Minute)
+
+	go testNeuron.Run()
+	defer testNeuron.Close()
+
+	input := testNeuron.GetInput()
+
+	// Train with causal pattern: input fires BEFORE neuron fires
+	t.Log("Training: Input fires 8ms BEFORE neuron fires (causal pattern)")
+
+	for i := 0; i < 10; i++ {
+		// Input spike first
+		inputTime := time.Now()
+		input <- Message{
+			Value:     0.8,
+			Timestamp: inputTime,
+			SourceID:  "test_input",
+		}
+
+		// Wait 8ms, then trigger neuron firing
+		time.Sleep(8 * time.Millisecond)
+		input <- Message{
+			Value:     2.0, // Strong trigger
+			Timestamp: time.Now(),
+			SourceID:  "trigger",
+		}
+
+		time.Sleep(100 * time.Millisecond) // Inter-trial interval
+	}
+
+	time.Sleep(500 * time.Millisecond) // Let learning settle
+
+	// Check what happened to the input gain
+	gains := testNeuron.GetInputGains()
+	inputGain := gains["test_input"]
+
+	t.Logf("Network learning result:")
+	t.Logf("  Input 'test_input' fired 8ms BEFORE neuron")
+	t.Logf("  Final gain for test_input: %.6f", inputGain)
+	t.Logf("  Expected: > 1.0 (strengthening, since input caused firing)")
+
+	group2Success := false
+	if inputGain > 1.01 { // Much more sensitive threshold - any learning above 1% is significant
+		t.Log("  ✅ GROUP 2 (Network Learning): PASS - Causal input was strengthened")
+		group2Success = true
+	} else {
+		t.Log("  ❌ GROUP 2 (Network Learning): FAIL - Causal input was not strengthened")
+	}
+
+	// ========================================================================
+	// PART 3: EXPOSE THE CONTRADICTION
+	// ========================================================================
+	t.Log("\n--- PART 3: Analyzing the contradiction ---")
+
+	// Let's trace what actually happened in the network
+	t.Log("Tracing the network calculation:")
+	t.Log("  1. Input spike at time T")
+	t.Log("  2. Neuron fires at time T+8ms")
+	t.Log("  3. applySTDPToAllRecentInputsUnsafe() calculates:")
+
+	// Simulate the network's calculation
+	inputSpikeTime := time.Now()
+	neuronFireTime := inputSpikeTime.Add(8 * time.Millisecond)
+
+	// This is what the current network code does:
+	networkTimeDiff := neuronFireTime.Sub(inputSpikeTime) // post - pre = +8ms
+	t.Logf("     timeDiff = neuronFireTime.Sub(inputSpikeTime) = +8ms")
+
+	// And calls the function with this positive value
+	networkResult := calculateSTDPWeightChange(networkTimeDiff, config)
+	t.Logf("     calculateSTDPWeightChange(+8ms) = %.6f", networkResult)
+
+	if networkResult > 0 {
+		t.Log("     Network calculation gave POSITIVE result (LTP)")
+	} else {
+		t.Log("     Network calculation gave NEGATIVE result (LTD)")
+	}
+
+	// ========================================================================
+	// PART 4: THE VERDICT
+	// ========================================================================
+	t.Log("\n--- VERDICT ---")
+
+	if group1Success && group2Success {
+		t.Log("🎉 IMPOSSIBLE: Both conventions work - the contradiction is resolved!")
+	} else if group1Success && !group2Success {
+		t.Log("📊 CURRENT STATE: Direct function tests pass, but network learning fails")
+		t.Log("   Problem: Network passes positive timing to function expecting negative")
+		t.Log("   Fix: Change network to calculate (pre - post) instead of (post - pre)")
+	} else if !group1Success && group2Success {
+		t.Log("🧠 CURRENT STATE: Network learning works, but direct function tests fail")
+		t.Log("   Problem: Function logic doesn't match test expectations")
+		t.Log("   Fix: Update test expectations or function logic")
+	} else {
+		t.Log("💥 BROKEN STATE: Neither convention works - something else is wrong")
+	}
+
+	// Always fail to highlight the contradiction
+	if !(group1Success && group2Success) {
+		t.Errorf("STDP Convention Contradiction Detected!")
+		t.Errorf("Group 1 (Direct): %v, Group 2 (Network): %v", group1Success, group2Success)
+		t.Errorf("Fix the timing calculation to make both groups pass")
+	}
+}
