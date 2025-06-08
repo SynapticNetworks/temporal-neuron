@@ -2674,6 +2674,86 @@ func (n *Neuron) GetOutputWeight(id string) (float64, bool) {
 	return output.factor, true
 }
 
+// Receive accepts a synapse message and integrates it into the existing neuron processing pipeline
+// This method serves as a bridge between the new synapse system and the existing neuron architecture,
+// allowing synapses to deliver signals to neurons without breaking existing functionality.
+//
+// BRIDGE PATTERN IMPLEMENTATION:
+// This method implements the adapter/bridge pattern to allow the new synapse system to work
+// seamlessly with existing neuron implementations. It translates between the synapse message
+// format and the neuron's existing message format, preserving all timing and source information
+// needed for STDP learning while maintaining backward compatibility.
+//
+// BIOLOGICAL CONTEXT:
+// In real neurons, synaptic inputs arrive at dendrites and are integrated at the cell body (soma).
+// This method models the dendritic integration process where:
+// 1. Synaptic signals arrive with precise timing information
+// 2. Signals are converted to postsynaptic potentials
+// 3. Potentials are integrated with existing membrane dynamics
+// 4. The neuron's existing firing logic determines the response
+//
+// CONCURRENCY SAFETY:
+// This method is thread-safe and designed to be called from multiple synapse goroutines
+// simultaneously. The select statement with default case ensures non-blocking operation,
+// preventing synapses from being blocked if the neuron's input buffer is full.
+//
+// INTEGRATION STRATEGY:
+// By converting SynapseMessage to the existing Message format, this method allows:
+// - New synapse system to coexist with existing Output system
+// - Gradual migration from Output to synapse-based connectivity
+// - Preservation of all existing neuron processing logic (homeostasis, STDP, etc.)
+// - No modifications needed to existing neuron internal processing methods
+//
+// Parameters:
+//
+//	msg: SynapseMessage containing the synaptic signal with timing and source information
+//
+// The method preserves all essential information for neural processing:
+// - Signal strength (Value): Determines the magnitude of postsynaptic potential
+// - Timing (Timestamp): Critical for STDP learning and temporal dynamics
+// - Source identification (SourceID): Enables synapse-specific learning and tracking
+// func (n *Neuron) Receive(msg SynapseMessage) {
+// 	// Convert SynapseMessage to your existing Message format
+// 	// This translation preserves all critical information while maintaining compatibility
+// 	// with existing neuron processing logic that expects the original Message structure
+// 	existingMsg := Message{
+// 		Value:     msg.Value,     // Signal strength - models postsynaptic potential amplitude
+// 		Timestamp: msg.Timestamp, // Precise spike timing - essential for STDP calculations
+// 		SourceID:  msg.SourceID,  // Source neuron ID - enables input-specific learning
+// 	}
+
+// 	// Forward to your existing input processing pipeline
+// 	// This integrates the synaptic signal into the neuron's standard processing workflow,
+// 	// ensuring that synaptic inputs are handled identically to existing input sources
+// 	// while maintaining the neuron's existing behavior for homeostasis, threshold dynamics,
+// 	// calcium tracking, and all other biological features
+// 	select {
+// 	case n.input <- existingMsg:
+// 		// Successfully forwarded to existing system
+// 		// The message will now be processed by the neuron's Run() loop using all
+// 		// existing biological mechanisms:
+// 		// - Leaky integration (applyMembraneDecay)
+// 		// - Homeostatic regulation (calcium dynamics, threshold adjustment)
+// 		// - STDP learning (if enabled in the neuron)
+// 		// - Refractory period enforcement
+// 		// - Fire event generation and monitoring
+
+// 	default:
+// 		// Drop if input buffer is full (same as existing behavior)
+// 		// This non-blocking approach models biological synaptic failure that can occur
+// 		// when the postsynaptic neuron is overwhelmed with inputs. In real neurons:
+// 		// - Synaptic vesicles can be depleted during high activity
+// 		// - Postsynaptic receptors can become saturated
+// 		// - Dendritic processing can reach capacity limits
+// 		//
+// 		// By dropping the message rather than blocking, we:
+// 		// - Prevent deadlocks in the synapse system
+// 		// - Model realistic biological saturation effects
+// 		// - Maintain the existing neuron's performance characteristics
+// 		// - Preserve the behavior that existing unit tests expect
+// 	}
+// }
+
 // Helper function for absolute value (not available in older Go versions)
 func abs(x float64) float64 {
 	if x < 0 {
