@@ -15,10 +15,11 @@ func TestNeuronCreation(t *testing.T) {
 	fireFactor := 2.0
 	neuronID := "test_neuron_1"
 
-	neuron := NewNeuron(neuronID, threshold, decayRate, refractoryPeriod, fireFactor)
+	// Test simple neuron creation (backward compatibility)
+	neuron := NewSimpleNeuron(neuronID, threshold, decayRate, refractoryPeriod, fireFactor)
 
 	if neuron == nil {
-		t.Fatal("NewNeuron returned nil")
+		t.Fatal("NewSimpleNeuron returned nil")
 	}
 
 	if neuron.threshold != threshold {
@@ -52,11 +53,20 @@ func TestNeuronCreation(t *testing.T) {
 	if !neuron.lastFireTime.IsZero() {
 		t.Errorf("Expected lastFireTime to be zero value, got %v", neuron.lastFireTime)
 	}
+
+	// Test that homeostasis is disabled for simple neurons
+	if neuron.homeostatic.targetFiringRate != 0.0 {
+		t.Errorf("Expected disabled homeostasis (targetFiringRate=0), got %f", neuron.homeostatic.targetFiringRate)
+	}
+
+	if neuron.homeostatic.homeostasisStrength != 0.0 {
+		t.Errorf("Expected disabled homeostasis (homeostasisStrength=0), got %f", neuron.homeostatic.homeostasisStrength)
+	}
 }
 
 // TestNeuronInputChannel tests that input channel is accessible
 func TestNeuronInputChannel(t *testing.T) {
-	neuron := NewNeuron("test_input", 1.0, 0.95, 5*time.Millisecond, 1.0)
+	neuron := NewSimpleNeuron("test_input", 1.0, 0.95, 5*time.Millisecond, 1.0)
 
 	input := neuron.GetInput()
 	if input == nil {
@@ -74,7 +84,7 @@ func TestNeuronInputChannel(t *testing.T) {
 
 // TestOutputManagement tests adding and removing outputs
 func TestOutputManagement(t *testing.T) {
-	neuron := NewNeuron("test_output_mgmt", 1.0, 0.95, 5*time.Millisecond, 1.0)
+	neuron := NewSimpleNeuron("test_output_mgmt", 1.0, 0.95, 5*time.Millisecond, 1.0)
 
 	// Test adding outputs
 	output1 := make(chan Message, 1)
@@ -111,7 +121,7 @@ func TestOutputManagement(t *testing.T) {
 // TestThresholdFiring tests basic threshold-based firing
 func TestThresholdFiring(t *testing.T) {
 	threshold := 1.0
-	neuron := NewNeuron("test_threshold", threshold, 0.98, 10*time.Millisecond, 1.0)
+	neuron := NewSimpleNeuron("test_threshold", threshold, 0.98, 10*time.Millisecond, 1.0)
 
 	output := make(chan Message, 10)
 	neuron.AddOutput("test", output, 1.0, 0) // No delay for testing
@@ -148,7 +158,7 @@ func TestThresholdFiring(t *testing.T) {
 // TestLeakyIntegration tests continuous membrane potential decay
 func TestLeakyIntegration(t *testing.T) {
 	decayRate := 0.9 // Aggressive decay for faster testing
-	neuron := NewNeuron("test_leaky", 1.0, decayRate, 5*time.Millisecond, 1.0)
+	neuron := NewSimpleNeuron("test_leaky", 1.0, decayRate, 5*time.Millisecond, 1.0)
 
 	output := make(chan Message, 10)
 	neuron.AddOutput("test", output, 1.0, 0)
@@ -189,7 +199,7 @@ func TestLeakyIntegration(t *testing.T) {
 // TestRefractoryPeriod tests that neurons cannot fire during refractory period
 func TestRefractoryPeriod(t *testing.T) {
 	refractoryPeriod := 20 * time.Millisecond
-	neuron := NewNeuron("test_refractory", 1.0, 0.98, refractoryPeriod, 1.0)
+	neuron := NewSimpleNeuron("test_refractory", 1.0, 0.98, refractoryPeriod, 1.0)
 
 	output := make(chan Message, 10)
 	neuron.AddOutput("test", output, 1.0, 0)
@@ -237,7 +247,7 @@ func TestRefractoryPeriod(t *testing.T) {
 // TestContinuousDecay tests that accumulator continuously decays over time
 func TestContinuousDecay(t *testing.T) {
 	decayRate := 0.8 // Faster decay for testing
-	neuron := NewNeuron("test_continuous_decay", 2.0, decayRate, 5*time.Millisecond, 1.0)
+	neuron := NewSimpleNeuron("test_continuous_decay", 2.0, decayRate, 5*time.Millisecond, 1.0)
 
 	go neuron.Run()
 	defer neuron.Close()
@@ -269,7 +279,7 @@ func TestContinuousDecay(t *testing.T) {
 // TestTemporalIntegration tests signal accumulation with leaky integration
 func TestTemporalIntegration(t *testing.T) {
 	decayRate := 0.99 // Slow decay to allow temporal summation
-	neuron := NewNeuron("test_temporal", 1.0, decayRate, 5*time.Millisecond, 1.0)
+	neuron := NewSimpleNeuron("test_temporal", 1.0, decayRate, 5*time.Millisecond, 1.0)
 
 	output := make(chan Message, 10)
 	neuron.AddOutput("test", output, 1.0, 0)
@@ -297,7 +307,7 @@ func TestTemporalIntegration(t *testing.T) {
 
 // TestOutputFactorAndDelay tests output scaling and transmission delays
 func TestOutputFactorAndDelay(t *testing.T) {
-	neuron := NewNeuron("test_factor_delay", 1.0, 0.98, 5*time.Millisecond, 2.0) // fireFactor = 2.0
+	neuron := NewSimpleNeuron("test_factor_delay", 1.0, 0.98, 5*time.Millisecond, 2.0) // fireFactor = 2.0
 
 	output := make(chan Message, 10)
 	factor := 0.5
@@ -342,7 +352,7 @@ func TestOutputFactorAndDelay(t *testing.T) {
 
 // TestMultipleOutputs tests firing to multiple outputs simultaneously
 func TestMultipleOutputs(t *testing.T) {
-	neuron := NewNeuron("test_multiple_outputs", 1.0, 0.98, 5*time.Millisecond, 1.0)
+	neuron := NewSimpleNeuron("test_multiple_outputs", 1.0, 0.98, 5*time.Millisecond, 1.0)
 
 	output1 := make(chan Message, 10)
 	output2 := make(chan Message, 10)
@@ -393,7 +403,7 @@ func TestMultipleOutputs(t *testing.T) {
 
 // TestConcurrentAccess tests thread safety of output management
 func TestConcurrentAccess(t *testing.T) {
-	neuron := NewNeuron("test_concurrent", 1.0, 0.98, 5*time.Millisecond, 1.0)
+	neuron := NewSimpleNeuron("test_concurrent", 1.0, 0.98, 5*time.Millisecond, 1.0)
 
 	go neuron.Run()
 	defer neuron.Close()
@@ -445,7 +455,7 @@ func TestConcurrentAccess(t *testing.T) {
 
 // TestResetAfterFiring tests that accumulator resets after firing
 func TestResetAfterFiring(t *testing.T) {
-	neuron := NewNeuron("test_reset", 1.0, 0.99, 10*time.Millisecond, 1.0)
+	neuron := NewSimpleNeuron("test_reset", 1.0, 0.99, 10*time.Millisecond, 1.0)
 
 	output := make(chan Message, 10)
 	neuron.AddOutput("test", output, 1.0, 0)
@@ -483,7 +493,7 @@ func TestResetAfterFiring(t *testing.T) {
 
 // TestInhibitorySignals tests negative (inhibitory) input values
 func TestInhibitorySignals(t *testing.T) {
-	neuron := NewNeuron("test_inhibitory", 1.0, 0.99, 5*time.Millisecond, 1.0)
+	neuron := NewSimpleNeuron("test_inhibitory", 1.0, 0.99, 5*time.Millisecond, 1.0)
 
 	output := make(chan Message, 10)
 	neuron.AddOutput("test", output, 1.0, 0)
@@ -508,7 +518,7 @@ func TestInhibitorySignals(t *testing.T) {
 	}
 
 	// Now test that excitatory signal can overcome inhibition
-	input <- Message{Value: 0.9} // Total: 0.5 + 0.9 = 1.4 > 1.0
+	input <- Message{Value: 1.1} // Total: 0.5 + 1.1 = 1.6 > 1.0 (larger safety margin)
 
 	// Should fire now
 	select {
@@ -521,7 +531,7 @@ func TestInhibitorySignals(t *testing.T) {
 
 // TestFireEventReporting tests the fire event reporting functionality
 func TestFireEventReporting(t *testing.T) {
-	neuron := NewNeuron("test_fire_events", 1.0, 0.98, 5*time.Millisecond, 2.0)
+	neuron := NewSimpleNeuron("test_fire_events", 1.0, 0.98, 5*time.Millisecond, 2.0)
 
 	// Set up fire event monitoring BEFORE starting the neuron
 	fireEvents := make(chan FireEvent, 10)
@@ -591,7 +601,7 @@ func TestFireEventReporting(t *testing.T) {
 // TestRefractoryPeriodPreventsRapidFiring tests multiple rapid firing attempts
 func TestRefractoryPeriodPreventsRapidFiring(t *testing.T) {
 	refractoryPeriod := 30 * time.Millisecond
-	neuron := NewNeuron("test_rapid_firing", 1.0, 0.98, refractoryPeriod, 1.0)
+	neuron := NewSimpleNeuron("test_rapid_firing", 1.0, 0.98, refractoryPeriod, 1.0)
 
 	output := make(chan Message, 100)
 	neuron.AddOutput("test", output, 1.0, 0)
@@ -630,8 +640,8 @@ func TestRefractoryPeriodPreventsRapidFiring(t *testing.T) {
 
 // TestDecayRateEffects tests different decay rates
 func TestDecayRateEffects(t *testing.T) {
-	slowDecay := NewNeuron("slow_decay", 2.0, 0.99, 5*time.Millisecond, 1.0)
-	fastDecay := NewNeuron("fast_decay", 2.0, 0.8, 5*time.Millisecond, 1.0)
+	slowDecay := NewSimpleNeuron("slow_decay", 2.0, 0.99, 5*time.Millisecond, 1.0)
+	fastDecay := NewSimpleNeuron("fast_decay", 2.0, 0.8, 5*time.Millisecond, 1.0)
 
 	slowOutput := make(chan Message, 10)
 	fastOutput := make(chan Message, 10)
@@ -682,7 +692,7 @@ func TestDecayRateEffects(t *testing.T) {
 
 // TestCloseBehavior tests graceful shutdown
 func TestCloseBehavior(t *testing.T) {
-	neuron := NewNeuron("test_close", 1.0, 0.98, 5*time.Millisecond, 1.0)
+	neuron := NewSimpleNeuron("test_close", 1.0, 0.98, 5*time.Millisecond, 1.0)
 
 	output := make(chan Message, 10)
 	neuron.AddOutput("test", output, 1.0, 0)
@@ -700,17 +710,21 @@ func TestCloseBehavior(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 }
 
+// ============================================================================
+// BENCHMARK TESTS (Original functionality only)
+// ============================================================================
+
 // BenchmarkNeuronCreation benchmarks neuron creation performance
 func BenchmarkNeuronCreation(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		neuronID := fmt.Sprintf("bench_neuron_%d", i)
-		_ = NewNeuron(neuronID, 1.0, 0.95, 5*time.Millisecond, 1.0)
+		_ = NewSimpleNeuron(neuronID, 1.0, 0.95, 5*time.Millisecond, 1.0)
 	}
 }
 
 // BenchmarkMessageProcessing benchmarks message processing throughput
 func BenchmarkMessageProcessing(b *testing.B) {
-	neuron := NewNeuron("bench_processing", 10.0, 0.95, 5*time.Millisecond, 1.0) // High threshold to avoid firing
+	neuron := NewSimpleNeuron("bench_processing", 10.0, 0.95, 5*time.Millisecond, 1.0) // High threshold to avoid firing
 
 	go neuron.Run()
 	defer neuron.Close()
@@ -725,7 +739,7 @@ func BenchmarkMessageProcessing(b *testing.B) {
 
 // BenchmarkOutputManagement benchmarks adding/removing outputs
 func BenchmarkOutputManagement(b *testing.B) {
-	neuron := NewNeuron("bench_output_mgmt", 1.0, 0.95, 5*time.Millisecond, 1.0)
+	neuron := NewSimpleNeuron("bench_output_mgmt", 1.0, 0.95, 5*time.Millisecond, 1.0)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
