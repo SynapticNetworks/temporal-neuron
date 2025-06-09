@@ -224,15 +224,13 @@ type SynapticProcessor interface {
 // This defines what methods a neuron must have to work with synapses
 // =================================================================================
 
-// SynapseCompatibleNeuron defines the interface that neurons must implement
-// to work with the synapse system. This allows synapses to communicate with
-// neurons without depending on specific neuron implementations.
-type SynapseCompatibleNeuron interface {
+// PostsynapticNeuron defines the interface that neurons must implement
+// to receive synaptic input from presynaptic neurons
+type PostsynapticNeuron interface {
 	// ID returns the unique identifier of the neuron
 	ID() string
 
-	// Receive accepts a synapse message and processes it
-	// This method should be added to existing neuron implementations
+	// Receive accepts a synaptic signal and processes it
 	Receive(msg SynapseMessage)
 }
 
@@ -263,8 +261,8 @@ type BasicSynapse struct {
 
 	// === NETWORK CONNECTIONS ===
 	// These maintain references to the neurons this synapse connects
-	preSynapticNeuron  SynapseCompatibleNeuron // A pointer back to the source neuron
-	postSynapticNeuron SynapseCompatibleNeuron // A pointer to the target neuron
+	preSynapticNeuron  PostsynapticNeuron // A pointer back to the source neuron
+	postSynapticNeuron PostsynapticNeuron // A pointer to the target neuron
 
 	// === SYNAPTIC PROPERTIES ===
 	// These define the core transmission characteristics of the synapse
@@ -308,7 +306,7 @@ type BasicSynapse struct {
 //
 // The constructor performs validation and bounds checking to ensure the
 // synapse starts in a valid state that won't cause network instabilities.
-func NewBasicSynapse(id string, pre SynapseCompatibleNeuron, post SynapseCompatibleNeuron, stdpConfig STDPConfig, pruningConfig PruningConfig, initialWeight float64, delay time.Duration) *BasicSynapse {
+func NewBasicSynapse(id string, pre PostsynapticNeuron, post PostsynapticNeuron, stdpConfig STDPConfig, pruningConfig PruningConfig, initialWeight float64, delay time.Duration) *BasicSynapse {
 	// Validate and clamp delay to non-negative values
 	// Negative delays are non-physical and would cause timing issues
 	if delay < 0 {
@@ -617,6 +615,9 @@ func calculateSTDPWeightChange(timeDifference time.Duration, config STDPConfig) 
 //	- "weight": Current synaptic weight
 //	- "timeSinceTransmission": Duration since last transmission
 //	- "timeSincePlasticity": Duration since last plasticity
+//	- "id": Synapse identifier
+//	- "presynapticID": ID of the pre-synaptic (source) neuron
+//	- "postsynapticID": ID of the post-synaptic (target) neuron
 func (s *BasicSynapse) GetActivityInfo() map[string]interface{} {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
@@ -630,6 +631,10 @@ func (s *BasicSynapse) GetActivityInfo() map[string]interface{} {
 	info["timeSinceTransmission"] = now.Sub(s.lastTransmission)
 	info["timeSincePlasticity"] = now.Sub(s.lastPlasticityEvent)
 	info["id"] = s.id
+
+	// Add neuron connection information for STDP feedback routing
+	info["presynapticID"] = s.preSynapticNeuron.ID()
+	info["postsynapticID"] = s.postSynapticNeuron.ID()
 
 	return info
 }
