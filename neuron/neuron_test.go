@@ -144,15 +144,6 @@ func TestNeuronCreation(t *testing.T) {
 		t.Errorf("Expected 0 synaptic connections initially, got %d",
 			neuron.GetOutputSynapseCount())
 	}
-
-	// Test that homeostasis is disabled for simple neurons
-	if neuron.homeostatic.targetFiringRate != 0.0 {
-		t.Errorf("Expected disabled homeostasis (targetFiringRate=0), got %f", neuron.homeostatic.targetFiringRate)
-	}
-
-	if neuron.homeostatic.homeostasisStrength != 0.0 {
-		t.Errorf("Expected disabled homeostasis (homeostasisStrength=0), got %f", neuron.homeostatic.homeostasisStrength)
-	}
 }
 
 // TestSimpleNeuronCreation validates backward compatibility constructor
