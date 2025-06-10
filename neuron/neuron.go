@@ -1561,6 +1561,13 @@ func (n *Neuron) Receive(msg synapse.SynapseMessage) {
 	// - Refractory period enforcement
 	// - Fire event reporting
 
+	// *** FIX: Gracefully handle panics from sending on a closed channel. ***
+	// This can occur during a clean network shutdown if a synapse's delayed transmission
+	// attempts to deliver a message to a neuron that has already been closed.
+	defer func() {
+		recover()
+	}()
+
 	select {
 	case n.input <- msg:
 		// Successfully delivered message to neuron's processing pipeline

@@ -2075,19 +2075,25 @@ func TestSTDPNetworkPerformance(t *testing.T) {
 	// --- SETUP: Fire event collection ---
 	var spikeCount int64
 	fireEvents := make(chan FireEvent, totalNeurons*20) // Increased buffer
-	var wg sync.WaitGroup
-	wg.Add(1)
+
+	var collectorWg sync.WaitGroup
+	collectorWg.Add(1)
 	go func() {
-		defer wg.Done()
+		defer collectorWg.Done()
 		for range fireEvents {
 			atomic.AddInt64(&spikeCount, 1)
 		}
 	}()
 
-	// Start all neurons and set fire event channel
+	// --- SETUP: Start all neurons ---
+	var neuronWg sync.WaitGroup
 	for _, n := range allNeurons {
 		n.SetFireEventChannel(fireEvents)
-		go n.Run()
+		neuronWg.Add(1)
+		go func(neuron *Neuron) {
+			defer neuronWg.Done()
+			neuron.Run()
+		}(n)
 		defer n.Close()
 	}
 
@@ -2102,7 +2108,6 @@ func TestSTDPNetworkPerformance(t *testing.T) {
 		stimulusWg.Add(1)
 		go func(neuron *Neuron, idx int) {
 			defer stimulusWg.Done()
-			// Each input fires at a slightly different high frequency (~30-50Hz)
 			ticker := time.NewTicker(time.Duration(20+idx*3) * time.Millisecond)
 			defer ticker.Stop()
 			for {
@@ -2121,11 +2126,16 @@ func TestSTDPNetworkPerformance(t *testing.T) {
 	close(stopSignal)              // Signal stimulus goroutines to stop
 	stimulusWg.Wait()              // Wait for all stimulus goroutines to finish
 
-	// --- RESULTS: Calculate and report performance ---
-	elapsed := time.Since(startTime)
-	close(fireEvents)
-	wg.Wait() // Wait for spike counter to finish
+	// --- SHUTDOWN & RESULTS ---
+	// Close all neuron input channels AFTER stimulation has stopped
+	for _, n := range allNeurons {
+		n.Close()
+	}
+	neuronWg.Wait()    // Wait for all neuron goroutines to exit
+	close(fireEvents)  // Now it's safe to close the fireEvents channel
+	collectorWg.Wait() // Wait for the spike counter to finish processing remaining events
 
+	elapsed := time.Since(startTime)
 	spikesPerSecond := float64(spikeCount) / elapsed.Seconds()
 
 	t.Log("\n--- PERFORMANCE RESULTS ---")
