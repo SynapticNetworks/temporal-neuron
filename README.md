@@ -3,7 +3,7 @@
 [![Go Version](https://img.shields.io/badge/go-%3E%3D1.21-blue.svg)](https://golang.org/)
 [![License](https://img.shields.io/badge/License-Temporal%20Neuron%20Research%20License-blue.svg)](./LICENSE.md)
 [![Go Report Card](https://goreportcard.com/badge/github.com/SynapticNetworks/temporal-neuron)](https://goreportcard.com/report/github.com/SynapticNetworks/temporal-neuron)
-![Test Status](https://img.shields.io/badge/tests-260%2B%20comprehensive-green)
+![Test Status](https://img.shields.io/badge/tests-passing-brightgreen)
 
 ## ⚠️ Research Project - Active Development
 
