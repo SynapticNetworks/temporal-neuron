@@ -1,7 +1,7 @@
 # Temporal Neuron Research License (TNRL)
-## Version 1.0 (Enhanced)
+## Version 1.0
 
-Copyright (c) 2024-2025 SynapticNetworks/Temporal Neuron Project
+Copyright (c) 2024-2025 SynapticNetworks/Temporal Neuron Project/sistemica GmbH
 
 ---
 
@@ -43,7 +43,7 @@ You may **NOT** use the Work for Commercial Use without obtaining explicit writt
 #### d) Attribution
 You must retain, in the Source form of any Derivative Works that You distribute, all copyright, patent, trademark, and attribution notices from the Source form of the Work. For any academic or research publications resulting from the use of the Work, you must provide proper citation. The recommended format is:
 
-> *Temporal Neuron Project, SynapticNetworks (2024), under the Temporal Neuron Research License v1.0.*
+> *Temporal Neuron Project, SynapticNetworks/sistemica GmbH (2025), under the Temporal Neuron Research License v1.0.*
 
 #### e) Notice
 You must include a complete and unmodified copy of this License with any distribution of the Work or Derivative Works.
