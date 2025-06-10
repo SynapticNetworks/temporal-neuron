@@ -1,0 +1,67 @@
+name: Go Tests
+
+# Triggers the workflow on push or pull request events for the master branch
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  test:
+    name: Run Go Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Check out the repository code
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Step 2: Set up Go environment
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22' # Use the latest stable Go version
+          cache: true # Enable dependency caching for faster builds
+
+      # Step 3: Run tests for neuron package
+      - name: Run neuron tests
+        run: go test -v -short ./neuron
+        working-directory: ./
+
+      # Step 4: Run tests for synapse package
+      - name: Run synapse tests
+        run: go test -v -short ./synapse
+        working-directory: ./
+
+      # Step 5: Generate test status badge
+      - name: Generate test badge
+        if: always() # Run even if tests fail
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const { context } = require('@actions/github');
+            const status = context.job.status === 'success' ? 'passing' : 'failing';
+            const color = status === 'passing' ? 'brightgreen' : 'red';
+            const badgeUrl = `https://img.shields.io/badge/tests-${status}-${color}`;
+            const readmePath = 'README.md';
+            let readmeContent = fs.readFileSync(readmePath, 'utf8');
+            const badgeRegex = /!\[Test Status\]\(https:\/\/img\.shields\.io\/badge\/tests-[^\)]+\)/;
+            const newBadge = `![Test Status](${badgeUrl})`;
+            readmeContent = readmeContent.replace(badgeRegex, newBadge) || readmeContent + `\n${newBadge}\n`;
+            fs.writeFileSync(readmePath, readmeContent);
+
+      # Step 6: Commit and push badge update
+      - name: Commit badge update
+        if: always() # Run even if tests fail
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git add README.md
+          git commit -m 'Update test status badge' || echo "No changes to commit"
+          git push origin master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

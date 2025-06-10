@@ -1,6 +1,6 @@
 /*
 =================================================================================
-BIOLOGICAL NEURON SIMULATION - CORE BUILDING BLOCK WITH HOMEOSTATIC PLASTICITY
+BIOLOGICAL NEURON SIMULATION - SYNAPSE-INTEGRATED ARCHITECTURE
 =================================================================================
 
 OVERVIEW:
@@ -8,6 +8,10 @@ This package implements a biologically-inspired artificial neuron that serves as
 the fundamental building block for constructing neural networks with dynamic
 connectivity, realistic timing behavior, homeostatic self-regulation, and
 synaptic scaling for long-term stability.
+
+The neuron integrates seamlessly with the synapse package, which provides
+biologically accurate synaptic connections with STDP learning, structural
+plasticity, and realistic transmission dynamics.
 
 BIOLOGICAL INSPIRATION:
 Real biological neurons are far more complex than traditional artificial neurons
@@ -30,25 +34,27 @@ used in deep learning. Key biological features modeled here:
    adjust their receptor sensitivity to maintain stable responsiveness while
    preserving learned patterns from STDP
 
-6. SPIKE-TIMING DEPENDENT PLASTICITY (STDP): Individual synapses strengthen or
-   weaken based on precise timing relationships between pre- and post-synaptic
-   spikes, implementing biological learning rules
-
-7. DYNAMIC CONNECTIVITY: Biological neurons can grow new connections (synapses)
+6. DYNAMIC CONNECTIVITY: Biological neurons can grow new connections (synapses)
    and prune existing ones throughout their lifetime (neuroplasticity)
 
-8. PARALLEL TRANSMISSION: A single action potential propagates to ALL connected
+7. PARALLEL TRANSMISSION: A single action potential propagates to ALL connected
    neurons simultaneously through the axon's branching structure
 
-9. TRANSMISSION DELAYS: Different connections have different delays based on
+8. TRANSMISSION DELAYS: Different connections have different delays based on
    axon length, diameter, and myelination
 
-10. SYNAPTIC STRENGTH: Each connection has its own "weight" or strength that
-    modulates the signal intensity and adapts through learning
+9. REFRACTORY PERIODS: Cannot fire immediately after firing (recovery time)
 
-11. REFRACTORY PERIODS: Cannot fire immediately after firing (recovery time)
+10. LEAKY INTEGRATION: Membrane potential naturally decays over time
 
-12. LEAKY INTEGRATION: Membrane potential naturally decays over time
+SYNAPSE INTEGRATION:
+This neuron implementation is designed to work with the synapse package, which
+provides biologically accurate synaptic connections with:
+- STDP learning capabilities
+- Realistic transmission delays
+- Structural plasticity (pruning)
+- Thread-safe concurrent operation
+- Message-based communication
 
 MULTI-TIMESCALE PLASTICITY:
 This implementation models the multiple timescales of biological plasticity:
@@ -57,96 +63,7 @@ This implementation models the multiple timescales of biological plasticity:
 - Homeostatic Plasticity (seconds to minutes): Intrinsic excitability adjustment
 - Synaptic Scaling (minutes to hours): Proportional adjustment of receptor sensitivity
 
-These mechanisms work together to create stable yet adaptive learning:
-- STDP learns specific patterns and associations
-- Homeostatic plasticity maintains appropriate firing rates
-- Synaptic scaling prevents runaway strengthening while preserving learned patterns
-
-HOMEOSTATIC PLASTICITY DETAILS:
-Homeostatic plasticity is the neuron's ability to maintain stable activity levels
-by automatically adjusting its intrinsic properties. This biological mechanism:
-
-- Prevents network instability (runaway excitation or silence)
-- Maintains optimal firing rates without manual intervention
-- Uses calcium accumulation as an activity sensor
-- Adjusts firing threshold based on recent activity history
-- Operates on slower timescales than synaptic plasticity (seconds vs milliseconds)
-
-In real neurons:
-- Hyperactive neurons (high calcium) increase their firing threshold
-- Silent neurons (low calcium) decrease their firing threshold
-- This creates a negative feedback loop that stabilizes network activity
-- The process occurs over seconds to minutes, much slower than synaptic events
-
-SYNAPTIC SCALING DETAILS (BIOLOGICALLY ACCURATE):
-Synaptic scaling is a homeostatic mechanism that maintains stable total synaptic
-input strength while preserving the relative patterns learned through STDP:
-
-- POST-SYNAPTIC CONTROL: The receiving neuron controls its own receptor sensitivity
-- RECEPTOR SCALING: Adjusts AMPA/NMDA receptor density at each synapse
-- PATTERN PRESERVATION: Maintains relative ratios between different inputs
-- PRE-SYNAPTIC INDEPENDENCE: Source neurons remain unaware of scaling
-- BIOLOGICAL SEPARATION: Pre-synaptic strength vs post-synaptic sensitivity
-
-Example: If all synapses strengthen 2x due to STDP, post-synaptic scaling reduces
-receptor sensitivity by 50% to restore target total strength while maintaining
-learned relative patterns.
-
-TRADITIONAL AI vs THIS APPROACH:
-- Traditional ANNs: Static connectivity, synchronous processing, mathematical
-  activation functions, no realistic timing, no homeostatic regulation
-- This neuron: Dynamic connectivity, asynchronous messaging, temporal integration,
-  biological timing delays, self-regulating activity levels, multi-timescale
-  learning, and automatic synaptic balance maintenance
-
-KEY DESIGN PRINCIPLES:
-1. CONCURRENCY: Each neuron runs as an independent goroutine, enabling true
-   parallel processing like real neural networks
-
-2. MESSAGE PASSING: Neurons communicate through Go channels, modeling the
-   discrete nature of biological action potentials
-
-3. TEMPORAL DYNAMICS: Input accumulation over configurable time windows models
-   how real dendrites integrate signals
-
-4. DYNAMIC ARCHITECTURE: Connections can be added/removed at runtime, enabling
-   learning and adaptation
-
-5. HOMEOSTATIC REGULATION: Neurons automatically maintain stable activity levels
-   through threshold adjustment and activity monitoring
-
-6. SYNAPTIC BALANCE: Automatic receptor scaling maintains optimal input strength
-   while preserving learned patterns
-
-7. THREAD SAFETY: Multiple goroutines can safely modify connections while the
-   neuron processes inputs
-
-BUILDING BLOCKS FOR LARGER SYSTEMS:
-This neuron serves as the foundation for:
-- Static neural networks (traditional architectures)
-- Dynamic neural networks (growing/pruning connections)
-- Gated neural networks (where gates control connectivity)
-- Spiking neural networks (event-driven processing)
-- Neuromorphic computing systems
-- Self-regulating biological brain simulations
-- Long-term stable learning networks
-
-USAGE PATTERN:
-1. Create neuron with threshold, decay rate, refractory period, and plasticity parameters
-2. Connect to other neurons by adding outputs (automatically registers for scaling)
-3. Launch as goroutine: go neuron.Run()
-4. Send messages to neuron.GetInput() channel
-5. Observe automatic homeostatic regulation maintaining stable activity
-6. Monitor STDP learning strengthening/weakening specific connections
-7. Watch synaptic scaling maintain overall network stability
-8. Dynamically modify connections during runtime
-9. Monitor emergent network behavior with multi-timescale self-regulation
-
-This approach enables building AI systems that operate more like biological
-brains - with realistic timing, dynamic connectivity, self-regulation at multiple
-timescales, stable long-term learning, and emergent intelligence arising from
-the interaction of many simple, concurrent processing units with sophisticated
-internal regulatory mechanisms.
+These mechanisms work together to create stable yet adaptive learning.
 
 =================================================================================
 */
@@ -157,693 +74,9 @@ import (
 	"math"
 	"sync"
 	"time"
+
+	"github.com/SynapticNetworks/temporal-neuron/synapse"
 )
-
-// Message represents a signal transmitted between neurons with spike timing information
-// Models the discrete action potential spikes in biological neural communication
-// Unlike traditional ANNs that use continuous values, this models the actual
-// binary spike-based communication found in real brains
-//
-// Enhanced with timing information for Spike-Timing Dependent Plasticity (STDP):
-// STDP requires precise timing information to determine whether synaptic connections
-// should be strengthened or weakened based on the temporal relationship between
-// pre-synaptic and post-synaptic spikes
-type Message struct {
-	Value float64 // Signal strength/intensity (can be positive or negative)
-	// Positive values = excitatory signals (increase firing probability)
-	// Negative values = inhibitory signals (decrease firing probability)
-
-	Timestamp time.Time // Precise timestamp when the spike occurred at the source
-	// Critical for STDP: the relative timing between pre and post-synaptic spikes
-	// determines whether synaptic strength increases (LTP) or decreases (LTD)
-	// Biological timescale: STDP effects occur within ±20-50ms windows
-
-	SourceID string // Identifier of the neuron that generated this spike
-	// Enables post-synaptic neurons to track which specific synapses contributed
-	// to their firing and apply appropriate STDP weight modifications
-	// Essential for learning in networks with multiple inputs per neuron
-}
-
-// SynapticScalingConfig contains all parameters controlling synaptic scaling behavior
-// This structure encapsulates the homeostatic mechanism that maintains synaptic balance
-//
-// BIOLOGICAL BACKGROUND:
-// Synaptic scaling is a homeostatic mechanism observed in real neurons that prevents
-// runaway strengthening or weakening of synaptic connections. When total synaptic
-// input becomes too strong or weak, neurons proportionally scale their receptor
-// sensitivity to maintain optimal responsiveness while preserving learned patterns.
-//
-// TIMESCALES:
-// - STDP: milliseconds to seconds (fast learning)
-// - Synaptic Scaling: minutes to hours (slow homeostasis)
-// - Homeostatic Plasticity: seconds to minutes (medium regulation)
-//
-// INTERACTION WITH OTHER MECHANISMS:
-// Synaptic scaling works alongside STDP and homeostatic plasticity to create
-// a multi-layered regulatory system that enables stable yet adaptive learning.
-type SynapticScalingConfig struct {
-	Enabled bool // Master switch for synaptic scaling functionality
-	// When false, synaptic scaling is completely disabled
-	// When true, scaling occurs according to the parameters below
-	// Useful for experimental comparisons and debugging
-
-	// === CORE SCALING PARAMETERS ===
-	// These control the target behavior and speed of synaptic scaling
-
-	TargetInputStrength float64 // Desired average effective input strength
-	// Biological interpretation: optimal total synaptic drive for this neuron
-	// This is the target for (synaptic_weight × receptor_gain) averaged across inputs
-	// Typical values: 0.5-2.0 depending on neuron type and network role
-	// Higher values = neuron expects stronger overall input
-	// Lower values = neuron operates with weaker overall input
-
-	ScalingRate float64 // Rate of receptor gain adjustment per scaling event
-	// Controls how aggressively gains are adjusted toward target
-	// Range: 0.0001 (very conservative) to 0.01 (aggressive)
-	// Higher values = faster correction but potentially less stable
-	// Lower values = slower correction but more stable learning
-
-	ScalingInterval time.Duration // Time between synaptic scaling operations
-	// Biological timescale: much slower than STDP (which operates in milliseconds)
-	// Typical range: 10 seconds to 10 minutes
-	// Shorter intervals = more responsive but higher computational cost
-	// Longer intervals = more efficient but slower adaptation
-
-	// === SAFETY CONSTRAINTS ===
-	// These prevent extreme scaling that could destabilize the network
-
-	MinScalingFactor float64 // Minimum multiplier applied to gains per scaling event
-	// Prevents excessive reduction in a single scaling operation
-	// Typical values: 0.8-0.95 (don't reduce gains by more than 5-20% per event)
-	// Protects against sudden loss of important learned connections
-
-	MaxScalingFactor float64 // Maximum multiplier applied to gains per scaling event
-	// Prevents excessive increase in a single scaling operation
-	// Typical values: 1.05-1.2 (don't increase gains by more than 5-20% per event)
-	// Prevents runaway excitation from overly aggressive scaling
-
-	// === STATE TRACKING ===
-	// These fields track scaling history and timing for proper operation
-
-	LastScalingUpdate time.Time // Timestamp of most recent scaling operation
-	// Used to determine when next scaling should occur based on ScalingInterval
-	// Updated automatically each time scaling is performed
-
-	ScalingHistory []float64 // Recent scaling factors for monitoring and analysis
-	// Stores the actual scaling factors applied in recent operations
-	// Useful for debugging, visualization, and detecting scaling oscillations
-	// Limited to recent history to prevent unlimited memory growth
-}
-
-// calculateSTDPWeightChange computes the STDP weight change based on spike timing.
-// This implements the core STDP learning rule with exponential timing windows.
-//
-// Time difference convention: Δt = post_spike_time - pre_spike_time
-//   - Δt < 0: pre-synaptic spike before post-synaptic spike (causal) -> LTP (strengthen) -> POSITIVE change
-//   - Δt > 0: post-synaptic spike before pre-synaptic spike (anti-causal) -> LTD (weaken) -> NEGATIVE change
-//
-// Mathematical Model:
-// For Δt < 0 (causal):   ΔW = +LearningRate * AsymmetryRatio * exp(Δt / τ)
-// For Δt > 0 (anti-causal): ΔW = -LearningRate * exp(-Δt / τ)
-//
-// Parameters:
-// timeDifference: The result of postSpikeTime.Sub(preSpikeTime).
-// config: STDP configuration containing learning rates and time constants.
-//
-// Returns: The calculated weight change (positive for LTP, negative for LTD).
-func calculateSTDPWeightChange(timeDifference time.Duration, config STDPConfig) float64 {
-	deltaT := timeDifference.Seconds() * 1000.0 // Convert to milliseconds
-	windowMs := config.WindowSize.Seconds() * 1000.0
-
-	// No plasticity outside the timing window
-	if math.Abs(deltaT) >= windowMs {
-		return 0.0
-	}
-
-	tauMs := config.TimeConstant.Seconds() * 1000.0
-	if tauMs == 0 {
-		return 0.0 // Avoid division by zero
-	}
-
-	// CORRECTED STDP logic
-	if deltaT < 0 {
-		// CAUSAL (LTP): Pre-synaptic spike occurred *before* post-synaptic (deltaT < 0).
-		// Positive change to strengthen the synapse.
-		// deltaT is negative, so exp(deltaT/tau) naturally decays as |deltaT| increases
-		return config.LearningRate * config.AsymmetryRatio * math.Exp(deltaT/tauMs)
-	} else if deltaT > 0 {
-		// ANTI-CAUSAL (LTD): Post-synaptic spike occurred *before* pre-synaptic (deltaT > 0).
-		// Negative change to weaken the synapse.
-		// deltaT is positive, so we use -deltaT/tau for the decay
-		return -config.LearningRate * math.Exp(-deltaT/tauMs)
-	} else {
-		// Simultaneous firing (deltaT == 0). Can be treated as LTD or a special case.
-		// Returning a small negative value is a common choice.
-		return -config.LearningRate
-	}
-}
-
-// cleanOldSpikeHistory removes spike events outside the STDP timing window
-// This maintains computational efficiency by preventing unlimited memory growth
-// and ensures only biologically relevant timing relationships are considered
-//
-// Biological rationale:
-// Real synapses have limited temporal integration windows. Spikes separated
-// by more than ~50ms have no effect on synaptic plasticity. This function
-// models this biological constraint while optimizing memory usage.
-//
-// Parameters:
-// spikes: slice of spike events to clean
-// currentTime: reference time for determining what constitutes "old"
-// windowSize: maximum age of spikes to retain
-//
-// Returns: cleaned slice with only recent spikes
-func cleanOldSpikeHistory(spikes []SpikeEvent, currentTime time.Time, windowSize time.Duration) []SpikeEvent {
-	if len(spikes) == 0 {
-		return spikes
-	}
-
-	// Calculate cutoff time - spikes older than this are removed
-	cutoffTime := currentTime.Add(-windowSize)
-
-	// Find the first spike that is still within the window
-	keepFromIndex := -1
-	for i, spike := range spikes {
-		if !spike.Timestamp.Before(cutoffTime) {
-			keepFromIndex = i
-			break
-		}
-	}
-
-	// If all spikes are too old, return empty slice
-	if keepFromIndex == -1 {
-		return []SpikeEvent{}
-	}
-
-	// Return slice containing only recent spikes
-	// Create new slice to allow garbage collection of old events
-	recentSpikes := make([]SpikeEvent, len(spikes)-keepFromIndex)
-	copy(recentSpikes, spikes[keepFromIndex:])
-	return recentSpikes
-}
-
-// cleanOldPreSpikeHistory removes old pre-synaptic spike times from synapse history
-// Similar to cleanOldSpikeHistory but operates on time.Time slices for efficiency
-//
-// This function is called on individual synapses to maintain their pre-spike
-// timing history within biologically relevant windows
-func cleanOldPreSpikeHistory(spikeTimes []time.Time, currentTime time.Time, windowSize time.Duration) []time.Time {
-	if len(spikeTimes) == 0 {
-		return spikeTimes
-	}
-
-	cutoffTime := currentTime.Add(-windowSize)
-
-	// Find first spike time within window
-	keepFromIndex := -1
-	for i, spikeTime := range spikeTimes {
-		if !spikeTime.Before(cutoffTime) {
-			keepFromIndex = i
-			break
-		}
-	}
-
-	// If all spikes are too old, return empty slice
-	if keepFromIndex == -1 {
-		return []time.Time{}
-	}
-
-	recentTimes := make([]time.Time, len(spikeTimes)-keepFromIndex)
-	copy(recentTimes, spikeTimes[keepFromIndex:])
-	return recentTimes
-}
-
-// recordPreSynapticSpike records a new pre-synaptic spike for STDP processing
-// This method is called on the output synapse when the pre-synaptic neuron fires
-//
-// Biological context:
-// When a neuron fires, all of its output synapses need to record this event
-// for future STDP calculations. If any of the target neurons fire later,
-// they will look back at this timing information to determine how to modify
-// the synaptic weights.
-//
-// Parameters:
-// spikeTime: precise timestamp when the pre-synaptic neuron fired
-// config: STDP configuration for cleanup timing
-func (o *Output) recordPreSynapticSpike(spikeTime time.Time, config STDPConfig) {
-	// Skip recording if STDP is disabled for this synapse
-	if !o.stdpEnabled || !config.Enabled {
-		return
-	}
-
-	// Add this spike time to the history
-	o.preSpikeTimes = append(o.preSpikeTimes, spikeTime)
-	o.lastPreSpike = spikeTime
-
-	// Clean old spike times to prevent unlimited memory growth
-	// Only keep spikes within the STDP timing window
-	o.preSpikeTimes = cleanOldPreSpikeHistory(o.preSpikeTimes, spikeTime, config.WindowSize)
-
-	// Limit maximum history size for computational efficiency
-	maxHistorySize := 100 // Reasonable limit for most applications
-	if len(o.preSpikeTimes) > maxHistorySize {
-		// Keep only the most recent spikes
-		start := len(o.preSpikeTimes) - maxHistorySize
-		o.preSpikeTimes = o.preSpikeTimes[start:]
-	}
-}
-
-// applySTDPToSynapse modifies synaptic weight based on post-synaptic firing
-// This is the core STDP implementation that strengthens or weakens synapses
-// based on spike timing relationships
-//
-// Biological process:
-// When the post-synaptic neuron fires, it examines all recent pre-synaptic
-// spikes. For each pre-spike, it calculates the timing difference and applies
-// the appropriate weight change. This implements the "neurons that fire together,
-// wire together" principle with precise temporal requirements.
-//
-// Parameters:
-// postSpikeTime: when the post-synaptic neuron fired
-// config: STDP configuration parameters
-func (o *Output) applySTDPToSynapse(postSpikeTime time.Time, config STDPConfig) {
-	// Skip if STDP is disabled
-	if !o.stdpEnabled || !config.Enabled {
-		return
-	}
-
-	// Process all recent pre-synaptic spikes
-	totalWeightChange := 0.0
-	for _, preSpikeTime := range o.preSpikeTimes {
-		// Calculate timing difference (post - pre)
-		timeDifference := postSpikeTime.Sub(preSpikeTime)
-
-		// Calculate STDP weight change for this spike pair
-		weightChange := calculateSTDPWeightChange(timeDifference, config)
-		totalWeightChange += weightChange
-	}
-
-	// Apply the total weight change with bounds checking
-	if totalWeightChange != 0.0 {
-		o.updateSynapticWeight(totalWeightChange)
-	}
-}
-
-// updateSynapticWeight safely modifies the synaptic weight within biological bounds
-// This function ensures that synaptic weights remain within realistic ranges
-// and implements saturation effects observed in biological synapses
-//
-// Biological constraints:
-// - Synapses cannot become infinitely strong (physical saturation)
-// - Synapses cannot become negative (unidirectional transmission)
-// - Weight changes may be subject to homeostatic scaling
-//
-// Parameters:
-// deltaWeight: proposed change in synaptic weight (can be positive or negative)
-func (o *Output) updateSynapticWeight(deltaWeight float64) {
-	// Calculate new proposed weight
-	newWeight := o.factor + deltaWeight
-
-	// Apply hard bounds to prevent runaway strengthening or elimination
-	if newWeight < o.minWeight {
-		newWeight = o.minWeight
-	} else if newWeight > o.maxWeight {
-		newWeight = o.maxWeight
-	}
-
-	// Update the synaptic weight
-	o.factor = newWeight
-}
-
-// getSynapticStrength returns the current synaptic weight for external monitoring
-// This provides read-only access to the current synaptic strength for analysis
-func (o *Output) getSynapticStrength() float64 {
-	return o.factor
-}
-
-// getSynapticLearningStats returns statistics about this synapse's learning
-// Useful for monitoring and debugging STDP behavior in large networks
-func (o *Output) getSynapticLearningStats() map[string]interface{} {
-	stats := make(map[string]interface{})
-
-	stats["currentWeight"] = o.factor
-	stats["baseWeight"] = o.baseWeight
-	stats["minWeight"] = o.minWeight
-	stats["maxWeight"] = o.maxWeight
-	stats["learningRate"] = o.learningRate
-	stats["recentPreSpikes"] = len(o.preSpikeTimes)
-	stats["stdpEnabled"] = o.stdpEnabled
-
-	// Calculate weight change percentage from baseline
-	if o.baseWeight != 0 {
-		stats["weightChangePercent"] = (o.factor - o.baseWeight) / o.baseWeight * 100
-	}
-
-	return stats
-}
-
-// addRecentInputSpike records an incoming spike for STDP processing
-// Called when this neuron receives a spike from another neuron
-//
-// Biological context:
-// When a post-synaptic neuron receives a spike, it needs to record the timing
-// and source information. If this neuron fires later, it will use this information
-// to apply STDP to the appropriate synapses.
-//
-// mustBeLocked: true (stateMutex must be held by caller)
-func (n *Neuron) addRecentInputSpikeUnsafe(spike SpikeEvent) {
-	// Skip if STDP is disabled
-	if !n.stdpConfig.Enabled {
-		return
-	}
-
-	// Add the spike to recent input history
-	n.recentInputSpikes = append(n.recentInputSpikes, spike)
-
-	// Clean old spikes to prevent memory growth
-	n.recentInputSpikes = cleanOldSpikeHistory(n.recentInputSpikes, spike.Timestamp, n.stdpConfig.WindowSize)
-
-	// Limit maximum history size for computational efficiency
-	maxInputHistory := 200 // Allow more input history than pre-spike history
-	if len(n.recentInputSpikes) > maxInputHistory {
-		start := len(n.recentInputSpikes) - maxInputHistory
-		n.recentInputSpikes = n.recentInputSpikes[start:]
-	}
-}
-
-// applySTDPToAllRecentInputsUnsafe applies STDP learning to all recent input synapses
-// Called when this neuron fires to strengthen/weaken incoming connections
-//
-// Biological process:
-// When a neuron fires, it examines all recent input spikes and applies STDP
-// to strengthen synapses that contributed to its firing (causal relationships)
-// and weaken synapses that fired after it was already committed to firing
-//
-// mustBeLocked: true (stateMutex must be held by caller)
-func (n *Neuron) applySTDPToAllRecentInputsUnsafe(postSpikeTime time.Time) {
-	if !n.stdpConfig.Enabled {
-		return
-	}
-
-	// Track STDP changes to apply to input gains
-	stdpChanges := make(map[string]float64)
-
-	// Process all recent input spikes for STDP
-	for _, inputSpike := range n.recentInputSpikes {
-		sourceID := inputSpike.SourceID
-		if sourceID == "" {
-			continue // Do not learn from anonymous triggers
-		}
-
-		// CORRECTED: Calculate time difference (pre - post) for STDP function
-		// This ensures that causal timing (pre before post) gives negative values
-		// which the STDP function correctly interprets as LTP
-		timeDiff := inputSpike.Timestamp.Sub(postSpikeTime) // pre - post
-
-		// NOTE: This is the opposite of the previous calculation:
-		// OLD (wrong): timeDiff := postSpikeTime.Sub(inputSpike.Timestamp) // post - pre
-		// NEW (correct): timeDiff := inputSpike.Timestamp.Sub(postSpikeTime) // pre - post
-		//
-		// With this correction:
-		// - If input spike was 8ms BEFORE neuron firing: timeDiff = -8ms → LTP (positive)
-		// - If input spike was 8ms AFTER neuron firing: timeDiff = +8ms → LTD (negative)
-
-		// Calculate STDP change for this spike pair
-		stdpChange := calculateSTDPWeightChange(timeDiff, n.stdpConfig)
-
-		// Accumulate changes for this source
-		stdpChanges[sourceID] += stdpChange
-	}
-
-	// Apply STDP changes to input gains
-	if len(stdpChanges) > 0 {
-		n.inputGainsMutex.Lock()
-		for sourceID, change := range stdpChanges {
-			if change != 0.0 {
-				if _, exists := n.inputGains[sourceID]; !exists {
-					n.inputGains[sourceID] = 1.0 // Initialize if not present
-				}
-
-				// Apply STDP change to the gain
-				newGain := n.inputGains[sourceID] + change
-
-				// Apply bounds (could be part of STDPConfig)
-				minGain := 0.1
-				maxGain := 5.0
-				if newGain < minGain {
-					newGain = minGain
-				} else if newGain > maxGain {
-					newGain = maxGain
-				}
-
-				n.inputGains[sourceID] = newGain
-			}
-		}
-		n.inputGainsMutex.Unlock()
-	}
-
-	// Clean up old spikes
-	n.recentInputSpikes = cleanOldSpikeHistory(n.recentInputSpikes, postSpikeTime, n.stdpConfig.WindowSize)
-	n.lastSTDPUpdate = postSpikeTime
-}
-
-// recordOutputSpikeForSTDP records a spike on all output synapses for STDP
-// Called when this neuron fires to update all its outgoing synapses
-//
-// mustBeLocked: true (stateMutex must be held by caller)
-func (n *Neuron) recordOutputSpikeForSTDPUnsafe(spikeTime time.Time) {
-	// Skip if STDP is disabled
-	if !n.stdpConfig.Enabled {
-		return
-	}
-
-	// Record this spike on all output synapses
-	n.outputsMutex.RLock()
-	for _, output := range n.outputs {
-		output.recordPreSynapticSpike(spikeTime, n.stdpConfig)
-	}
-	n.outputsMutex.RUnlock()
-}
-
-// processIncomingSpikeForSTDP handles the STDP aspects of an incoming message
-// This function extracts timing information and prepares for STDP learning
-//
-// Enhanced for synaptic scaling: Also registers input sources for scaling
-//
-// mustBeLocked: true (stateMutex must be held by caller)
-func (n *Neuron) processIncomingSpikeForSTDPUnsafe(msg Message) {
-	// Skip if STDP is disabled or message lacks a SourceID
-	if !n.stdpConfig.Enabled || msg.SourceID == "" {
-		return
-	}
-
-	// Create spike event for STDP tracking
-	spikeEvent := SpikeEvent{
-		SourceID:  msg.SourceID,
-		Timestamp: msg.Timestamp,
-		Value:     msg.Value,
-		SynapseID: msg.SourceID, // For now, assume one synapse per source
-	}
-
-	// Add to recent input spikes for future STDP processing
-	n.addRecentInputSpikeUnsafe(spikeEvent)
-
-	// Register input source for synaptic scaling if not already tracked
-	// This ensures all active input sources are considered during scaling
-	n.registerInputSourceForScaling(msg.SourceID)
-}
-
-// registerInputSourceForScaling registers a new input source for synaptic scaling
-// This method ensures that all active input sources have corresponding synaptic gains
-//
-// BIOLOGICAL CONTEXT:
-// When a post-synaptic neuron receives input from a new source, it needs to
-// establish receptor sensitivity (gain) for that synapse. Initially, the gain
-// is set to 1.0 (normal sensitivity), but it will be adjusted by synaptic scaling
-// to maintain optimal total input strength.
-//
-// This replaces the complex pointer sharing system with a simpler approach where
-// each neuron manages its own synaptic gains independently.
-func (n *Neuron) registerInputSourceForScaling(sourceID string) {
-	// Check if scaling is enabled for this neuron
-	if !n.scalingConfig.Enabled {
-		return
-	}
-
-	// Check if this source is already registered
-	n.inputGainsMutex.RLock()
-	_, exists := n.inputGains[sourceID]
-	n.inputGainsMutex.RUnlock()
-
-	// If not registered, add with default gain of 1.0
-	if !exists {
-		n.inputGainsMutex.Lock()
-		if n.inputGains == nil {
-			n.inputGains = make(map[string]float64)
-		}
-		// Check again inside the lock to prevent race conditions
-		if _, exists := n.inputGains[sourceID]; !exists {
-			n.inputGains[sourceID] = 1.0 // Default receptor sensitivity
-		}
-		n.inputGainsMutex.Unlock()
-	}
-}
-
-// Output represents a synaptic connection from this neuron to another component
-// In biology: this models the synapse - the connection point between neurons
-// Each synapse has unique characteristics that affect signal transmission
-//
-// Enhanced with Spike-Timing Dependent Plasticity (STDP) capabilities:
-// STDP is a biological learning mechanism where synaptic strength changes based
-// on the precise timing relationship between pre-synaptic and post-synaptic spikes.
-// This enables synapses to learn temporal patterns and causal relationships.
-type Output struct {
-	channel chan Message // Communication channel to the target neuron/component
-	// Models the synaptic cleft where neurotransmitters cross
-
-	factor float64 // Current synaptic strength/weight (modified by STDP)
-	// Models synaptic efficacy - how strong this connection is
-	// This value changes over time based on spike timing relationships
-	// Range typically bounded between minWeight and maxWeight
-
-	delay time.Duration // Biological transmission delay
-	// Models: axon conduction time, synaptic delay, etc.
-	// Longer axons = longer delays (realistic brain timing)
-
-	// === STDP LEARNING PARAMETERS ===
-	// These control how the synapse learns from spike timing relationships
-
-	baseWeight float64 // Original/reference synaptic weight
-	// The initial weight value when synapse was created
-	// Used as reference point for learning and weight bounds calculation
-
-	minWeight float64 // Minimum allowed synaptic weight
-	// Prevents synaptic weights from becoming too negative or being eliminated entirely
-	// Biological basis: even "weak" synapses maintain some minimal efficacy
-	// Typical value: 0.0 or small positive value
-
-	maxWeight float64 // Maximum allowed synaptic weight
-	// Prevents runaway synaptic strengthening that could destabilize the network
-	// Biological basis: synapses have physical limits on their maximum strength
-	// Typical value: 2-5 times the baseWeight
-
-	learningRate float64 // STDP learning rate coefficient
-	// Controls how quickly synaptic weights change in response to spike timing
-	// Higher values = faster learning but potentially less stable
-	// Lower values = slower learning but more stable
-	// Typical biological range: 0.001 - 0.1
-
-	// === STDP TIMING TRACKING ===
-	// These fields track spike timing history needed for STDP calculations
-
-	preSpikeTimes []time.Time // Recent pre-synaptic spike timestamps
-	// Sliding window of recent spikes from the pre-synaptic neuron (this neuron)
-	// Used to calculate timing differences when post-synaptic neuron fires
-	// Window size typically covers ±50ms to capture all biologically relevant timing
-
-	lastPreSpike time.Time // Timestamp of most recent pre-synaptic spike
-	// Optimized access to the most recent pre-synaptic spike time
-	// Used for fast STDP calculations without searching through preSpikeTimes array
-
-	// === STDP CONFIGURATION ===
-	// Parameters that control STDP behavior and timing windows
-
-	stdpEnabled bool // Whether STDP learning is active for this synapse
-	// Allows selective enabling/disabling of plasticity on individual synapses
-	// Useful for creating fixed connections or temporary learning freezes
-
-	stdpTimeConstant time.Duration // STDP exponential decay time constant
-	// Controls the width of the STDP learning window
-	// Biological value: typically 20ms for cortical synapses
-	// Determines how quickly STDP effects decay with increasing time differences
-
-	stdpWindowSize time.Duration // Maximum STDP timing window (±window)
-	// Spikes separated by more than this time have no STDP effect
-	// Computational optimization: avoids processing very old spikes
-	// Biological range: typically ±20ms to ±50ms depending on synapse type
-}
-
-// STDPConfig represents configuration parameters for Spike-Timing Dependent Plasticity
-// This structure encapsulates all the parameters needed to control how synapses
-// learn from spike timing relationships in biologically realistic ways
-//
-// STDP Biological Background:
-// In real brains, synaptic strength changes based on the precise timing of spikes.
-// If a pre-synaptic spike arrives shortly before a post-synaptic spike (causally
-// related), the synapse strengthens (Long-Term Potentiation, LTP). If the order
-// is reversed, the synapse weakens (Long-Term Depression, LTD). This implements
-// the principle "neurons that fire together, wire together" with temporal precision.
-type STDPConfig struct {
-	Enabled bool // Master switch for STDP learning
-	// When false, synaptic weights remain fixed at their initial values
-	// When true, weights adapt based on spike timing relationships
-	// Useful for comparing learned vs. fixed network behavior
-
-	LearningRate float64 // Rate of synaptic weight changes
-	// Controls how quickly synapses adapt to spike timing patterns
-	// Typical biological range: 0.001 - 0.1
-	// Higher values = faster learning but potentially less stable
-	// Lower values = slower learning but more robust to noise
-
-	TimeConstant time.Duration // STDP exponential decay time constant
-	// Controls the temporal precision of STDP learning windows
-	// Biological typical value: 20ms for cortical synapses
-	// Shorter constants = more precise timing requirements
-	// Longer constants = more forgiving timing windows
-
-	WindowSize time.Duration // Maximum timing difference for STDP effects
-	// Spike pairs separated by more than this time have no effect
-	// Computational optimization to avoid processing very old spikes
-	// Biological range: ±20ms to ±50ms depending on synapse type
-	// Should be 2-3 times the TimeConstant for proper decay
-
-	MinWeight float64 // Minimum allowed synaptic weight
-	// Prevents weights from becoming negative or zero (synaptic elimination)
-	// Typical values: 0.0 (hard lower bound) or 0.1*baseWeight (soft bound)
-	// Biological basis: even weak synapses maintain some minimal efficacy
-
-	MaxWeight float64 // Maximum allowed synaptic weight
-	// Prevents runaway synaptic strengthening that could destabilize networks
-	// Typical values: 2-5 times the initial weight
-	// Biological basis: synapses have physical saturation limits
-
-	AsymmetryRatio float64 // Ratio of LTP to LTD strength (typically 1.0-2.0)
-	// Controls the relative strength of potentiation vs. depression
-	// Values > 1.0 favor strengthening over weakening
-	// Values < 1.0 favor weakening over strengthening
-	// Biological variation: different synapse types have different ratios
-}
-
-// SpikeEvent represents an incoming spike event for STDP processing
-// This structure captures the essential information needed to apply
-// spike-timing dependent plasticity when the post-synaptic neuron fires
-//
-// Biological context:
-// When a post-synaptic neuron fires, it needs to "look back" at recent
-// pre-synaptic spikes to determine how to modify synaptic weights.
-// This structure stores the timing and source information for each
-// recent input spike that could be relevant for STDP calculations.
-type SpikeEvent struct {
-	SourceID string // Identifier of the pre-synaptic neuron that sent this spike
-	// Allows the post-synaptic neuron to identify which specific synapse
-	// should have its weight modified based on the timing relationship
-	// Essential for networks where neurons receive inputs from multiple sources
-
-	Timestamp time.Time // When the pre-synaptic spike occurred
-	// Precise timing is critical for STDP calculations
-	// The time difference between this timestamp and the post-synaptic
-	// firing time determines the magnitude and direction of weight changes
-
-	Value float64 // Strength of the original spike signal
-	// May be used to scale STDP effects based on signal strength
-	// Some STDP models incorporate signal amplitude into learning rules
-	// Allows for more nuanced learning beyond pure timing relationships
-
-	SynapseID string // Identifier of the specific synapse that delivered this spike
-	// Enables precise targeting of weight modifications to the correct synapse
-	// A single pre-synaptic neuron may have multiple synapses to the same
-	// post-synaptic neuron (though rare in our current model)
-}
 
 // FireEvent represents a real-time neuron firing event for visualization and monitoring
 // This captures the exact moment when a biological neuron generates an action potential
@@ -854,10 +87,6 @@ type SpikeEvent struct {
 // its axon to all connected synapses. This event is instantaneous and discrete.
 // Unlike traditional ANNs that have continuous activation values, biological
 // neurons either fire (1) or don't fire (0) - this is the "all-or-nothing" principle.
-//
-// This struct models that discrete firing event and allows external systems
-// (like visualizers, loggers, or learning algorithms) to observe when and how
-// strongly each neuron fires without interfering with the neuron's operation.
 type FireEvent struct {
 	NeuronID string // Unique identifier of the neuron that fired
 	// Allows tracking which specific neuron in a network generated this event
@@ -882,9 +111,6 @@ type FireEvent struct {
 // - Gene expression changes occur in response to chronic activity changes
 // - Intrinsic excitability adjustments maintain optimal firing rates
 // - Multiple timescales of regulation from seconds to hours/days
-//
-// This struct captures the key computational aspects of these biological processes
-// while remaining computationally efficient for large-scale network simulation
 type HomeostaticMetrics struct {
 	// === ACTIVITY TRACKING ===
 	// Models the biological mechanisms for monitoring recent neural activity
@@ -945,15 +171,73 @@ type HomeostaticMetrics struct {
 	// Hours to days for gene expression-mediated changes (not modeled here)
 }
 
+// SynapticScalingConfig contains all parameters controlling synaptic scaling behavior
+// This structure encapsulates the homeostatic mechanism that maintains synaptic balance
+//
+// BIOLOGICAL BACKGROUND:
+// Synaptic scaling is a homeostatic mechanism observed in real neurons that prevents
+// runaway strengthening or weakening of synaptic connections. When total synaptic
+// input becomes too strong or weak, neurons proportionally scale their receptor
+// sensitivity to maintain optimal responsiveness while preserving learned patterns.
+type SynapticScalingConfig struct {
+	Enabled bool // Master switch for synaptic scaling functionality
+	// When false, synaptic scaling is completely disabled
+	// When true, scaling occurs according to the parameters below
+
+	// === CORE SCALING PARAMETERS ===
+	// These control the target behavior and speed of synaptic scaling
+
+	TargetInputStrength float64 // Desired average effective input strength
+	// Biological interpretation: optimal total synaptic drive for this neuron
+	// This is the target for (synaptic_weight × receptor_gain) averaged across inputs
+	// Typical values: 0.5-2.0 depending on neuron type and network role
+
+	ScalingRate float64 // Rate of receptor gain adjustment per scaling event
+	// Controls how aggressively gains are adjusted toward target
+	// Range: 0.0001 (very conservative) to 0.01 (aggressive)
+	// Higher values = faster correction but potentially less stable
+
+	ScalingInterval time.Duration // Time between synaptic scaling operations
+	// Biological timescale: much slower than STDP (which operates in milliseconds)
+	// Typical range: 10 seconds to 10 minutes
+	// Shorter intervals = more responsive but higher computational cost
+
+	// === SAFETY CONSTRAINTS ===
+	// These prevent extreme scaling that could destabilize the network
+
+	MinScalingFactor float64 // Minimum multiplier applied to gains per scaling event
+	// Prevents excessive reduction in a single scaling operation
+	// Typical values: 0.8-0.95 (don't reduce gains by more than 5-20% per event)
+
+	MaxScalingFactor float64 // Maximum multiplier applied to gains per scaling event
+	// Prevents excessive increase in a single scaling operation
+	// Typical values: 1.05-1.2 (don't increase gains by more than 5-20% per event)
+
+	// === STATE TRACKING ===
+	// These fields track scaling history and timing for proper operation
+
+	LastScalingUpdate time.Time // Timestamp of most recent scaling operation
+	// Used to determine when next scaling should occur based on ScalingInterval
+	// Updated automatically each time scaling is performed
+
+	ScalingHistory []float64 // Recent scaling factors for monitoring and analysis
+	// Stores the actual scaling factors applied in recent operations
+	// Useful for debugging, visualization, and detecting scaling oscillations
+	// Limited to recent history to prevent unlimited memory growth
+}
+
 // Neuron represents a single processing unit inspired by biological neurons
 // Unlike traditional artificial neurons that perform instantaneous calculations,
 // this neuron models the temporal dynamics of real neural processing:
 // - Accumulates inputs over time (like dendrite integration)
 // - Fires when threshold is reached (like action potential generation)
-// - Sends outputs with realistic delays (like axon transmission)
+// - Sends outputs through synapses with realistic delays (like axon transmission)
 // - Supports dynamic connectivity changes (like neuroplasticity)
 // - Maintains stable activity through homeostatic regulation (like real neurons)
 // - Scales synaptic sensitivity to maintain input balance (like receptor scaling)
+//
+// The neuron is designed to work seamlessly with the synapse package for
+// biologically accurate connections with STDP learning and structural plasticity.
 type Neuron struct {
 	// === IDENTIFICATION ===
 	// Unique identifier for this neuron within a network
@@ -992,22 +276,6 @@ type Neuron struct {
 	homeostatic HomeostaticMetrics // All homeostatic plasticity state and parameters
 	// Encapsulates the complex biological machinery for activity sensing,
 	// threshold adjustment, and activity regulation that maintains network stability
-
-	// === SPIKE-TIMING DEPENDENT PLASTICITY (STDP) STATE ===
-	// Models synaptic learning based on precise spike timing relationships
-
-	stdpConfig STDPConfig // Configuration parameters for STDP learning
-	// Contains all the parameters that control how synapses learn from timing
-	// Can be modified at runtime to enable/disable learning or adjust rates
-
-	recentInputSpikes []SpikeEvent // Sliding window of recent input spikes
-	// Tracks incoming spikes with their timing and source information
-	// Used when this neuron fires to apply STDP to relevant synapses
-	// Window size matches stdpConfig.WindowSize for computational efficiency
-
-	lastSTDPUpdate time.Time // Timestamp of last STDP processing
-	// Used to optimize STDP calculations by avoiding redundant processing
-	// Also useful for debugging and monitoring learning dynamics
 
 	// === SYNAPTIC SCALING STATE ===
 	// Post-synaptic receptor sensitivity control for homeostatic balance
@@ -1060,13 +328,14 @@ type Neuron struct {
 	// === COMMUNICATION INFRASTRUCTURE ===
 	// Models the input/output structure of biological neurons
 
-	input chan Message // Single input channel (models dendrite tree)
-	// All inputs converge here, like dendrites
-	// converging on the cell body (soma)
+	input chan synapse.SynapseMessage // Single input channel (models dendrite tree)
+	// All inputs converge here, like dendrites converging on the cell body (soma)
+	// Uses synapse package message format for consistent communication
 
-	outputs map[string]*Output // Dynamic set of output connections
-	// Models the axon branching to multiple targets
+	outputSynapses map[string]synapse.SynapticProcessor // Dynamic set of output synapses
+	// Models the axon branching to multiple targets with sophisticated synapses
 	// String key allows named connections for management
+	// Each synapse handles its own learning, delays, and plasticity
 
 	outputsMutex sync.RWMutex // Thread-safe access to outputs map
 	// Allows safe connection modification during runtime
@@ -1087,6 +356,8 @@ type Neuron struct {
 	stateMutex sync.Mutex // Protects internal state during message processing
 	// Ensures atomic updates to accumulator, timing, and homeostatic state
 
+	closeOnce sync.Once
+
 	// === MONITORING AND OBSERVATION ===
 	// Optional channel for reporting firing events to external observers
 	fireEvents chan<- FireEvent // Optional fire event reporting channel
@@ -1094,18 +365,16 @@ type Neuron struct {
 	// Used for visualization, learning algorithms, and analysis
 }
 
-// NewNeuron creates and initializes a new biologically-inspired neuron with homeostatic plasticity and STDP
+// NewNeuron creates and initializes a new biologically-inspired neuron with homeostatic plasticity
 // This factory function sets up all the necessary components for realistic neural processing
 // with leaky integration, dynamic connectivity, refractory periods, homeostatic regulation,
-// spike-timing dependent plasticity, and biologically accurate synaptic scaling
+// and biologically accurate synaptic scaling
 //
 // The complete biological learning system enables:
 // - Automatic activity monitoring through calcium-based sensing (homeostatic plasticity)
 // - Self-regulation of firing threshold to maintain target activity levels
-// - Synaptic learning based on precise spike timing relationships (STDP)
 // - Post-synaptic receptor scaling for input balance (synaptic scaling)
 // - Prevention of runaway excitation or neural silence
-// - Temporal pattern recognition and causal relationship learning
 // - Network stability without manual parameter tuning
 //
 // Parameters model key biological properties:
@@ -1116,35 +385,35 @@ type Neuron struct {
 // fireFactor: action potential amplitude/strength
 // targetFiringRate: desired firing rate in Hz for homeostatic regulation
 // homeostasisStrength: how aggressively to adjust threshold (0.0-1.0)
-// stdpConfig: configuration for spike-timing dependent plasticity learning
 //
 // Biological learning mechanisms:
 // - Homeostatic: tracks firing history and adjusts threshold to maintain target rate
-// - STDP: modifies synaptic weights based on pre/post-synaptic spike timing
 // - Synaptic Scaling: adjusts post-synaptic receptor sensitivity to maintain input balance
-// - Combined: creates stable yet adaptive networks that learn temporal patterns
-func NewNeuron(id string, threshold float64, decayRate float64, refractoryPeriod time.Duration, fireFactor float64, targetFiringRate float64, homeostasisStrength float64, stdpConfig STDPConfig) *Neuron {
+// - Combined: creates stable yet adaptive networks
+func NewNeuron(id string, threshold float64, decayRate float64, refractoryPeriod time.Duration, fireFactor float64, targetFiringRate float64, homeostasisStrength float64) *Neuron {
 	// Calculate homeostatic bounds based on base threshold
 	// Biological rationale: neurons can't adjust indefinitely - there are biophysical limits
 	minThreshold := threshold * 0.1 // Can reduce to 10% of original (very excitable)
 	maxThreshold := threshold * 5.0 // Can increase to 5x original (very quiet)
 
 	// Set up homeostatic parameters with biologically reasonable defaults
-	activityWindow := 5 * time.Second             // Track activity over 5 seconds
-	calciumIncrement := 1.0                       // Arbitrary units of calcium per spike
-	calciumDecayRate := 0.98                      // 2% calcium decay per millisecond
+	activityWindow := 5 * time.Second // Track activity over 5 seconds
+	calciumIncrement := 1.0           // Arbitrary units of calcium per spike
+	calciumDecayRate := 0.9995        // The original calcium decay rate of 0.98 per millisecond was far too aggressive.
+	// This new value provides a half-life of ~1.4 seconds, allowing calcium to integrate
+	// activity over a biologically plausible timescale.
 	homeostaticInterval := 100 * time.Millisecond // Check homeostasis every 100ms
 
 	return &Neuron{
-		id:               id,                       // Unique neuron identifier for network tracking
-		threshold:        threshold,                // Current firing threshold (homeostatic)
-		baseThreshold:    threshold,                // Original threshold (reference)
-		decayRate:        decayRate,                // Membrane decay rate (biological: based on RC time constant)
-		refractoryPeriod: refractoryPeriod,         // Refractory period (biological: ~5-15ms)
-		fireFactor:       fireFactor,               // Output amplitude scaling
-		input:            make(chan Message, 100),  // Buffered input channel
-		outputs:          make(map[string]*Output), // Dynamic output connections
-		fireEvents:       nil,                      // Optional fire event reporting (disabled by default)
+		id:               id,                                         // Unique neuron identifier for network tracking
+		threshold:        threshold,                                  // Current firing threshold (homeostatic)
+		baseThreshold:    threshold,                                  // Original threshold (reference)
+		decayRate:        decayRate,                                  // Membrane decay rate (biological: based on RC time constant)
+		refractoryPeriod: refractoryPeriod,                           // Refractory period (biological: ~5-15ms)
+		fireFactor:       fireFactor,                                 // Output amplitude scaling
+		input:            make(chan synapse.SynapseMessage, 100),     // Buffered input channel for synapse messages
+		outputSynapses:   make(map[string]synapse.SynapticProcessor), // Dynamic synapse connections
+		fireEvents:       nil,                                        // Optional fire event reporting (disabled by default)
 
 		// Initialize homeostatic plasticity system
 		homeostatic: HomeostaticMetrics{
@@ -1161,11 +430,7 @@ func NewNeuron(id string, threshold float64, decayRate float64, refractoryPeriod
 			homeostaticInterval:   homeostaticInterval,
 		},
 
-		// Initialize STDP learning system
-		stdpConfig:        stdpConfig,
-		recentInputSpikes: make([]SpikeEvent, 0, 200), // Track recent input spikes
-
-		// === NEW BIOLOGICALLY ACCURATE SYNAPTIC SCALING ===
+		// Initialize synaptic scaling system
 		inputGains: make(map[string]float64), // Post-synaptic receptor sensitivity map
 		scalingConfig: SynapticScalingConfig{
 			Enabled:             false,                  // Disabled by default for backward compatibility
@@ -1178,18 +443,22 @@ func NewNeuron(id string, threshold float64, decayRate float64, refractoryPeriod
 			ScalingHistory:      make([]float64, 0, 10), // Track recent scaling factors
 		},
 
-		lastSTDPUpdate: time.Now(), // Initialize STDP timing
+		// Initialize activity tracking
+		inputActivityHistory:   make(map[string][]float64),
+		activityTrackingWindow: 10 * time.Second, // Track activity over 10 seconds
+		minActivityForScaling:  0.1,              // Minimum activity for scaling
+		lastActivityCleanup:    time.Now(),
 
 		// accumulator starts at 0 (resting potential)
 		// lastFireTime initialized to zero value (never fired)
 	}
 }
 
-// NewSimpleNeuron creates a neuron with homeostatic plasticity and STDP disabled for backward compatibility
+// NewSimpleNeuron creates a neuron with homeostatic plasticity disabled for backward compatibility
 // This convenience function creates a neuron that behaves like the original implementation
 // but with the learning infrastructure in place (just not active)
 //
-// Use this when you want the original temporal neuron behavior without self-regulation or learning,
+// Use this when you want the original temporal neuron behavior without self-regulation,
 // or when building networks that will implement learning through other mechanisms
 //
 // Parameters are the same as the original NewNeuron function:
@@ -1199,31 +468,19 @@ func NewNeuron(id string, threshold float64, decayRate float64, refractoryPeriod
 // refractoryPeriod: duration after firing when neuron cannot fire again
 // fireFactor: action potential amplitude/strength
 func NewSimpleNeuron(id string, threshold float64, decayRate float64, refractoryPeriod time.Duration, fireFactor float64) *Neuron {
-	// Create disabled STDP configuration
-	disabledSTDP := STDPConfig{
-		Enabled:        false,
-		LearningRate:   0.0,
-		TimeConstant:   20 * time.Millisecond,
-		WindowSize:     50 * time.Millisecond,
-		MinWeight:      0.0,
-		MaxWeight:      2.0,
-		AsymmetryRatio: 1.0,
-	}
-
-	// Create neuron with both homeostatic plasticity and STDP disabled
+	// Create neuron with homeostatic plasticity disabled
 	return NewNeuron(
 		id,
 		threshold,
 		decayRate,
 		refractoryPeriod,
 		fireFactor,
-		0.0,          // targetFiringRate = 0 disables homeostatic regulation
-		0.0,          // homeostasisStrength = 0 disables threshold adjustments
-		disabledSTDP, // STDP disabled
+		0.0, // targetFiringRate = 0 disables homeostatic regulation
+		0.0, // homeostasisStrength = 0 disables threshold adjustments
 	)
 }
 
-// NewNeuronWithLearning creates a neuron with both homeostatic and STDP learning enabled
+// NewNeuronWithLearning creates a neuron with homeostatic plasticity enabled
 // This convenience constructor sets up a neuron with biologically realistic learning
 // parameters suitable for most applications
 //
@@ -1231,33 +488,20 @@ func NewSimpleNeuron(id string, threshold float64, decayRate float64, refractory
 // id: unique identifier for this neuron
 // threshold: base firing threshold
 // targetFiringRate: desired firing rate in Hz for homeostatic regulation
-// stdpLearningRate: how quickly synapses adapt (typical: 0.01)
 //
 // Returns a neuron with:
 // - Moderate homeostatic regulation (20% strength)
-// - STDP learning with 20ms time constants
-// - Reasonable weight bounds (0.1x to 3x base weight)
-// - Biological timing windows (±50ms)
-func NewNeuronWithLearning(id string, threshold float64, targetFiringRate float64, stdpLearningRate float64) *Neuron {
+// - Reasonable threshold bounds (0.1x to 5x base threshold)
+// - Standard biological timing parameters
+func NewNeuronWithLearning(id string, threshold float64, targetFiringRate float64) *Neuron {
 	// Standard biological parameters
 	decayRate := 0.95
 	refractoryPeriod := 10 * time.Millisecond
 	fireFactor := 1.0
 	homeostasisStrength := 0.2
 
-	// STDP configuration with biological parameters
-	stdpConfig := STDPConfig{
-		Enabled:        true,
-		LearningRate:   stdpLearningRate,
-		TimeConstant:   20 * time.Millisecond, // Standard cortical value
-		WindowSize:     50 * time.Millisecond, // ±50ms window
-		MinWeight:      threshold * 0.1,       // 10% of base threshold
-		MaxWeight:      threshold * 3.0,       // 3x base threshold
-		AsymmetryRatio: 1.5,                   // Slight LTP bias
-	}
-
 	return NewNeuron(id, threshold, decayRate, refractoryPeriod, fireFactor,
-		targetFiringRate, homeostasisStrength, stdpConfig)
+		targetFiringRate, homeostasisStrength)
 }
 
 // updateCalciumLevel applies calcium dynamics based on firing activity
@@ -1312,9 +556,6 @@ func (n *Neuron) addCalciumFromFiringUnsafe() {
 	// Add calcium increment for this firing event
 	// Models: calcium influx through voltage-gated calcium channels
 	n.homeostatic.calciumLevel += n.homeostatic.calciumIncrement
-
-	// Note: In real neurons, excessive calcium can be toxic, but for our
-	// model we rely on the decay process to prevent unlimited accumulation
 }
 
 // updateFiringHistory maintains a sliding window of recent firing times
@@ -1401,37 +642,28 @@ func (n *Neuron) calculateCurrentFiringRateUnsafe() float64 {
 //
 // mustBeLocked: true (stateMutex must be held by caller)
 func (n *Neuron) performHomeostaticAdjustmentUnsafe() {
-	// Skip if homeostatic plasticity is disabled
 	if n.homeostatic.homeostasisStrength == 0.0 || n.homeostatic.targetFiringRate == 0.0 {
 		return
 	}
-
-	// Calculate current firing rate
 	currentRate := n.calculateCurrentFiringRateUnsafe()
-
-	// Calculate the error between current and target firing rates
 	rateError := currentRate - n.homeostatic.targetFiringRate
-
-	// Calculate threshold adjustment based on activity error
-	// Positive error (too active) → increase threshold (reduce excitability)
-	// Negative error (too quiet) → decrease threshold (increase excitability)
-	thresholdAdjustment := rateError * n.homeostatic.homeostasisStrength * n.baseThreshold * 0.01
-
-	// Apply the adjustment
-	newThreshold := n.threshold + thresholdAdjustment
-
-	// Enforce biological bounds on threshold adjustment
-	// Neurons can't adjust their threshold indefinitely
+	// Allow adjustment if calcium is sufficient OR rate is critically low
+	if n.homeostatic.calciumLevel < n.minActivityForScaling && currentRate > 0 {
+		return // Skip if low calcium and some activity
+	}
+	scalingFactor := 1.0 + (rateError * n.homeostatic.homeostasisStrength * 0.005)
+	if scalingFactor > 1.05 {
+		scalingFactor = 1.05
+	} else if scalingFactor < 0.95 {
+		scalingFactor = 0.95
+	}
+	newThreshold := n.threshold * scalingFactor
 	if newThreshold < n.homeostatic.minThreshold {
 		newThreshold = n.homeostatic.minThreshold
 	} else if newThreshold > n.homeostatic.maxThreshold {
 		newThreshold = n.homeostatic.maxThreshold
 	}
-
-	// Update the threshold
 	n.threshold = newThreshold
-
-	// Update timestamp of last homeostatic adjustment
 	n.homeostatic.lastHomeostaticUpdate = time.Now()
 }
 
@@ -1466,7 +698,7 @@ func (n *Neuron) shouldPerformHomeostaticUpdateUnsafe() bool {
 //
 // Usage patterns:
 // - Visualization: Real-time display of network activity
-// - Learning algorithms: Spike-timing dependent plasticity (STDP)
+// - Learning algorithms: External learning systems
 // - Analysis: Network synchronization and oscillation studies
 // - Debugging: Identifying silent or hyperactive neurons
 // - Homeostatic monitoring: Observing self-regulation in action
@@ -1481,29 +713,22 @@ func (n *Neuron) shouldPerformHomeostaticUpdateUnsafe() bool {
 //	Set to nil to disable fire event reporting (default state)
 //	The channel should be buffered to handle burst firing patterns
 func (n *Neuron) SetFireEventChannel(ch chan<- FireEvent) {
-	n.stateMutex.Lock()         // Protect concurrent access to fire event channel
-	defer n.stateMutex.Unlock() // Ensure lock is always released
+	n.stateMutex.Lock()
+	defer n.stateMutex.Unlock()
 
 	n.fireEvents = ch
-
-	// Biological analogy: This is like placing a recording electrode near
-	// a neuron to monitor its electrical activity. The electrode doesn't
-	// interfere with the neuron's function - it just observes and reports
-	// when action potentials occur.
 }
 
-// AddOutput safely adds a new synaptic connection to this neuron with STDP learning capabilities
+// AddOutputSynapse safely adds a new synaptic connection to this neuron
 // This models neuroplasticity - the brain's ability to form new connections
 // throughout life. In developing brains, neurons constantly grow new synapses.
 // In adult brains, learning involves creating and strengthening connections.
 //
-// Enhanced with STDP: The synapse will learn from spike timing relationships
-// if STDP is enabled for this neuron, allowing the connection to strengthen
-// or weaken based on causal relationships between pre and post-synaptic firing.
-//
-// Enhanced with Synaptic Scaling: If the target neuron has scaling enabled,
-// it will automatically register this connection and adjust its receptor
-// sensitivity to maintain optimal input balance.
+// The synapse handles all aspects of synaptic transmission including:
+// - Signal transmission with realistic delays
+// - STDP learning based on spike timing
+// - Structural plasticity (pruning decisions)
+// - Thread-safe concurrent operation
 //
 // Biological context:
 // - Dendritic growth: neurons extend dendrites to reach new partners
@@ -1515,105 +740,15 @@ func (n *Neuron) SetFireEventChannel(ch chan<- FireEvent) {
 //
 // Parameters:
 // id: unique identifier for this connection (allows later modification/removal)
-// channel: destination for signals (the target neuron's input)
-// factor: initial synaptic strength/weight (will be modified by STDP if enabled)
-// delay: transmission delay (models axon length and conduction velocity)
-// targetNeuron: optional - if provided, enables synaptic scaling registration (can be nil)
-func (n *Neuron) AddOutput(id string, channel chan Message, factor float64, delay time.Duration, targetNeuron ...*Neuron) {
-	n.outputsMutex.Lock()         // Acquire exclusive write access
-	defer n.outputsMutex.Unlock() // Ensure lock is always released
-
-	// Create new synaptic connection with STDP capabilities
-	output := &Output{
-		channel: channel, // Communication pathway
-		factor:  factor,  // Current synaptic strength
-		delay:   delay,   // Conduction delay
-
-		// STDP learning parameters
-		baseWeight:       factor,                    // Reference weight for learning
-		minWeight:        n.stdpConfig.MinWeight,    // Use neuron's STDP config
-		maxWeight:        n.stdpConfig.MaxWeight,    // Use neuron's STDP config
-		learningRate:     n.stdpConfig.LearningRate, // Use neuron's STDP config
-		preSpikeTimes:    make([]time.Time, 0, 50),  // Pre-allocate spike history
-		lastPreSpike:     time.Time{},               // Initialize to zero
-		stdpEnabled:      n.stdpConfig.Enabled,      // Inherit from neuron
-		stdpTimeConstant: n.stdpConfig.TimeConstant, // Copy timing parameters
-		stdpWindowSize:   n.stdpConfig.WindowSize,   // Copy window size
-	}
-
-	// If STDP config specifies relative weight bounds, calculate them
-	if n.stdpConfig.MinWeight == 0 && n.stdpConfig.MaxWeight == 0 {
-		// Auto-calculate bounds based on base weight
-		output.minWeight = factor * 0.1 // 10% of base weight
-		output.maxWeight = factor * 3.0 // 300% of base weight
-	}
-
-	n.outputs[id] = output
-
-	// === BIOLOGICALLY ACCURATE SCALING REGISTRATION ===
-	// If target neuron provided, it will automatically register this input source
-	// when it receives the first message from this neuron. This models how
-	// post-synaptic neurons detect new input sources and establish receptor sensitivity.
-
-	// Biological analogy: This represents the completion of synaptogenesis
-	// where a new functional synaptic connection becomes available for
-	// neural communication, information processing, and learning
-}
-
-// AddOutputWithSTDP safely adds a new synaptic connection with custom STDP parameters
-// This allows fine-grained control over individual synapse learning properties
-// while maintaining the neuron's overall STDP configuration
-//
-// Use this method when you need synapses with different learning characteristics
-// within the same neuron (e.g., different learning rates for different input types)
-//
-// Parameters:
-// id: unique identifier for this connection
-// channel: destination for signals
-// factor: initial synaptic strength/weight
-// delay: transmission delay
-// customSTDP: custom STDP configuration for this specific synapse
-// targetNeuron: optional - if provided, enables synaptic scaling (can be nil)
-func (n *Neuron) AddOutputWithSTDP(id string, channel chan Message, factor float64, delay time.Duration, customSTDP STDPConfig, targetNeuron ...*Neuron) {
+// synapseProcessor: the synapse object that handles transmission and learning
+func (n *Neuron) AddOutputSynapse(id string, synapseProcessor synapse.SynapticProcessor) {
 	n.outputsMutex.Lock()
 	defer n.outputsMutex.Unlock()
 
-	// Create synapse with custom STDP parameters
-	output := &Output{
-		channel:          channel,
-		factor:           factor,
-		delay:            delay,
-		baseWeight:       factor,
-		minWeight:        customSTDP.MinWeight,
-		maxWeight:        customSTDP.MaxWeight,
-		learningRate:     customSTDP.LearningRate,
-		preSpikeTimes:    make([]time.Time, 0, 50),
-		lastPreSpike:     time.Time{},
-		stdpEnabled:      customSTDP.Enabled,
-		stdpTimeConstant: customSTDP.TimeConstant,
-		stdpWindowSize:   customSTDP.WindowSize,
-	}
-
-	// Auto-calculate bounds if not specified
-	if customSTDP.MinWeight == 0 && customSTDP.MaxWeight == 0 {
-		output.minWeight = factor * 0.1
-		output.maxWeight = factor * 3.0
-	}
-
-	n.outputs[id] = output
-
-	// Target neuron will automatically register this input source when it receives
-	// the first message from this neuron (if scaling is enabled)
+	n.outputSynapses[id] = synapseProcessor
 }
 
-// GetInputChannel returns the bidirectional input channel for direct connections
-// This is used for neuron-to-neuron connections where we need to pass the channel
-// to AddOutput methods
-func (n *Neuron) GetInputChannel() chan Message {
-	return n.input
-}
-
-// RemoveOutput safely removes a synaptic connection
+// RemoveOutputSynapse safely removes a synaptic connection
 // Models synaptic pruning - the brain's process of eliminating unnecessary
 // or ineffective connections to optimize neural circuits
 //
@@ -1629,29 +764,45 @@ func (n *Neuron) GetInputChannel() chan Message {
 // - Memory consolidation: strengthening important connections while removing others
 //
 // id: unique identifier of the connection to remove
-func (n *Neuron) RemoveOutput(id string) {
-	n.outputsMutex.Lock()         // Acquire exclusive write access
-	defer n.outputsMutex.Unlock() // Ensure lock is always released
+func (n *Neuron) RemoveOutputSynapse(id string) {
+	n.outputsMutex.Lock()
+	defer n.outputsMutex.Unlock()
 
-	delete(n.outputs, id)
-
-	// Biological analogy: This represents the completion of synaptic elimination
-	// where the physical synaptic structure is dismantled and the connection
-	// is no longer available for neural communication
+	delete(n.outputSynapses, id)
 }
 
-// GetOutputCount returns the current number of synaptic connections
+// GetOutputSynapseCount returns the current number of synaptic connections
 // Thread-safe read operation that allows monitoring network connectivity
 // In biological terms: this tells us the neuron's "fan-out" or how many
 // other neurons this neuron can directly influence
-func (n *Neuron) GetOutputCount() int {
-	n.outputsMutex.RLock()         // Acquire shared read access (allows concurrent reads)
-	defer n.outputsMutex.RUnlock() // Ensure lock is released
+func (n *Neuron) GetOutputSynapseCount() int {
+	n.outputsMutex.RLock()
+	defer n.outputsMutex.RUnlock()
 
-	return len(n.outputs)
+	return len(n.outputSynapses)
 }
 
-// Run starts the main neuron processing loop with continuous leaky integration, homeostatic regulation, and synaptic scaling
+// GetOutputSynapseWeight returns the current synaptic weight of a specific output connection
+// This is a thread-safe method for monitoring and validating learning
+//
+// Parameters:
+// id: The unique identifier of the output synapse
+//
+// Returns:
+// The current weight and a boolean indicating if the synapse was found
+func (n *Neuron) GetOutputSynapseWeight(id string) (float64, bool) {
+	n.outputsMutex.RLock()
+	defer n.outputsMutex.RUnlock()
+
+	synapseProcessor, exists := n.outputSynapses[id]
+	if !exists {
+		return 0, false
+	}
+	return synapseProcessor.GetWeight(), true
+}
+
+// Run starts the main neuron processing loop with continuous leaky integration,
+// homeostatic regulation, and synaptic scaling
 // This implements the core neural computation cycle that runs continuously with
 // biologically realistic membrane dynamics, self-regulation, and synaptic balance maintenance:
 // 1. Wait for input signals, decay timer events, scaling timer events, or shutdown signals
@@ -1678,7 +829,6 @@ func (n *Neuron) GetOutputCount() int {
 //
 // MULTI-TIMESCALE BIOLOGICAL REALISM:
 // - Membrane dynamics: 1ms (fastest - electrical properties)
-// - STDP learning: milliseconds to seconds (synaptic plasticity)
 // - Homeostatic plasticity: seconds to minutes (intrinsic regulation)
 // - Synaptic scaling: minutes to hours (synaptic homeostasis - slowest)
 func (n *Neuron) Run() {
@@ -1740,12 +890,8 @@ func (n *Neuron) Run() {
 		case <-scalingTicker.C:
 			// Apply synaptic scaling to maintain stable input strength
 			// This is the slowest homeostatic mechanism, operating on the longest timescale
-			// Preserves learned STDP patterns while maintaining overall synaptic balance
+			// Preserves learned patterns while maintaining overall synaptic balance
 			n.applySynapticScaling()
-
-			// Biological analogy: This represents the ongoing synaptic homeostasis
-			// that prevents runaway strengthening or weakening while preserving
-			// the relative patterns learned through experience and STDP
 		}
 	}
 }
@@ -1778,10 +924,6 @@ func (n *Neuron) applyMembraneDecayUnsafe() {
 	if n.accumulator < 1e-10 && n.accumulator > -1e-10 {
 		n.accumulator = 0.0
 	}
-
-	// Note: Unlike the original implementation, we never completely reset
-	// the accumulator to zero. This models the continuous nature of
-	// biological membrane dynamics where there are no discrete "resets"
 }
 
 // Legacy method for backward compatibility - calls the unsafe version with proper locking
@@ -1792,28 +934,21 @@ func (n *Neuron) applyMembraneDecay() {
 }
 
 // processMessageWithDecay handles incoming synaptic signals with continuous leaky integration
-// Enhanced with homeostatic state tracking and STDP spike timing recording
 // Now includes biologically accurate synaptic scaling through post-synaptic receptor sensitivity
-// **ENHANCED: Now tracks input activity for biologically accurate scaling decisions**
+// and tracks input activity for biologically accurate scaling decisions
 //
 // Biological process modeled:
 // 1. Synaptic signal arrives at dendrite (postsynaptic potential)
-// 2. Record spike timing and source for STDP learning
-// 3. Apply post-synaptic receptor gain (synaptic scaling)
-// 4. **NEW: Track effective input strength for scaling algorithm**
-// 5. Signal adds to current membrane potential (no time window constraints)
-// 6. Continuous decay is handled separately by applyMembraneDecay()
-// 7. If accumulated potential reaches threshold, action potential is triggered
-// 8. Apply STDP learning to recent input spikes
-// 9. Update homeostatic state (calcium, firing history)
-// 10. Refractory period constraints are enforced during firing attempts
-func (n *Neuron) processMessageWithDecay(msg Message) {
+// 2. Apply post-synaptic receptor gain (synaptic scaling)
+// 3. Track effective input strength for scaling algorithm
+// 4. Signal adds to current membrane potential (no time window constraints)
+// 5. Continuous decay is handled separately by applyMembraneDecay()
+// 6. If accumulated potential reaches threshold, action potential is triggered
+// 7. Update homeostatic state (calcium, firing history)
+// 8. Refractory period constraints are enforced during firing attempts
+func (n *Neuron) processMessageWithDecay(msg synapse.SynapseMessage) {
 	n.stateMutex.Lock()
 	defer n.stateMutex.Unlock()
-
-	// Process incoming spike for STDP learning
-	// Record timing and source information for future weight updates
-	n.processIncomingSpikeForSTDPUnsafe(msg)
 
 	// === BIOLOGICALLY ACCURATE SYNAPTIC SCALING ===
 	// Apply post-synaptic receptor gain to incoming signal
@@ -1853,15 +988,9 @@ func (n *Neuron) processMessageWithDecay(msg Message) {
 // minutes) to assess whether their total input strength has shifted away from
 // optimal levels. This function captures that biological activity monitoring.
 //
-// CALCIUM-DEPENDENT SIGNALING:
-// Each effective synaptic input contributes to intracellular calcium signaling
-// cascades that ultimately drive scaling decisions. By tracking the actual
-// effective signal strengths, we model the biological activity sensor that
-// determines when receptor density should be adjusted.
-//
 // Parameters:
 // sourceID: identifier of the input source neuron
-// effectiveSignalValue: final signal strength (pre-weight × post-gain)
+// effectiveSignalValue: final signal strength (signal × post-gain)
 //
 // mustBeLocked: true (stateMutex must be held by caller)
 func (n *Neuron) recordInputActivityUnsafe(sourceID string, effectiveSignalValue float64) {
@@ -1928,15 +1057,8 @@ func (n *Neuron) cleanOldActivityHistoryUnsafe(currentTime time.Time) {
 // the same amount of neurotransmitter, but the post-synaptic response changes
 // based on receptor availability. This allows independent scaling control.
 //
-// ADVANTAGES OF THIS APPROACH:
-// - Post-synaptic control (biologically accurate)
-// - No cross-neuron communication required
-// - Independent receptor sensitivity per input source
-// - Preserves pre-synaptic weight learning (STDP)
-// - Thread-safe (each neuron manages own data)
-//
 // mustBeLocked: true (stateMutex must be held by caller)
-func (n *Neuron) applyPostSynapticGainUnsafe(msg Message) float64 {
+func (n *Neuron) applyPostSynapticGainUnsafe(msg synapse.SynapseMessage) float64 {
 	// If scaling is disabled or no source ID, use original signal
 	if !n.scalingConfig.Enabled || msg.SourceID == "" {
 		return msg.Value
@@ -1954,28 +1076,41 @@ func (n *Neuron) applyPostSynapticGainUnsafe(msg Message) float64 {
 	}
 
 	// Apply receptor gain to the signal
-	// Final signal = pre-synaptic_strength × post-synaptic_receptor_sensitivity
+	// Final signal = synaptic_strength × post-synaptic_receptor_sensitivity
 	return msg.Value * gain
 }
 
-// fire triggers action potential propagation to all connected neurons
-// Models the all-or-nothing action potential that travels down the axon
-// and triggers neurotransmitter release at all synaptic terminals
-// With refractory period enforcement for biological realism
+// registerInputSourceForScaling registers a new input source for synaptic scaling
+// This method ensures that all active input sources have corresponding synaptic gains
 //
-// Biological process:
-// 1. Verify neuron is not in refractory period
-// 2. Action potential initiated at axon hillock
-// 3. Electrical signal propagates down main axon
-// 4. Signal reaches all axon terminals simultaneously
-// 5. Triggers neurotransmitter release at each synapse
-// 6. Each synapse may have different strength/delay characteristics
-func (n *Neuron) fire() {
-	n.stateMutex.Lock()
-	defer n.stateMutex.Unlock()
+// BIOLOGICAL CONTEXT:
+// When a post-synaptic neuron receives input from a new source, it needs to
+// establish receptor sensitivity (gain) for that synapse. Initially, the gain
+// is set to 1.0 (normal sensitivity), but it will be adjusted by synaptic scaling
+// to maintain optimal total input strength.
+func (n *Neuron) registerInputSourceForScaling(sourceID string) {
+	// Check if scaling is enabled for this neuron
+	if !n.scalingConfig.Enabled {
+		return
+	}
 
-	// Use the internal unsafe method which includes refractory period checking
-	n.fireUnsafe()
+	// Check if this source is already registered
+	n.inputGainsMutex.RLock()
+	_, exists := n.inputGains[sourceID]
+	n.inputGainsMutex.RUnlock()
+
+	// If not registered, add with default gain of 1.0
+	if !exists {
+		n.inputGainsMutex.Lock()
+		if n.inputGains == nil {
+			n.inputGains = make(map[string]float64)
+		}
+		// Check again inside the lock to prevent race conditions
+		if _, exists := n.inputGains[sourceID]; !exists {
+			n.inputGains[sourceID] = 1.0 // Default receptor sensitivity
+		}
+		n.inputGainsMutex.Unlock()
+	}
 }
 
 // fireUnsafe is the internal firing method called when state lock is already held
@@ -1987,18 +1122,13 @@ func (n *Neuron) fire() {
 // 2. If firing is allowed, generate action potential
 // 3. Record firing time to enforce future refractory periods
 // 4. Update homeostatic state (calcium accumulation, firing history)
-// 5. Record spike timing on all output synapses for STDP learning
-// 6. Propagate signal to all synaptic connections with timing information
+// 5. Propagate signal to all synaptic connections with timing information
 //
 // The refractory period models the biological reality that after an action potential,
 // voltage-gated sodium channels become inactivated and require time to recover.
 // During this period, no amount of input can trigger another action potential.
 //
-// Homeostatic updates model the calcium influx and activity tracking that real
-// neurons use to monitor and regulate their own excitability levels.
-//
-// STDP integration ensures that all output synapses record this spike timing
-// for future learning when their target neurons fire.
+// mustBeLocked: true (stateMutex must be held by caller)
 func (n *Neuron) fireUnsafe() {
 	// Check refractory period constraint
 	// Models: voltage-gated Na+ channel inactivation state
@@ -2025,13 +1155,6 @@ func (n *Neuron) fireUnsafe() {
 	// Models: activity-dependent signaling cascades
 	n.updateFiringHistoryUnsafe(now)
 
-	// === STDP UPDATES ===
-	// Record this spike on all output synapses for STDP learning
-	n.recordOutputSpikeForSTDPUnsafe(now)
-
-	// Apply STDP learning to all recent input synapses
-	n.applySTDPToAllRecentInputsUnsafe(now)
-
 	// Calculate output signal strength
 	outputValue := n.accumulator * n.fireFactor
 
@@ -2047,135 +1170,428 @@ func (n *Neuron) fireUnsafe() {
 		}
 	}
 
-	// Get snapshot of outputs (minimal locking since we're already protected)
+	// Get snapshot of output synapses (minimal locking since we're already protected)
 	n.outputsMutex.RLock()
-	outputsCopy := make(map[string]*Output, len(n.outputs))
-	for id, output := range n.outputs {
-		outputsCopy[id] = output
+	synapsesCopy := make(map[string]synapse.SynapticProcessor, len(n.outputSynapses))
+	for id, synapseProcessor := range n.outputSynapses {
+		synapsesCopy[id] = synapseProcessor
 	}
 	n.outputsMutex.RUnlock()
 
-	// Parallel transmission to all outputs with STDP timing information
+	// Parallel transmission to all synapses
 	// Models: action potential propagating simultaneously down all axon branches
-	// Enhanced: includes precise timing and source identification for STDP
-	for _, output := range outputsCopy {
-		go n.sendToOutputWithSTDP(output, outputValue, now)
+	// Transmit() is already non-blocking because it uses time.AfterFunc.
+	for _, synapseProcessor := range synapsesCopy {
+		synapseProcessor.Transmit(outputValue)
 	}
-}
-
-// sendToOutputWithSTDP handles signal transmission to a single target neuron with STDP timing
-// Enhanced version that includes precise timing and source identification for STDP learning
-// Models the complete synaptic transmission process including:
-// - Axonal conduction delay
-// - Synaptic strength modulation
-// - Neurotransmitter release and binding
-// - Spike timing information for STDP learning
-//
-// Biological details modeled:
-// - Conduction delay: time for action potential to travel along axon
-// - Synaptic delay: time for neurotransmitter release and binding
-// - Synaptic strength: efficacy of the synaptic connection (plastic via STDP)
-// - Timing precision: exact spike timing for learning algorithms
-// - Source identification: which neuron sent the spike
-func (n *Neuron) sendToOutputWithSTDP(output *Output, baseValue float64, spikeTime time.Time) {
-	// Add this defer function at the top of the method
-	defer func() {
-		if r := recover(); r != nil {
-			// You can log this to see how often it happens and for which neuron/output
-			// This is particularly useful during testing.
-			// For example:
-			// fmt.Printf("Recovered in sendToOutputWithSTDP (neuron: %s): %v. Target channel likely closed.\n", n.id, r)
-		}
-	}()
-
-	if output.delay > 0 {
-		time.Sleep(output.delay)
-	}
-
-	finalValue := baseValue * output.factor
-	message := Message{
-		Value:     finalValue,
-		Timestamp: spikeTime,
-		SourceID:  n.id,
-	}
-
-	// The select with default handles full channels, but not sends on already closed channels.
-	// The defer/recover above handles the "send on closed channel" panic.
-	select {
-	case output.channel <- message:
-		// Signal successfully transmitted
-	default:
-		// Target channel is full.
-		// With the recover, if the channel was closed, the panic is caught,
-		// and this default case might not even be reached for a closed channel scenario.
-		// fmt.Printf("Neuron %s: Signal to output channel (type %T) lost or channel full/closed.\n", n.id, output.channel)
-	}
-}
-
-// sendToOutput handles signal transmission without STDP timing (legacy method)
-// Maintained for backward compatibility with existing code
-// This method creates messages without timing information for simple networks
-func (n *Neuron) sendToOutput(output *Output, baseValue float64) {
-	// Apply biological transmission delay
-	if output.delay > 0 {
-		time.Sleep(output.delay)
-	}
-
-	// Calculate final signal strength
-	finalValue := baseValue * output.factor
-
-	// Create simple message without STDP timing information
-	message := Message{
-		Value:     finalValue,
-		Timestamp: time.Time{}, // No timing information
-		SourceID:  "",          // No source identification
-	}
-
-	// Attempt to deliver the signal
-	select {
-	case output.channel <- message:
-		// Signal successfully transmitted
-	default:
-		// Signal lost due to full channel
-	}
-}
-
-// resetAccumulator clears the integration state (thread-safe external interface)
-// Models the return to resting membrane potential after signal processing
-func (n *Neuron) resetAccumulator() {
-	n.stateMutex.Lock()
-	defer n.stateMutex.Unlock()
-	n.resetAccumulatorUnsafe()
 }
 
 // resetAccumulatorUnsafe clears integration state (internal use when locked)
 // Returns the neuron to its resting state, ready for new signal integration
+//
+// mustBeLocked: true (stateMutex must be held by caller)
 func (n *Neuron) resetAccumulatorUnsafe() {
 	n.accumulator = 0
-	// firstMessage will be reset when the next message arrives
-	// This models the neuron returning to resting potential
+	// Models the neuron returning to resting potential
 }
 
-// GetInput returns the input channel for connecting to this neuron
-// This allows other neurons or external sources to send signals to this neuron
+// applySynapticScaling performs biologically accurate receptor sensitivity scaling
+// This is the core synaptic scaling algorithm that maintains stable total effective
+// input strength while preserving the relative patterns learned through STDP
+//
+// # Uses real tracked activity for biological accuracy
+//
+// BIOLOGICAL PROCESS MODELED:
+// 1. Post-synaptic neuron monitors actual effective input activity over time
+// 2. Compares current activity patterns to target activity levels
+// 3. Only scales when sufficient activity AND significant imbalance detected
+// 4. Uses calcium-dependent gating (only scale during active periods)
+// 5. Proportionally adjusts ALL receptor gains by the same factor
+// 6. Preserves relative input ratios (learned patterns intact)
+// 7. Operates on slower timescale than synaptic learning (minutes vs milliseconds)
+func (n *Neuron) applySynapticScaling() {
+	// Early exit if scaling is disabled
+	if !n.scalingConfig.Enabled {
+		return
+	}
+
+	// Check if it's time to perform scaling (respects biological timescales)
+	now := time.Now()
+	if now.Sub(n.scalingConfig.LastScalingUpdate) < n.scalingConfig.ScalingInterval {
+		return
+	}
+
+	// === BIOLOGICAL ACTIVITY GATING ===
+	// Only scale when there's sufficient neural activity
+	// Models: calcium-dependent gene expression requires minimum activity levels
+	n.stateMutex.Lock()
+	calciumLevel := n.homeostatic.calciumLevel
+	recentFiringRate := n.calculateCurrentFiringRateUnsafe()
+	n.stateMutex.Unlock()
+
+	// Biological gate: require minimum activity to trigger scaling
+	if calciumLevel < n.minActivityForScaling || recentFiringRate < 0.1 {
+		n.scalingConfig.LastScalingUpdate = now // Update timing but don't scale
+		return                                  // Not enough activity for biological scaling
+	}
+
+	// === STEP 1: CALCULATE REAL EFFECTIVE INPUT STRENGTH ===
+	n.inputGainsMutex.RLock()
+	n.inputActivityMutex.RLock()
+
+	// Skip scaling if no input sources registered
+	if len(n.inputGains) == 0 {
+		n.inputActivityMutex.RUnlock()
+		n.inputGainsMutex.RUnlock()
+		return
+	}
+
+	// Calculate current average effective input strength using REAL tracked activity
+	totalEffectiveStrength := 0.0
+	activeInputCount := 0
+
+	for sourceID := range n.inputGains {
+		// Get actual recent activity for this source
+		activities, hasActivity := n.inputActivityHistory[sourceID]
+		if !hasActivity || len(activities) == 0 {
+			continue // Skip sources with no recent activity
+		}
+
+		// Calculate average recent activity (biological integration)
+		activitySum := 0.0
+		for _, activity := range activities {
+			activitySum += activity
+		}
+		averageActivity := activitySum / float64(len(activities))
+
+		// This IS the effective strength (activity already includes gain effect)
+		totalEffectiveStrength += averageActivity
+		activeInputCount++
+	}
+
+	n.inputActivityMutex.RUnlock()
+	n.inputGainsMutex.RUnlock()
+
+	// Need minimum number of active inputs for meaningful scaling
+	if activeInputCount == 0 {
+		return
+	}
+
+	// Calculate current average effective input strength
+	currentAverageStrength := totalEffectiveStrength / float64(activeInputCount)
+
+	// === STEP 2: BIOLOGICAL SIGNIFICANCE TEST ===
+	// Only scale if there's a significant deviation from target
+	targetStrength := n.scalingConfig.TargetInputStrength
+	strengthDifference := targetStrength - currentAverageStrength
+	relativeError := math.Abs(strengthDifference) / targetStrength
+
+	// Biological threshold: only scale for significant imbalances (>10%)
+	if relativeError < 0.1 {
+		n.scalingConfig.LastScalingUpdate = now
+		return // Activity is close enough to target
+	}
+
+	// === STEP 3: CALCULATE SCALING FACTOR ===
+	// Calculate scaling factor with gradual adjustment
+	rawScalingFactor := 1.0 + (strengthDifference * n.scalingConfig.ScalingRate)
+
+	// Apply safety bounds (prevent extreme scaling)
+	scalingFactor := rawScalingFactor
+	if scalingFactor < n.scalingConfig.MinScalingFactor {
+		scalingFactor = n.scalingConfig.MinScalingFactor
+	}
+	if scalingFactor > n.scalingConfig.MaxScalingFactor {
+		scalingFactor = n.scalingConfig.MaxScalingFactor
+	}
+
+	// Skip scaling if factor is very close to 1.0 (no significant change needed)
+	if math.Abs(scalingFactor-1.0) < 0.0001 {
+		n.scalingConfig.LastScalingUpdate = now
+		return
+	}
+
+	// === STEP 4: APPLY BIOLOGICAL RECEPTOR SCALING ===
+	n.inputGainsMutex.Lock()
+	scaledGainCount := 0
+
+	for sourceID, oldGain := range n.inputGains {
+		// Only scale gains for sources with recent activity
+		if activities, hasActivity := n.inputActivityHistory[sourceID]; hasActivity && len(activities) > 0 {
+			// Calculate new receptor gain
+			newGain := oldGain * scalingFactor
+
+			// Apply biological bounds to receptor sensitivity
+			minGain := 0.01 // Minimum receptor sensitivity
+			maxGain := 10.0 // Maximum receptor sensitivity
+
+			if newGain < minGain {
+				newGain = minGain
+			} else if newGain > maxGain {
+				newGain = maxGain
+			}
+
+			// Apply the scaling (immediately affects signal processing)
+			n.inputGains[sourceID] = newGain
+			scaledGainCount++
+		}
+	}
+	n.inputGainsMutex.Unlock()
+
+	// === STEP 5: UPDATE SCALING STATE ===
+	n.scalingConfig.LastScalingUpdate = now
+	n.scalingConfig.ScalingHistory = append(n.scalingConfig.ScalingHistory, scalingFactor)
+
+	// Limit history size
+	maxHistorySize := 100
+	if len(n.scalingConfig.ScalingHistory) > maxHistorySize {
+		start := len(n.scalingConfig.ScalingHistory) - maxHistorySize
+		n.scalingConfig.ScalingHistory = n.scalingConfig.ScalingHistory[start:]
+	}
+}
+
+// GetInputChannel returns the input channel for connecting to this neuron
+// This allows other neurons or synapses to send signals to this neuron
 // Models: the dendritic tree where synaptic inputs are received
-func (n *Neuron) GetInput() chan<- Message {
+func (n *Neuron) GetInputChannel() chan synapse.SynapseMessage {
 	return n.input
 }
 
-// Close gracefully shuts down the neuron
-// Closes the input channel, which will cause the Run() loop to exit
-// Models: neuronal death or disconnection from the network
+// ID returns the unique identifier of this neuron
+// This implements the synapse.SynapseCompatibleNeuron interface
+func (n *Neuron) ID() string {
+	return n.id
+}
+
+// Close gracefully shuts down the neuron by closing its input channel
+// This signals the Run() goroutine to exit cleanly
+// Models: neural death or experimental disconnection
 func (n *Neuron) Close() {
-	// Safely close the input channel to stop the Run() goroutine.
-	// This prevents panics from sending to a closed channel.
+	n.closeOnce.Do(func() {
+		close(n.input)
+	})
+}
+
+// GetOutputCount returns the number of output connections (backward compatibility)
+func (n *Neuron) GetOutputCount() int {
+	return n.GetOutputSynapseCount()
+}
+
+// ============================================================================
+// HOMEOSTATIC AND THRESHOLD MANAGEMENT METHODS
+// ============================================================================
+
+// GetCurrentThreshold returns the current firing threshold (thread-safe)
+// The threshold may be different from the base threshold due to homeostatic adjustments
+func (n *Neuron) GetCurrentThreshold() float64 {
+	n.stateMutex.Lock()
+	defer n.stateMutex.Unlock()
+	return n.threshold
+}
+
+// GetBaseThreshold returns the original threshold before homeostatic adjustments
+// This value never changes and represents the neuron's initial excitability
+func (n *Neuron) GetBaseThreshold() float64 {
+	return n.baseThreshold // Immutable, no lock needed
+}
+
+// GetCalciumLevel returns the current calcium concentration (thread-safe)
+// Calcium level indicates recent firing activity and drives homeostatic regulation
+func (n *Neuron) GetCalciumLevel() float64 {
+	n.stateMutex.Lock()
+	defer n.stateMutex.Unlock()
+	return n.homeostatic.calciumLevel
+}
+
+// GetCurrentFiringRate calculates the current firing rate based on recent history
+// Returns the firing rate in Hz based on the configured activity window
+func (n *Neuron) GetCurrentFiringRate() float64 {
+	n.stateMutex.Lock()
+	defer n.stateMutex.Unlock()
+	return n.calculateCurrentFiringRateUnsafe()
+}
+
+// HomeostaticInfo contains read-only homeostatic state information
+// Used for monitoring and analysis of neural self-regulation
+type HomeostaticInfo struct {
+	targetFiringRate      float64       // Target firing rate for regulation
+	homeostasisStrength   float64       // Strength of homeostatic adjustments
+	calciumLevel          float64       // Current calcium concentration
+	firingHistory         []time.Time   // Recent firing times (copy)
+	minThreshold          float64       // Minimum allowed threshold
+	maxThreshold          float64       // Maximum allowed threshold
+	activityWindow        time.Duration // Time window for rate calculation
+	lastHomeostaticUpdate time.Time     // When homeostasis last ran
+}
+
+// GetHomeostaticInfo returns a snapshot of homeostatic state (thread-safe)
+// Returns a copy of internal data to prevent external modification
+func (n *Neuron) GetHomeostaticInfo() HomeostaticInfo {
+	n.stateMutex.Lock()
+	defer n.stateMutex.Unlock()
+
+	// Create a copy of firing history to prevent external modification
+	historyCopy := make([]time.Time, len(n.homeostatic.firingHistory))
+	copy(historyCopy, n.homeostatic.firingHistory)
+
+	return HomeostaticInfo{
+		targetFiringRate:      n.homeostatic.targetFiringRate,
+		homeostasisStrength:   n.homeostatic.homeostasisStrength,
+		calciumLevel:          n.homeostatic.calciumLevel,
+		firingHistory:         historyCopy,
+		minThreshold:          n.homeostatic.minThreshold,
+		maxThreshold:          n.homeostatic.maxThreshold,
+		activityWindow:        n.homeostatic.activityWindow,
+		lastHomeostaticUpdate: n.homeostatic.lastHomeostaticUpdate,
+	}
+}
+
+// SetHomeostaticParameters updates homeostatic regulation parameters (thread-safe)
+// This allows dynamic adjustment of self-regulation behavior
+//
+// Parameters:
+// targetFiringRate: desired firing rate in Hz (0 disables homeostasis)
+// homeostasisStrength: adjustment strength 0.0-1.0 (0 disables)
+//
+// Setting either parameter to 0 disables homeostatic regulation
+// When disabled, threshold resets to base value
+func (n *Neuron) SetHomeostaticParameters(targetFiringRate, homeostasisStrength float64) {
+	n.stateMutex.Lock()
+	defer n.stateMutex.Unlock()
+
+	n.homeostatic.targetFiringRate = targetFiringRate
+	n.homeostatic.homeostasisStrength = homeostasisStrength
+
+	// If homeostasis is being disabled, reset threshold to base value
+	if targetFiringRate == 0.0 || homeostasisStrength == 0.0 {
+		n.threshold = n.baseThreshold
+		n.homeostatic.calciumLevel = 0.0
+		n.homeostatic.firingHistory = n.homeostatic.firingHistory[:0] // Clear history
+	}
+}
+
+// ============================================================================
+// SYNAPTIC SCALING METHODS
+// ============================================================================
+
+// EnableSynapticScaling enables the synaptic scaling mechanism with specified parameters
+// This should be called before starting the neuron's Run() method
+//
+// Parameters:
+// targetStrength: desired average effective input strength
+// scalingRate: rate of adjustment per scaling event (0.001-0.01 typical)
+// interval: time between scaling operations (30s-10min typical)
+func (n *Neuron) EnableSynapticScaling(targetStrength, scalingRate float64, interval time.Duration) {
+	n.scalingConfig.Enabled = true
+	n.scalingConfig.TargetInputStrength = targetStrength
+	n.scalingConfig.ScalingRate = scalingRate
+	n.scalingConfig.ScalingInterval = interval
+	n.scalingConfig.LastScalingUpdate = time.Now()
+}
+
+// DisableSynapticScaling turns off synaptic scaling
+// Existing input gains are preserved but no further scaling occurs
+func (n *Neuron) DisableSynapticScaling() {
+	n.scalingConfig.Enabled = false
+}
+
+// GetInputGains returns a copy of current input gains for monitoring (thread-safe)
+// Returns map[sourceID]gain where gain is the receptor sensitivity multiplier
+func (n *Neuron) GetInputGains() map[string]float64 {
+	n.inputGainsMutex.RLock()
+	defer n.inputGainsMutex.RUnlock()
+
+	// Return a copy to prevent external modification
+	gains := make(map[string]float64, len(n.inputGains))
+	for sourceID, gain := range n.inputGains {
+		gains[sourceID] = gain
+	}
+	return gains
+}
+
+// GetScalingHistory returns recent scaling factors for analysis (thread-safe)
+// Returns a copy of the scaling history to prevent external modification
+func (n *Neuron) GetScalingHistory() []float64 {
+	history := make([]float64, len(n.scalingConfig.ScalingHistory))
+	copy(history, n.scalingConfig.ScalingHistory)
+	return history
+}
+
+// SetInputGain manually sets the receptor gain for a specific input source
+// This allows external control of synaptic scaling for experimental purposes
+//
+// Parameters:
+// sourceID: identifier of the input source
+// gain: receptor sensitivity multiplier (typically 0.1-10.0)
+func (n *Neuron) SetInputGain(sourceID string, gain float64) {
+	// Clamp gain to reasonable biological bounds
+	if gain < 0.01 {
+		gain = 0.01
+	}
+	if gain > 10.0 {
+		gain = 10.0
+	}
+
+	n.inputGainsMutex.Lock()
+	defer n.inputGainsMutex.Unlock()
+
+	if n.inputGains == nil {
+		n.inputGains = make(map[string]float64)
+	}
+	n.inputGains[sourceID] = gain
+}
+
+// ============================================================================
+// RECEIVE METHOD
+// ============================================================================
+
+// Receive accepts a synapse message and integrates it into the neuron's processing pipeline
+// This method implements the synapse.SynapseCompatibleNeuron interface, allowing this neuron
+// to work seamlessly with the synapse package for biologically accurate connections
+//
+// BIOLOGICAL CONTEXT:
+// In real neurons, synaptic inputs arrive at dendrites and are integrated at the cell body (soma).
+// This method models the dendritic integration process where synaptic signals are converted
+// to postsynaptic potentials and integrated with existing membrane dynamics.
+//
+// CONCURRENCY SAFETY:
+// This method is thread-safe and designed to be called from multiple synapse goroutines
+// simultaneously. The select statement with default case ensures non-blocking operation,
+// preventing synapses from being blocked if the neuron's input buffer is full.
+//
+// Parameters:
+// msg: SynapseMessage containing the synaptic signal with timing and source information
+func (n *Neuron) Receive(msg synapse.SynapseMessage) {
+	// Forward to the neuron's input processing pipeline
+	// This integrates the synaptic signal into the neuron's standard processing workflow,
+	// ensuring that synaptic inputs are handled with all biological mechanisms:
+	// - Leaky integration (membrane decay)
+	// - Homeostatic plasticity (activity tracking and threshold adjustment)
+	// - Synaptic scaling (receptor sensitivity adjustment)
+	// - Refractory period enforcement
+	// - Fire event reporting
+
+	// *** FIX: Gracefully handle panics from sending on a closed channel. ***
+	// This can occur during a clean network shutdown if a synapse's delayed transmission
+	// attempts to deliver a message to a neuron that has already been closed.
 	defer func() {
-		if r := recover(); r != nil {
-			// A panic might occur if the channel is already closed, which is fine.
-			// We can ignore it.
-		}
+		recover()
 	}()
-	close(n.input)
+
+	select {
+	case n.input <- msg:
+		// Successfully delivered message to neuron's processing pipeline
+		// The neuron's Run() method will handle the message with full biological dynamics
+	default:
+		// Input buffer is full - drop the message to prevent blocking the synapse
+		// In biology, synapses can fail to transmit when the post-synaptic neuron
+		// is overwhelmed with inputs. This models that saturation behavior.
+		//
+		// Alternative approaches:
+		// 1. Block until space available (risks deadlock)
+		// 2. Expand buffer dynamically (risks memory explosion)
+		// 3. Drop message (chosen - models biological saturation)
+	}
 }
 
 // GetHomeostaticInfo returns current homeostatic state information for monitoring
