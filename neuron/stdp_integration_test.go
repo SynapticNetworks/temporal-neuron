@@ -2156,3 +2156,136 @@ func TestSTDPNetworkPerformance(t *testing.T) {
 		t.Logf("✓ PASS: Network performance is excellent.")
 	}
 }
+
+// ============================================================================
+// STRUCTURAL PLASTICITY TESTS
+// ============================================================================
+
+// TestSynapticPruning validates the "use it or lose it" principle, where synapses
+// that are both weak and inactive are marked for removal.
+//
+// BIOLOGICAL CONTEXT:
+// In the brain, structural plasticity is a slow process that optimizes neural
+// circuits by eliminating ineffective or unused connections. This is crucial for
+// efficient wiring, memory consolidation, and developmental refinement. A synapse
+// is typically considered a candidate for pruning only if two conditions are met:
+//  1. It is synaptically weak (low efficacy, e.g., low weight).
+//  2. It has been inactive for a significant period.
+//
+// EXPERIMENTAL DESIGN:
+// 1. Setup: Create a neuron with two output synapses: one to be pruned, one to be kept.
+//   - The "prune" synapse will have an aggressive pruning configuration (low thresholds).
+//   - The "keep" synapse will have a conservative configuration.
+//     2. Weakening Phase: Use anti-causal STDP to selectively weaken the "prune" synapse
+//     so its weight drops below its pruning threshold. The "keep" synapse is left strong.
+//     3. Inactivity Phase: Wait for a duration longer than the "prune" synapse's
+//     inactivity threshold. During this time, the "keep" synapse is kept active.
+//     4. Validation Phase:
+//   - Verify that `ShouldPrune()` returns `true` for the weak, inactive synapse.
+//   - Verify that `ShouldPrune()` returns `false` for the strong, active synapse.
+//   - Simulate the neuron removing the pruned synapse and check that its connection count decreases.
+func TestSynapticPruning(t *testing.T) {
+	t.Log("=== SYNAPTIC PRUNING TEST (USE IT OR LOSE IT) ===")
+
+	// --- SETUP ---
+	preNeuron := NewSimpleNeuron("pre_pruning", 1.0, 0.95, 5*time.Millisecond, 1.0)
+	postNeuron := NewSimpleNeuron("post_pruning", 1.0, 0.95, 5*time.Millisecond, 1.0)
+	go preNeuron.Run()
+	defer preNeuron.Close()
+
+	// Configuration for the synapse we intend to prune
+	aggressivePruningConfig := synapse.PruningConfig{
+		Enabled:             true,
+		WeightThreshold:     0.5,                    // Prune if weight falls below 0.5
+		InactivityThreshold: 100 * time.Millisecond, // Prune if inactive for 100ms
+	}
+
+	// Configuration for the synapse we intend to keep
+	conservativePruningConfig := synapse.CreateConservativePruningConfig() // Uses long (30min) inactivity threshold
+
+	// ***FIX: Use a more aggressive STDP config to ensure the synapse weakens sufficiently.***
+	stdpConfig := synapse.STDPConfig{
+		Enabled:        true,
+		LearningRate:   0.02, // Higher learning rate
+		TimeConstant:   15 * time.Millisecond,
+		WindowSize:     40 * time.Millisecond,
+		MinWeight:      0.1,
+		MaxWeight:      2.0,
+		AsymmetryRatio: 1.8, // Make LTD stronger
+	}
+
+	// Create the two synapses
+	synapseToPrune := synapse.NewBasicSynapse("syn_to_prune", preNeuron, postNeuron, stdpConfig, aggressivePruningConfig, 1.0, 0)
+	synapseToKeep := synapse.NewBasicSynapse("syn_to_keep", preNeuron, postNeuron, stdpConfig, conservativePruningConfig, 1.0, 0)
+
+	preNeuron.AddOutputSynapse(synapseToPrune.ID(), synapseToPrune)
+	preNeuron.AddOutputSynapse(synapseToKeep.ID(), synapseToKeep)
+
+	if preNeuron.GetOutputSynapseCount() != 2 {
+		t.Fatalf("Expected initial synapse count to be 2, got %d", preNeuron.GetOutputSynapseCount())
+	}
+	t.Logf("Initial state: 2 synapses. Pruning threshold for '%s' is weight < %.2f and inactive for %v",
+		synapseToPrune.ID(), aggressivePruningConfig.WeightThreshold, aggressivePruningConfig.InactivityThreshold)
+
+	// --- PHASE 1: Weaken the target synapse ---
+	t.Log("\n--- Phase 1: Weakening 'syn_to_prune' with anti-causal STDP ---")
+	// ***FIX: Increase the number of trials to ensure weight drops below threshold.***
+	for i := 0; i < 50; i++ {
+		synapseToPrune.ApplyPlasticity(synapse.PlasticityAdjustment{DeltaT: 10 * time.Millisecond})
+	}
+	t.Logf("Weight of '%s' after weakening: %.4f", synapseToPrune.ID(), synapseToPrune.GetWeight())
+
+	// Validate it's weak enough but not yet prunable (because it's still active)
+	if synapseToPrune.GetWeight() >= aggressivePruningConfig.WeightThreshold {
+		t.Fatalf("Synapse did not weaken enough to be a pruning candidate. Weight: %.4f", synapseToPrune.GetWeight())
+	}
+	if synapseToPrune.ShouldPrune() {
+		t.Fatal("'syn_to_prune' should not be prunable yet (it is still active).")
+	}
+
+	// Keep the other synapse active
+	synapseToKeep.ApplyPlasticity(synapse.PlasticityAdjustment{DeltaT: -10 * time.Millisecond}) // LTP
+
+	// --- PHASE 2: Simulate Inactivity ---
+	inactivityDuration := aggressivePruningConfig.InactivityThreshold + (20 * time.Millisecond)
+	t.Logf("\n--- Phase 2: Waiting for %v to simulate inactivity for the weakened synapse ---", inactivityDuration)
+	time.Sleep(inactivityDuration)
+
+	// --- PHASE 3: Validation ---
+	t.Log("\n--- Phase 3: Validating pruning status ---")
+	if !synapseToPrune.ShouldPrune() {
+		t.Errorf("FAIL: Weak and inactive synapse '%s' should be marked for pruning, but was not.", synapseToPrune.ID())
+	} else {
+		t.Logf("✓ PASS: Weak and inactive synapse '%s' correctly marked for pruning.", synapseToPrune.ID())
+	}
+
+	if synapseToKeep.ShouldPrune() {
+		t.Errorf("FAIL: Strong and active synapse '%s' should NOT be marked for pruning.", synapseToKeep.ID())
+	} else {
+		t.Logf("✓ PASS: Strong synapse '%s' correctly preserved.", synapseToKeep.ID())
+	}
+
+	// --- PHASE 4: Network Integration ---
+	t.Log("\n--- Phase 4: Simulating neuron removing the pruned synapse ---")
+	// In a real simulation, a network management process would periodically
+	// check synapses and remove them. We simulate that here.
+	if synapseToPrune.ShouldPrune() {
+		preNeuron.RemoveOutputSynapse(synapseToPrune.ID())
+		t.Logf("Removed synapse '%s' from neuron '%s'", synapseToPrune.ID(), preNeuron.ID())
+	}
+
+	finalCount := preNeuron.GetOutputSynapseCount()
+	if finalCount != 1 {
+		t.Errorf("FAIL: Expected final synapse count to be 1, but got %d", finalCount)
+	} else {
+		t.Log("✓ PASS: Neuron's output synapse count correctly updated after pruning.")
+	}
+
+	// Verify the correct synapse remains
+	_, exists := preNeuron.GetOutputSynapseWeight(synapseToKeep.ID())
+	if !exists {
+		t.Errorf("FAIL: The synapse that should have been kept ('%s') was removed.", synapseToKeep.ID())
+	} else {
+		t.Logf("✓ PASS: The correct synapse ('%s') remains connected.", synapseToKeep.ID())
+	}
+}
