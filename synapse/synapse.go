@@ -384,19 +384,19 @@ func (s *BasicSynapse) Transmit(signalValue float64) {
 	s.lastTransmission = time.Now()
 	s.mutex.Unlock()
 
-	// Create the message to be delivered to the post-synaptic neuron
-	// Uses the precise timing information required for STDP learning
-	message := SynapseMessage{
-		Value:     effectiveSignal,
-		Timestamp: time.Now(),               // When the signal was generated
-		SourceID:  s.preSynapticNeuron.ID(), // Which neuron sent the signal
-		SynapseID: s.id,                     // Which synapse transmitted it
-	}
-
 	// Use time.AfterFunc for efficient, non-blocking delay handling.
 	// This avoids creating goroutines per transmission while still
 	// providing accurate timing for biological realism.
 	time.AfterFunc(currentDelay, func() {
+		// Create the message to be delivered to the post-synaptic neuron
+		// Uses the precise timing information required for STDP learning
+		message := SynapseMessage{
+			Value:     effectiveSignal,
+			Timestamp: time.Now(),               // When the signal was generated
+			SourceID:  s.preSynapticNeuron.ID(), // Which neuron sent the signal
+			SynapseID: s.id,                     // Which synapse transmitted it
+		}
+
 		// Deliver the message to the post-synaptic neuron after the delay
 		// The timestamp in the message reflects when it was originally sent,
 		// allowing the receiving neuron to calculate actual transmission timing
