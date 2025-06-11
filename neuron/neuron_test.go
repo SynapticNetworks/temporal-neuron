@@ -1552,6 +1552,442 @@ func TestGracefulShutdown(t *testing.T) {
 	}()
 }
 
+// TestNeuronBasicFiring tests fundamental neuron firing behavior
+func TestNeuronBasicFiring(t *testing.T) {
+	t.Log("=== Testing Basic Neuron Firing Behavior ===")
+
+	testCases := []struct {
+		name     string
+		input    float64
+		expected bool
+	}{
+		{"Below threshold", 1.0, false},
+		{"Just below threshold", 1.9, false},
+		{"At threshold", 2.0, true},
+		{"Above threshold", 2.1, true},
+		{"Well above threshold", 3.0, true},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Create FRESH neuron for each test case to avoid state contamination
+			threshold := 2.0
+			fireFactor := 1.0
+			testNeuron := NewNeuron("test", threshold, 0.95, 10*time.Millisecond, fireFactor, 0, 0)
+			defer testNeuron.Close()
+
+			fireEvents := make(chan FireEvent, 10)
+			testNeuron.SetFireEventChannel(fireEvents)
+			go testNeuron.Run()
+
+			// Send input
+			testNeuron.Receive(synapse.SynapseMessage{
+				Value:     tc.input,
+				Timestamp: time.Now(),
+				SourceID:  "test",
+			})
+
+			// Check if it fired
+			time.Sleep(5 * time.Millisecond)
+			fired := false
+
+			select {
+			case event := <-fireEvents:
+				fired = true
+				t.Logf("Fired with value %.2f", event.Value)
+			case <-time.After(5 * time.Millisecond):
+				t.Log("Did not fire")
+			}
+
+			if fired != tc.expected {
+				t.Errorf("Input %.1f: expected firing=%t, got=%t", tc.input, tc.expected, fired)
+			}
+		})
+	}
+}
+
+// TestCoincidenceDetection tests the coincidence detection functionality
+func TestCoincidenceDetection(t *testing.T) {
+	t.Log("=== Testing Coincidence Detection ===")
+
+	testCases := []struct {
+		name               string
+		inputs             []float64
+		delays             []time.Duration
+		expectedFire       bool
+		expectedCoincident int
+	}{
+		{
+			name:               "Single strong input",
+			inputs:             []float64{3.0},
+			delays:             []time.Duration{0},
+			expectedFire:       true,
+			expectedCoincident: 1,
+		},
+		{
+			name:               "Two weak inputs simultaneous",
+			inputs:             []float64{1.5, 1.5},
+			delays:             []time.Duration{0, 0},
+			expectedFire:       true,
+			expectedCoincident: 2,
+		},
+		{
+			name:               "Two weak inputs within window",
+			inputs:             []float64{1.5, 1.5},
+			delays:             []time.Duration{0, 5 * time.Millisecond},
+			expectedFire:       true,
+			expectedCoincident: 2,
+		},
+		{
+			name:               "Two weak inputs outside window",
+			inputs:             []float64{1.5, 1.5},
+			delays:             []time.Duration{0, 15 * time.Millisecond},
+			expectedFire:       false,
+			expectedCoincident: 1, // Only the recent one
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Create neuron with coincidence detection enabled
+			coincidenceNeuron := NewNeuron("coincidence", 2.5, 0.90, 10*time.Millisecond, 1.0, 0, 0)
+			defer coincidenceNeuron.Close()
+
+			// Enable coincidence detection using the correct method
+			coincidenceNeuron.SetCoincidenceDetection(true, 10*time.Millisecond)
+
+			fireEvents := make(chan FireEvent, 10)
+			coincidenceNeuron.SetFireEventChannel(fireEvents)
+			go coincidenceNeuron.Run()
+
+			// Wait for neuron to be ready
+			time.Sleep(5 * time.Millisecond)
+
+			// Send inputs with specified delays
+			for j, input := range tc.inputs {
+				if tc.delays[j] > 0 {
+					time.Sleep(tc.delays[j])
+				}
+
+				// Use ProcessTestMessage to ensure activity tracking
+				coincidenceNeuron.ProcessTestMessage(synapse.SynapseMessage{
+					Value:     input,
+					Timestamp: time.Now(),
+					SourceID:  fmt.Sprintf("input_%d", j),
+				})
+			}
+
+			// Check if neuron fired
+			time.Sleep(20 * time.Millisecond)
+			fired := false
+
+			select {
+			case event := <-fireEvents:
+				fired = true
+				t.Logf("Neuron fired with value %.2f", event.Value)
+			case <-time.After(10 * time.Millisecond):
+				t.Log("Neuron did not fire")
+			}
+
+			// Check coincidence detection
+			coincidentInputs := coincidenceNeuron.DetectCoincidentInputs()
+			t.Logf("Detected %d coincident inputs", coincidentInputs)
+
+			// Debug: Check activity history
+			history := coincidenceNeuron.GetInputActivityHistory()
+			t.Logf("Activity history: %d sources recorded", len(history))
+			for sourceID, activities := range history {
+				t.Logf("  %s: %d activities", sourceID, len(activities))
+			}
+
+			if fired != tc.expectedFire {
+				t.Errorf("Expected firing=%t, got=%t", tc.expectedFire, fired)
+			}
+
+			if coincidentInputs != tc.expectedCoincident {
+				t.Errorf("Expected %d coincident inputs, got %d", tc.expectedCoincident, coincidentInputs)
+			}
+
+			// Wait before next test
+			time.Sleep(30 * time.Millisecond)
+		})
+	}
+}
+
+// TestTemporalSummation tests how inputs accumulate over time
+func TestTemporalSummation(t *testing.T) {
+	t.Log("=== Testing Temporal Summation ===")
+
+	testCases := []struct {
+		name      string
+		inputs    []float64
+		interval  time.Duration
+		expected  bool
+		decayRate float64 // Custom decay rate for each test
+	}{
+		{
+			name:      "Two inputs close together",
+			inputs:    []float64{1.8, 1.8},
+			interval:  1 * time.Millisecond,
+			expected:  true, // Should sum to > 3.0
+			decayRate: 0.90,
+		},
+		{
+			name:      "Two inputs far apart",
+			inputs:    []float64{1.8, 1.8},
+			interval:  20 * time.Millisecond,
+			expected:  false, // Decay should prevent summation
+			decayRate: 0.90,
+		},
+		{
+			name:      "Three weak inputs rapid",
+			inputs:    []float64{1.2, 1.2, 1.2},
+			interval:  1 * time.Millisecond, // Faster interval
+			expected:  true,                 // Should accumulate
+			decayRate: 0.98,                 // Slower decay to preserve accumulation
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Create fresh neuron for each test with appropriate decay rate
+			neuron := NewNeuron("summation", 3.0, tc.decayRate, 10*time.Millisecond, 1.0, 0, 0)
+			defer neuron.Close()
+
+			fireEvents := make(chan FireEvent, 10)
+			neuron.SetFireEventChannel(fireEvents)
+			go neuron.Run()
+
+			// Send inputs with intervals
+			for j, input := range tc.inputs {
+				if j > 0 {
+					time.Sleep(tc.interval)
+				}
+
+				neuron.Receive(synapse.SynapseMessage{
+					Value:     input,
+					Timestamp: time.Now(),
+					SourceID:  fmt.Sprintf("input_%d", j),
+				})
+			}
+
+			// Check result
+			time.Sleep(15 * time.Millisecond)
+			fired := false
+
+			select {
+			case event := <-fireEvents:
+				fired = true
+				t.Logf("Neuron fired with value %.2f", event.Value)
+			case <-time.After(5 * time.Millisecond):
+				t.Log("Neuron did not fire")
+			}
+
+			if fired != tc.expected {
+				t.Errorf("Expected %t, got %t", tc.expected, fired)
+			}
+		})
+	}
+}
+
+// TestInhibition tests inhibitory signal behavior with proper timing
+func TestInhibition(t *testing.T) {
+	t.Log("=== Testing Inhibition ===")
+
+	testCases := []struct {
+		name       string
+		excitation float64
+		inhibition float64
+		expected   bool
+	}{
+		{
+			name:       "Excitation only",
+			excitation: 2.5,
+			inhibition: 0,
+			expected:   true,
+		},
+		{
+			name:       "Weak inhibition",
+			excitation: 1.8,  // Reduced so it won't fire alone
+			inhibition: -0.3, // 1.8 - 0.3 = 1.5 < 2.0 threshold
+			expected:   false,
+		},
+		{
+			name:       "Strong inhibition",
+			excitation: 1.8,  // Reduced so it won't fire alone
+			inhibition: -2.0, // 1.8 - 2.0 = -0.2 < 2.0 threshold
+			expected:   false,
+		},
+		{
+			name:       "Overcome inhibition",
+			excitation: 3.0,  // Strong enough to overcome inhibition
+			inhibition: -0.5, // 3.0 - 0.5 = 2.5 > 2.0 threshold
+			expected:   true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Create fresh neuron for each test case
+			// Use slower decay rate to ensure signals sum properly
+			neuron := NewNeuron("inhibition", 2.0, 0.999, 10*time.Millisecond, 1.0, 0, 0)
+			defer neuron.Close()
+
+			fireEvents := make(chan FireEvent, 10)
+			neuron.SetFireEventChannel(fireEvents)
+			go neuron.Run()
+
+			// Wait for neuron to be ready
+			time.Sleep(2 * time.Millisecond)
+
+			// Send both signals rapidly to ensure temporal summation
+			neuron.Receive(synapse.SynapseMessage{
+				Value:     tc.excitation,
+				Timestamp: time.Now(),
+				SourceID:  "excitatory",
+			})
+
+			// Send inhibition immediately (if present)
+			if tc.inhibition != 0 {
+				neuron.Receive(synapse.SynapseMessage{
+					Value:     tc.inhibition,
+					Timestamp: time.Now(),
+					SourceID:  "inhibitory",
+				})
+			}
+
+			// Check result
+			time.Sleep(15 * time.Millisecond)
+			fired := false
+
+			select {
+			case event := <-fireEvents:
+				fired = true
+				t.Logf("Neuron fired with value %.2f", event.Value)
+			case <-time.After(5 * time.Millisecond):
+				t.Log("Neuron did not fire")
+			}
+
+			// Debug: Check final accumulator state
+			finalState := neuron.GetNeuronState()
+			t.Logf("Final accumulator: %.3f, expected sum: %.1f",
+				finalState["accumulator"], tc.excitation+tc.inhibition)
+
+			if fired != tc.expected {
+				t.Errorf("Excitation %.1f + Inhibition %.1f: expected %t, got %t",
+					tc.excitation, tc.inhibition, tc.expected, fired)
+			}
+		})
+	}
+}
+
+// TestSynapseDelays tests synapse transmission delays
+func TestSynapseDelays(t *testing.T) {
+	t.Log("=== Testing Synapse Delays ===")
+
+	delays := []time.Duration{0, 5 * time.Millisecond, 10 * time.Millisecond}
+	tolerance := 5 * time.Millisecond // Allow 5ms tolerance for timing
+
+	for _, expectedDelay := range delays {
+		t.Run(fmt.Sprintf("Delay_%v", expectedDelay), func(t *testing.T) {
+			// Create input and output neurons
+			inputNeuron := NewSimpleNeuron("input", 0.5, 0.95, 5*time.Millisecond, 1.0)
+			outputNeuron := NewNeuron("output", 2.0, 0.95, 10*time.Millisecond, 1.0, 0, 0)
+
+			defer inputNeuron.Close()
+			defer outputNeuron.Close()
+
+			// Create synapse with specific delay
+			synapseConfig := synapse.CreateDefaultSTDPConfig()
+			synapseConfig.Enabled = false
+			pruningConfig := synapse.CreateDefaultPruningConfig()
+
+			testSynapse := synapse.NewBasicSynapse("test", inputNeuron, outputNeuron,
+				synapseConfig, pruningConfig, 2.5, expectedDelay)
+
+			inputNeuron.AddOutputSynapse("test", testSynapse)
+
+			fireEvents := make(chan FireEvent, 10)
+			outputNeuron.SetFireEventChannel(fireEvents)
+
+			go inputNeuron.Run()
+			go outputNeuron.Run()
+
+			// Send input and measure timing
+			startTime := time.Now()
+			inputNeuron.Receive(synapse.SynapseMessage{
+				Value:     2.0,
+				Timestamp: startTime,
+				SourceID:  "timing_test",
+			})
+
+			// Wait for output
+			select {
+			case event := <-fireEvents:
+				actualDelay := event.Timestamp.Sub(startTime)
+				t.Logf("Expected delay: %v, Actual delay: %v", expectedDelay, actualDelay)
+
+				if actualDelay < expectedDelay || actualDelay > expectedDelay+tolerance {
+					t.Errorf("Delay out of range: expected %v (±%v), got %v",
+						expectedDelay, tolerance, actualDelay)
+				}
+
+			case <-time.After(expectedDelay + 50*time.Millisecond):
+				t.Errorf("No output received within timeout")
+			}
+		})
+	}
+}
+
+// TestNeuronRealism tests biological realism constraints
+func TestNeuronRealism(t *testing.T) {
+	t.Log("=== Testing Biological Realism ===")
+
+	neuron := NewNeuron("realism", 1.0, 0.95, 5*time.Millisecond, 1.0, 0, 0)
+	defer neuron.Close()
+
+	fireEvents := make(chan FireEvent, 100)
+	neuron.SetFireEventChannel(fireEvents)
+	go neuron.Run()
+
+	// Test refractory period
+	t.Run("Refractory period", func(t *testing.T) {
+		// Send strong input to make it fire
+		neuron.Receive(synapse.SynapseMessage{Value: 2.0, SourceID: "test"})
+
+		// Should fire
+		select {
+		case <-fireEvents:
+			t.Log("First spike successful")
+		case <-time.After(10 * time.Millisecond):
+			t.Fatal("First spike failed")
+		}
+
+		// Immediately send another strong input (should be blocked by refractory)
+		neuron.Receive(synapse.SynapseMessage{Value: 2.0, SourceID: "test"})
+
+		// Should NOT fire
+		select {
+		case <-fireEvents:
+			t.Error("Second spike should be blocked by refractory period")
+		case <-time.After(3 * time.Millisecond):
+			t.Log("Refractory period correctly blocked second spike")
+		}
+
+		// Wait for refractory to end, then try again
+		time.Sleep(10 * time.Millisecond)
+		neuron.Receive(synapse.SynapseMessage{Value: 2.0, SourceID: "test"})
+
+		// Should fire again
+		select {
+		case <-fireEvents:
+			t.Log("Third spike successful after refractory")
+		case <-time.After(10 * time.Millisecond):
+			t.Error("Third spike should work after refractory period")
+		}
+	})
+}
+
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
@@ -1594,6 +2030,32 @@ func BenchmarkSynapseMessageProcessing(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		neuron.Receive(msg)
+	}
+}
+
+// BenchmarkNeuronFiring benchmarks basic neuron firing performance
+func BenchmarkNeuronFiring(b *testing.B) {
+	neuron := NewNeuron("bench", 1.0, 0.95, 5*time.Millisecond, 1.0, 0, 0)
+	defer neuron.Close()
+
+	fireEvents := make(chan FireEvent, 1000)
+	neuron.SetFireEventChannel(fireEvents)
+	go neuron.Run()
+
+	// Drain fire events in background
+	go func() {
+		for range fireEvents {
+			// Consume events
+		}
+	}()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		neuron.Receive(synapse.SynapseMessage{
+			Value:     1.5,
+			Timestamp: time.Now(),
+			SourceID:  "bench",
+		})
 	}
 }
 

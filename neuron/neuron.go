@@ -1747,6 +1747,17 @@ func (n *Neuron) Receive(msg synapse.SynapseMessage) {
 // METHODS FOR TEST, MONITORING AND OBSERVATION
 // ============================================================================
 
+// ProcessTestMessage is a test helper that processes a message and ensures
+// activity tracking is properly updated for testing coincidence detection
+// This method is specifically designed for testing scenarios
+func (n *Neuron) ProcessTestMessage(msg synapse.SynapseMessage) {
+	// Process the message through normal pathways
+	n.Receive(msg)
+
+	// Additional processing time to ensure message is fully integrated
+	time.Sleep(1 * time.Millisecond)
+}
+
 // GetAccumulator returns the current accumulator value for testing/debugging
 func (n *Neuron) GetAccumulator() float64 {
 	n.stateMutex.Lock()
@@ -1790,4 +1801,20 @@ func (n *Neuron) WaitForQuiescence(timeout time.Duration) bool {
 		time.Sleep(1 * time.Millisecond)
 	}
 	return false
+}
+
+// GetInputActivityHistory returns a copy of the input activity history for testing
+// This allows tests to verify that activity tracking is working correctly
+func (n *Neuron) GetInputActivityHistory() map[string][]InputActivity {
+	n.inputActivityMutex.RLock()
+	defer n.inputActivityMutex.RUnlock()
+
+	// Return a copy to prevent external modification
+	history := make(map[string][]InputActivity)
+	for sourceID, activities := range n.inputActivityHistory {
+		historyCopy := make([]InputActivity, len(activities))
+		copy(historyCopy, activities)
+		history[sourceID] = historyCopy
+	}
+	return history
 }
