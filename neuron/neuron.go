@@ -226,6 +226,13 @@ type SynapticScalingConfig struct {
 	// Limited to recent history to prevent unlimited memory growth
 }
 
+// InputActivity represents a single synaptic input event with its strength and timestamp.
+// It is used to track temporal input patterns for synaptic trace memory.
+type InputActivity struct {
+	Strength  float64   // The strength of the synaptic input.
+	Timestamp time.Time // The time the input was received.
+}
+
 // Neuron represents a single processing unit inspired by biological neurons
 // Unlike traditional artificial neurons that perform instantaneous calculations,
 // this neuron models the temporal dynamics of real neural processing:
@@ -270,6 +277,29 @@ type Neuron struct {
 	// Value between 0.0-1.0: 0.95 = loses 5% charge per decay interval
 	// Real neurons: membrane time constant typically 10-20ms
 
+	// === COINCIDENCE DETECTION PARAMETERS ===
+	// These parameters control the neuron's ability to act as a coincidence detector,
+	// a fundamental computational role where a neuron fires preferentially in response
+	// to multiple, near-simultaneous excitatory inputs.
+	//
+	// Biological basis:
+	// This models the function of specialized synaptic receptors like NMDA, which act
+	// as molecular "and-gates." They require both neurotransmitter binding (an input)
+	// and significant membrane depolarization (often from other coincident inputs)
+	// to activate. This mechanism is crucial for learning, memory formation, and
+	// processing correlated signals in the brain.
+
+	EnableCoincidenceDetection bool // Master switch to enable or disable coincidence detection logic.
+	// Models the biological diversity of neurons; some neuron types are specialized
+	// as powerful coincidence detectors (e.g., with high densities of NMDA receptors),
+	// while others act as more general integrators.
+
+	CoincidenceWindow time.Duration // The time window within which inputs are considered simultaneous.
+	// Models the temporal integration window of the postsynaptic membrane. This is
+	// determined by biophysical properties like the membrane time constant (how fast
+	// charge leaks) and the kinetics of synaptic receptors.
+	// Typical biological values range from 5ms to 20ms.
+
 	// === HOMEOSTATIC PLASTICITY STATE ===
 	// Models the biological mechanisms for activity monitoring and self-regulation
 
@@ -302,7 +332,7 @@ type Neuron struct {
 	// === ACTIVITY-BASED SCALING TRACKING ===
 	// Models the biological activity sensing that drives synaptic scaling decisions
 
-	inputActivityHistory map[string][]float64 // Recent input signal strengths per source
+	inputActivityHistory map[string][]InputActivity // Recent input signal strengths per source
 	// Maps source neuron ID to sliding window of recent effective signal strengths
 	// Used to calculate actual average input strength for scaling decisions
 	// Biological basis: neurons integrate recent synaptic activity over time windows
@@ -405,15 +435,17 @@ func NewNeuron(id string, threshold float64, decayRate float64, refractoryPeriod
 	homeostaticInterval := 100 * time.Millisecond // Check homeostasis every 100ms
 
 	return &Neuron{
-		id:               id,                                         // Unique neuron identifier for network tracking
-		threshold:        threshold,                                  // Current firing threshold (homeostatic)
-		baseThreshold:    threshold,                                  // Original threshold (reference)
-		decayRate:        decayRate,                                  // Membrane decay rate (biological: based on RC time constant)
-		refractoryPeriod: refractoryPeriod,                           // Refractory period (biological: ~5-15ms)
-		fireFactor:       fireFactor,                                 // Output amplitude scaling
-		input:            make(chan synapse.SynapseMessage, 100),     // Buffered input channel for synapse messages
-		outputSynapses:   make(map[string]synapse.SynapticProcessor), // Dynamic synapse connections
-		fireEvents:       nil,                                        // Optional fire event reporting (disabled by default)
+		id:                         id,                                         // Unique neuron identifier for network tracking
+		threshold:                  threshold,                                  // Current firing threshold (homeostatic)
+		baseThreshold:              threshold,                                  // Original threshold (reference)
+		decayRate:                  decayRate,                                  // Membrane decay rate (biological: based on RC time constant)
+		refractoryPeriod:           refractoryPeriod,                           // Refractory period (biological: ~5-15ms)
+		fireFactor:                 fireFactor,                                 // Output amplitude scaling
+		input:                      make(chan synapse.SynapseMessage, 100),     // Buffered input channel for synapse messages
+		outputSynapses:             make(map[string]synapse.SynapticProcessor), // Dynamic synapse connections
+		fireEvents:                 nil,                                        // Optional fire event reporting (disabled by default)
+		EnableCoincidenceDetection: false,                                      // deactivated by default - TODO check if we can activate
+		CoincidenceWindow:          50 * time.Millisecond,
 
 		// Initialize homeostatic plasticity system
 		homeostatic: HomeostaticMetrics{
@@ -444,7 +476,7 @@ func NewNeuron(id string, threshold float64, decayRate float64, refractoryPeriod
 		},
 
 		// Initialize activity tracking
-		inputActivityHistory:   make(map[string][]float64),
+		inputActivityHistory:   make(map[string][]InputActivity),
 		activityTrackingWindow: 10 * time.Second, // Track activity over 10 seconds
 		minActivityForScaling:  0.1,              // Minimum activity for scaling
 		lastActivityCleanup:    time.Now(),
@@ -502,6 +534,19 @@ func NewNeuronWithLearning(id string, threshold float64, targetFiringRate float6
 
 	return NewNeuron(id, threshold, decayRate, refractoryPeriod, fireFactor,
 		targetFiringRate, homeostasisStrength)
+}
+
+// GetInputStrengths returns the strengths of recent input activities for a given source ID.
+// It provides compatibility for tests expecting float64 slices from inputActivityHistory.
+// This method is safe for concurrent use.
+func (n *Neuron) GetInputStrengths(sourceID string) []float64 {
+	n.inputActivityMutex.RLock()
+	defer n.inputActivityMutex.RUnlock()
+	var strengths []float64
+	for _, activity := range n.inputActivityHistory[sourceID] {
+		strengths = append(strengths, activity.Strength)
+	}
+	return strengths
 }
 
 // updateCalciumLevel applies calcium dynamics based on firing activity
@@ -987,7 +1032,7 @@ func (n *Neuron) processMessageWithDecay(msg synapse.SynapseMessage) {
 func (n *Neuron) recordInputActivityUnsafe(sourceID string, effectiveSignalValue float64) {
 	// Initialize activity tracking structures if needed
 	if n.inputActivityHistory == nil {
-		n.inputActivityHistory = make(map[string][]float64)
+		n.inputActivityHistory = make(map[string][]InputActivity)
 	}
 
 	// Get current time for activity timestamping
@@ -997,8 +1042,10 @@ func (n *Neuron) recordInputActivityUnsafe(sourceID string, effectiveSignalValue
 	// Add this signal to the activity history for this source
 	// Models: accumulation of synaptic activity over biological time windows
 	n.inputActivityMutex.Lock()
-	n.inputActivityHistory[sourceID] = append(n.inputActivityHistory[sourceID],
-		math.Abs(effectiveSignalValue)) // Use absolute value for activity strength
+	n.inputActivityHistory[sourceID] = append(n.inputActivityHistory[sourceID], InputActivity{
+		Strength:  math.Abs(effectiveSignalValue), // Maintain absolute value
+		Timestamp: now,
+	})
 	n.inputActivityMutex.Unlock()
 
 	// === PERIODIC CLEANUP (BIOLOGICAL FORGETTING) ===
@@ -1036,6 +1083,79 @@ func (n *Neuron) cleanOldActivityHistoryUnsafe(currentTime time.Time) {
 			n.inputActivityHistory[sourceID] = activities[start:]
 		}
 	}
+}
+
+// DetectCoincidentInputs returns the number of unique excitatory input sources active within the configured coincidence window.
+// It supports temporal synaptic coincidence by identifying near-simultaneous inputs, excluding inhibitory feedback.
+// This method is safe for concurrent use.
+//
+// BIOLOGICAL CONTEXT:
+// Coincidence detection is a fundamental computational capability of biological neurons.
+// Many neurons act as "coincidence detectors," firing preferentially when they receive
+// multiple excitatory inputs within a narrow time frame. This is crucial for:
+//
+//  1. TEMPORAL SUMMATION: Near-simultaneous excitatory postsynaptic potentials (EPSPs)
+//     sum together more effectively to depolarize the membrane and reach the firing
+//     threshold. Inputs that are too far apart in time decay before they can summate.
+//
+//  2. NMDA RECEPTOR ACTIVATION: This is a key molecular mechanism for coincidence
+//     detection. NMDA receptors require two conditions to be met simultaneously:
+//     - The binding of glutamate (the signal from a presynaptic neuron).
+//     - Sufficient postsynaptic membrane depolarization (often from other coincident inputs)
+//     to expel a magnesium ion (Mg2+) that blocks the receptor's channel.
+//     This function models the outcome of this process: detecting correlated inputs.
+//
+//  3. FEATURE BINDING: In sensory systems, coincidence detection allows neurons to
+//     bind together different features of a stimulus. For example, a neuron might
+//     only fire when it receives simultaneous inputs representing a vertical edge
+//     and a specific color, thus detecting a "vertical red line."
+//
+//  4. SYNAPTIC PLASTICITY: The Hebbian principle ("cells that fire together, wire
+//     together") relies on detecting coincident pre- and post-synaptic activity.
+//     Detecting coincident inputs is the first step in this process.
+//
+// The exclusion of inhibitory inputs (like 'feedback') is also biologically realistic,
+// as the goal of this mechanism is to detect a convergence of *excitatory* drive.
+func (n *Neuron) DetectCoincidentInputs() int {
+	// Coincidence detection must be explicitly enabled in the neuron's configuration.
+	if !n.EnableCoincidenceDetection {
+		return 0
+	}
+
+	n.inputActivityMutex.RLock()
+	defer n.inputActivityMutex.RUnlock()
+
+	now := time.Now()
+	// Define the temporal window for coincidence. This models the integration
+	// timescale of the neuron's membrane and the kinetics of its synaptic receptors.
+	// Biologically, this is often in the range of 5-20 milliseconds.
+	cutoff := now.Add(-n.CoincidenceWindow)
+
+	uniqueSources := make(map[string]bool)
+
+	for sourceID, activities := range n.inputActivityHistory {
+		// Models the specific exclusion of inhibitory circuits from the summation
+		// process for triggering a coincident-driven spike. For example, feedback
+		// inhibition serves to regulate activity, not contribute to excitatory summation.
+
+		for _, activity := range activities {
+			// Check for two conditions modeling an effective excitatory input:
+			// 1. activity.Timestamp.After(cutoff): The input must be recent enough
+			//    to contribute to temporal summation (i.e., within the coincidence window).
+			// 2. activity.Strength > 0: The input must be excitatory (a positive EPSP).
+			if activity.Timestamp.After(cutoff) && activity.Strength > 0 {
+				// By adding the source ID to a map, we count each upstream neuron
+				// only once, even if it fired a burst of spikes within the window.
+				// This detects how many *different* sources are active together.
+				uniqueSources[sourceID] = true
+			}
+		}
+	}
+
+	// The number of unique sources represents the degree of correlated input.
+	// A higher number indicates a stronger temporal correlation, which would
+	// significantly increase the firing probability of a real neuron.
+	return len(uniqueSources)
 }
 
 // applyPostSynapticGainUnsafe applies receptor sensitivity scaling to incoming signals
@@ -1250,7 +1370,7 @@ func (n *Neuron) applySynapticScaling() {
 		// Calculate average recent activity (biological integration)
 		activitySum := 0.0
 		for _, activity := range activities {
-			activitySum += activity
+			activitySum += activity.Strength
 		}
 		averageActivity := activitySum / float64(len(activities))
 
@@ -1287,13 +1407,7 @@ func (n *Neuron) applySynapticScaling() {
 	rawScalingFactor := 1.0 + (strengthDifference * n.scalingConfig.ScalingRate)
 
 	// Apply safety bounds (prevent extreme scaling)
-	scalingFactor := rawScalingFactor
-	if scalingFactor < n.scalingConfig.MinScalingFactor {
-		scalingFactor = n.scalingConfig.MinScalingFactor
-	}
-	if scalingFactor > n.scalingConfig.MaxScalingFactor {
-		scalingFactor = n.scalingConfig.MaxScalingFactor
-	}
+	scalingFactor := math.Max(n.scalingConfig.MinScalingFactor, math.Min(n.scalingConfig.MaxScalingFactor, rawScalingFactor))
 
 	// Skip scaling if factor is very close to 1.0 (no significant change needed)
 	if math.Abs(scalingFactor-1.0) < 0.0001 {
