@@ -226,11 +226,41 @@ type SynapticScalingConfig struct {
 	// Limited to recent history to prevent unlimited memory growth
 }
 
-// InputActivity represents a single synaptic input event with its strength and timestamp.
-// It is used to track temporal input patterns for synaptic trace memory.
+// InputActivity represents a single, discrete synaptic input event and its effect on the postsynaptic neuron.
+// This structure serves as a fundamental unit of "synaptic trace memory," a short-lived record of
+// recent activity that is essential for the neuron's internal homeostatic and computational mechanisms.
+//
+// BIOLOGICAL CONTEXT:
+// When a presynaptic neuron fires, it causes a transient change in the postsynaptic neuron's membrane
+// potential, known as a postsynaptic potential (PSP). The InputActivity struct is a digital model of a single PSP.
+//
+// Within the neuron, this history of PSPs is used for:
+//   - SYNAPTIC SCALING: The neuron monitors the average strength of these inputs over seconds to minutes to
+//     proportionally scale its synaptic gains and maintain homeostatic balance.
+//   - TEMPORAL SUMMATION & COINCIDENCE DETECTION: The neuron uses the timing and strength of recent events
+//     to integrate signals and detect correlated activity within a millisecond-scale window.
 type InputActivity struct {
-	Strength  float64   // The strength of the synaptic input.
-	Timestamp time.Time // The time the input was received.
+	// EffectiveValue represents the final strength and polarity of the postsynaptic potential (PSP).
+	// This value is the result of the entire synaptic transmission process, including the presynaptic
+	// signal strength, the synapse's current weight (efficacy), and any postsynaptic scaling factors.
+	//
+	// BIOLOGICAL BASIS:
+	// - A positive value models an Excitatory Postsynaptic Potential (EPSP), which depolarizes the
+	//   membrane (e.g., by opening Na+ channels) and pushes the neuron closer to its firing threshold.
+	// - A negative value models an Inhibitory Postsynaptic Potential (IPSP), which hyperpolarizes
+	//   the membrane (e.g., by opening Cl- channels) and makes the neuron less likely to fire.
+	EffectiveValue float64
+
+	// Timestamp marks the precise time the synaptic input was received by the postsynaptic neuron.
+	//
+	// BIOLOGICAL BASIS:
+	// This precise timing is essential for the neuron's internal computations. While learning rules like
+	// Spike-Timing-Dependent Plasticity (STDP) also rely on this timing, in this architecture the
+	// STDP calculation itself is handled by the `synapse` package. The neuron uses this timestamp for its
+	// own purposes, such as:
+	// - Coincidence Detection: Identifying inputs that arrive within the configured CoincidenceWindow.
+	// - Activity Tracking: Calculating recent average input rates for homeostatic scaling.
+	Timestamp time.Time
 }
 
 // Neuron represents a single processing unit inspired by biological neurons
@@ -544,7 +574,7 @@ func (n *Neuron) GetInputStrengths(sourceID string) []float64 {
 	defer n.inputActivityMutex.RUnlock()
 	var strengths []float64
 	for _, activity := range n.inputActivityHistory[sourceID] {
-		strengths = append(strengths, activity.Strength)
+		strengths = append(strengths, math.Abs(activity.EffectiveValue))
 	}
 	return strengths
 }
@@ -1035,7 +1065,7 @@ func (n *Neuron) recordInputActivityUnsafe(sourceID string, effectiveSignalValue
 		n.inputActivityHistory = make(map[string][]InputActivity)
 	}
 
-	// Get current time for activity timestamping
+	// Get current time for activity timestamp
 	now := time.Now()
 
 	// === RECORD NEW ACTIVITY ===
@@ -1043,8 +1073,8 @@ func (n *Neuron) recordInputActivityUnsafe(sourceID string, effectiveSignalValue
 	// Models: accumulation of synaptic activity over biological time windows
 	n.inputActivityMutex.Lock()
 	n.inputActivityHistory[sourceID] = append(n.inputActivityHistory[sourceID], InputActivity{
-		Strength:  math.Abs(effectiveSignalValue), // Maintain absolute value
-		Timestamp: now,
+		EffectiveValue: effectiveSignalValue,
+		Timestamp:      now,
 	})
 	n.inputActivityMutex.Unlock()
 
@@ -1074,14 +1104,29 @@ func (n *Neuron) cleanOldActivityHistoryUnsafe(currentTime time.Time) {
 	// For each input source, limit activity history size
 	// This is a simplified cleanup - in full biological accuracy, we'd
 	// timestamp each activity entry and remove based on actual time
-	maxHistorySize := 100 // Reasonable limit for biological integration window
-
+	cutoff := currentTime.Add(-n.activityTrackingWindow)
 	for sourceID, activities := range n.inputActivityHistory {
-		if len(activities) > maxHistorySize {
-			// Keep only the most recent activities (biological recency bias)
-			start := len(activities) - maxHistorySize
-			n.inputActivityHistory[sourceID] = activities[start:]
+		var valid []InputActivity
+		for _, activity := range activities {
+			if activity.Timestamp.After(cutoff) {
+				valid = append(valid, activity)
+			}
 		}
+		n.inputActivityHistory[sourceID] = valid
+	}
+}
+
+// SetCoincidenceDetection enables or disables coincidence detection and sets the window
+// This allows dynamic configuration of temporal synaptic coincidence behavior
+// Parameters:
+// enabled: true to enable coincidence detection, false to disable
+// window: time window for detecting coincident inputs (e.g., 50ms)
+func (n *Neuron) SetCoincidenceDetection(enabled bool, window time.Duration) {
+	n.stateMutex.Lock()
+	defer n.stateMutex.Unlock()
+	n.EnableCoincidenceDetection = enabled
+	if window > 0 {
+		n.CoincidenceWindow = window
 	}
 }
 
@@ -1143,7 +1188,7 @@ func (n *Neuron) DetectCoincidentInputs() int {
 			// 1. activity.Timestamp.After(cutoff): The input must be recent enough
 			//    to contribute to temporal summation (i.e., within the coincidence window).
 			// 2. activity.Strength > 0: The input must be excitatory (a positive EPSP).
-			if activity.Timestamp.After(cutoff) && activity.Strength > 0 {
+			if activity.Timestamp.After(cutoff) && activity.EffectiveValue > 0 {
 				// By adding the source ID to a map, we count each upstream neuron
 				// only once, even if it fired a burst of spikes within the window.
 				// This detects how many *different* sources are active together.
@@ -1370,7 +1415,7 @@ func (n *Neuron) applySynapticScaling() {
 		// Calculate average recent activity (biological integration)
 		activitySum := 0.0
 		for _, activity := range activities {
-			activitySum += activity.Strength
+			activitySum += math.Abs(activity.EffectiveValue) // Use absolute value
 		}
 		averageActivity := activitySum / float64(len(activities))
 
