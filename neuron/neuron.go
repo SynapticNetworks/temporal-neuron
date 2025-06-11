@@ -71,6 +71,7 @@ These mechanisms work together to create stable yet adaptive learning.
 package neuron
 
 import (
+	"context"
 	"math"
 	"sync"
 	"time"
@@ -388,10 +389,6 @@ type Neuron struct {
 	// === COMMUNICATION INFRASTRUCTURE ===
 	// Models the input/output structure of biological neurons
 
-	input chan synapse.SynapseMessage // Single input channel (models dendrite tree)
-	// All inputs converge here, like dendrites converging on the cell body (soma)
-	// Uses synapse package message format for consistent communication
-
 	outputSynapses map[string]synapse.SynapticProcessor // Dynamic set of output synapses
 	// Models the axon branching to multiple targets with sophisticated synapses
 	// String key allows named connections for management
@@ -416,6 +413,12 @@ type Neuron struct {
 	stateMutex sync.Mutex // Protects internal state during message processing
 	// Ensures atomic updates to accumulator, timing, and homeostatic state
 
+	// === LIFECYCLE MANAGEMENT ===
+	// Use a context for managing the lifecycle of the neuron's goroutine.
+	// This is a standard and robust pattern in Go for managing cancellation.
+	ctx       context.Context
+	cancel    context.CancelFunc // Function to signal shutdown
+	wg        sync.WaitGroup     // WaitGroup to ensure background tasks finish before Close() returns
 	closeOnce sync.Once
 
 	// === MONITORING AND OBSERVATION ===
@@ -451,6 +454,8 @@ type Neuron struct {
 // - Synaptic Scaling: adjusts post-synaptic receptor sensitivity to maintain input balance
 // - Combined: creates stable yet adaptive networks
 func NewNeuron(id string, threshold float64, decayRate float64, refractoryPeriod time.Duration, fireFactor float64, targetFiringRate float64, homeostasisStrength float64) *Neuron {
+	// Create a cancellable context to manage the neuron's lifecycle.
+	ctx, cancel := context.WithCancel(context.Background())
 	// Calculate homeostatic bounds based on base threshold
 	// Biological rationale: neurons can't adjust indefinitely - there are biophysical limits
 	minThreshold := threshold * 0.1 // Can reduce to 10% of original (very excitable)
@@ -471,7 +476,6 @@ func NewNeuron(id string, threshold float64, decayRate float64, refractoryPeriod
 		decayRate:                  decayRate,                                  // Membrane decay rate (biological: based on RC time constant)
 		refractoryPeriod:           refractoryPeriod,                           // Refractory period (biological: ~5-15ms)
 		fireFactor:                 fireFactor,                                 // Output amplitude scaling
-		input:                      make(chan synapse.SynapseMessage, 100),     // Buffered input channel for synapse messages
 		outputSynapses:             make(map[string]synapse.SynapticProcessor), // Dynamic synapse connections
 		fireEvents:                 nil,                                        // Optional fire event reporting (disabled by default)
 		EnableCoincidenceDetection: false,                                      // deactivated by default - TODO check if we can activate
@@ -510,9 +514,8 @@ func NewNeuron(id string, threshold float64, decayRate float64, refractoryPeriod
 		activityTrackingWindow: 10 * time.Second, // Track activity over 10 seconds
 		minActivityForScaling:  0.1,              // Minimum activity for scaling
 		lastActivityCleanup:    time.Now(),
-
-		// accumulator starts at 0 (resting potential)
-		// lastFireTime initialized to zero value (never fired)
+		ctx:                    ctx,    // Lifecycle context
+		cancel:                 cancel, // Function to stop the neuron
 	}
 }
 
@@ -923,18 +926,7 @@ func (n *Neuron) Run() {
 	// Processes events in order of biological priority and timescale:
 	for {
 		select {
-		// Event 1: New input signal received (excitatory or inhibitory)
-		// Models: synaptic transmission, neurotransmitter binding,
-		//         postsynaptic potential generation
-		// Highest priority - immediate processing like real synaptic events
-		// Timescale: sub-millisecond (fastest biological process)
-		case msg, ok := <-n.input:
-			if !ok {
-				return // Channel closed, exit goroutine
-			}
-			n.processMessageWithDecay(msg)
-
-		// Event 2: Membrane potential and calcium decay timer (continuous biological processes)
+		// Event: Membrane potential and calcium decay timer (continuous biological processes)
 		// Models: membrane capacitance discharge, ion channel leakage,
 		//         calcium removal, return toward resting potential
 		// Regular biological processes that occur continuously
@@ -956,7 +948,7 @@ func (n *Neuron) Run() {
 
 			n.stateMutex.Unlock()
 
-		// Event 3: Synaptic scaling timer (slowest biological process)
+		// Event: Synaptic scaling timer (slowest biological process)
 		// Models: synaptic homeostasis, input strength balance maintenance
 		// Operates on minutes to hours - slowest regulatory mechanism
 		// Timescale: 1s check interval, actual scaling every 30s-10min depending on configuration
@@ -1022,11 +1014,13 @@ func (n *Neuron) processMessageWithDecay(msg synapse.SynapseMessage) {
 	// to different input sources through receptor density regulation
 	finalSignalValue := n.applyPostSynapticGainUnsafe(msg)
 
-	// === BIOLOGICAL ACTIVITY TRACKING FOR SCALING ===
-	// Record the effective input strength for scaling algorithm
+	// === BIOLOGICAL ACTIVITY TRACKING FOR SCALING AND COINCIDENCE DETECTION ===
+	// Record the effective input strength for scaling algorithm AND coincidence detection
 	// This models how neurons monitor their actual synaptic input patterns
-	// over time to detect when scaling should occur
-	if n.scalingConfig.Enabled && msg.SourceID != "" {
+	// over time to detect when scaling should occur AND when coincident inputs arrive
+
+	// FIX: Always record input activity when coincidence detection is enabled OR scaling is enabled
+	if (n.scalingConfig.Enabled || n.EnableCoincidenceDetection) && msg.SourceID != "" {
 		n.recordInputActivityUnsafe(msg.SourceID, finalSignalValue)
 	}
 
@@ -1187,12 +1181,13 @@ func (n *Neuron) DetectCoincidentInputs() int {
 			// Check for two conditions modeling an effective excitatory input:
 			// 1. activity.Timestamp.After(cutoff): The input must be recent enough
 			//    to contribute to temporal summation (i.e., within the coincidence window).
-			// 2. activity.Strength > 0: The input must be excitatory (a positive EPSP).
+			// 2. activity.EffectiveValue > 0: The input must be excitatory (a positive EPSP).
 			if activity.Timestamp.After(cutoff) && activity.EffectiveValue > 0 {
 				// By adding the source ID to a map, we count each upstream neuron
 				// only once, even if it fired a burst of spikes within the window.
 				// This detects how many *different* sources are active together.
 				uniqueSources[sourceID] = true
+				break // Only count each source once within the window
 			}
 		}
 	}
@@ -1200,6 +1195,48 @@ func (n *Neuron) DetectCoincidentInputs() int {
 	// The number of unique sources represents the degree of correlated input.
 	// A higher number indicates a stronger temporal correlation, which would
 	// significantly increase the firing probability of a real neuron.
+	return len(uniqueSources)
+}
+
+func (n *Neuron) DetectCoincidentInputsRelativeToMostRecent() int {
+	if !n.EnableCoincidenceDetection {
+		return 0
+	}
+
+	n.inputActivityMutex.RLock()
+	defer n.inputActivityMutex.RUnlock()
+
+	if n.inputActivityHistory == nil || len(n.inputActivityHistory) == 0 {
+		return 0
+	}
+
+	// Find the most recent input across all sources
+	var mostRecentTime time.Time
+	for _, activities := range n.inputActivityHistory {
+		for _, activity := range activities {
+			if activity.Timestamp.After(mostRecentTime) {
+				mostRecentTime = activity.Timestamp
+			}
+		}
+	}
+
+	if mostRecentTime.IsZero() {
+		return 0
+	}
+
+	// Count inputs within the window relative to the most recent input
+	cutoff := mostRecentTime.Add(-n.CoincidenceWindow)
+	uniqueSources := make(map[string]bool)
+
+	for sourceID, activities := range n.inputActivityHistory {
+		for _, activity := range activities {
+			if activity.Timestamp.After(cutoff) && activity.EffectiveValue > 0 {
+				uniqueSources[sourceID] = true
+				break
+			}
+		}
+	}
+
 	return len(uniqueSources)
 }
 
@@ -1499,13 +1536,6 @@ func (n *Neuron) applySynapticScaling() {
 	}
 }
 
-// GetInputChannel returns the input channel for connecting to this neuron
-// This allows other neurons or synapses to send signals to this neuron
-// Models: the dendritic tree where synaptic inputs are received
-func (n *Neuron) GetInputChannel() chan synapse.SynapseMessage {
-	return n.input
-}
-
 // ID returns the unique identifier of this neuron
 // This implements the synapse.SynapseCompatibleNeuron interface
 func (n *Neuron) ID() string {
@@ -1517,7 +1547,10 @@ func (n *Neuron) ID() string {
 // Models: neural death or experimental disconnection
 func (n *Neuron) Close() {
 	n.closeOnce.Do(func() {
-		close(n.input)
+		// Signal the Run() goroutine to exit.
+		n.cancel()
+		// Wait for the Run() goroutine to complete its shutdown.
+		n.wg.Wait()
 	})
 }
 
@@ -1720,27 +1753,12 @@ func (n *Neuron) Receive(msg synapse.SynapseMessage) {
 	// - Refractory period enforcement
 	// - Fire event reporting
 
-	// *** FIX: Gracefully handle panics from sending on a closed channel. ***
-	// This can occur during a clean network shutdown if a synapse's delayed transmission
-	// attempts to deliver a message to a neuron that has already been closed.
-	defer func() {
-		recover()
-	}()
-
-	select {
-	case n.input <- msg:
-		// Successfully delivered message to neuron's processing pipeline
-		// The neuron's Run() method will handle the message with full biological dynamics
-	default:
-		// Input buffer is full - drop the message to prevent blocking the synapse
-		// In biology, synapses can fail to transmit when the post-synaptic neuron
-		// is overwhelmed with inputs. This models that saturation behavior.
-		//
-		// Alternative approaches:
-		// 1. Block until space available (risks deadlock)
-		// 2. Expand buffer dynamically (risks memory explosion)
-		// 3. Drop message (chosen - models biological saturation)
+	// Check if the neuron's context is done. If so, the neuron is shutting down
+	// and should not process new messages.
+	if n.ctx.Err() != nil {
+		return
 	}
+	n.processMessageWithDecay(msg)
 }
 
 // ============================================================================

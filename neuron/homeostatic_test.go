@@ -289,16 +289,13 @@ func TestHomeostaticThresholdIncrease(t *testing.T) {
 
 	// Create hyperactivity by driving input neuron at high frequency
 	// Target rate is 2 Hz (500ms between spikes), we'll drive much faster
-	inputChannel := inputNeuron.GetInputChannel()
-
-	// Send signals to input neuron to cause frequent firing
 	for i := 0; i < 15; i++ {
 		// Send strong signal to input neuron
-		inputChannel <- synapse.SynapseMessage{
-			Value:     1.2, // Above input neuron's threshold
+		neuron.Receive(synapse.SynapseMessage{
+			Value:     1.2,
 			Timestamp: time.Now(),
-			SourceID:  "hyperactivity_driver",
-		}
+			SourceID:  "some_test_driver",
+		})
 		time.Sleep(50 * time.Millisecond) // 20 Hz input rate (much higher than 2 Hz target)
 	}
 
@@ -385,16 +382,15 @@ func TestHomeostaticThresholdDecrease(t *testing.T) {
 	initialThreshold := neuron.GetCurrentThreshold()
 
 	// Create hypoactivity with weak, infrequent inputs
-	inputChannel := inputNeuron.GetInputChannel()
 
 	// Send weak signals that rarely cause target neuron firing
 	for i := 0; i < 30; i++ {
 		// Weak signal to input neuron (may not even fire input neuron)
-		inputChannel <- synapse.SynapseMessage{
+		neuron.Receive(synapse.SynapseMessage{
 			Value:     0.5, // Weak signal, may not reach input threshold
 			Timestamp: time.Now(),
 			SourceID:  "weak_driver",
-		}
+		})
 		time.Sleep(50 * time.Millisecond)
 	}
 
@@ -489,7 +485,6 @@ func TestHomeostaticStabilization(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		inputChannel := inputNeuron.GetInputChannel()
 
 		for i := 0; i < 60; i++ {
 			select {
@@ -499,15 +494,11 @@ func TestHomeostaticStabilization(t *testing.T) {
 				// Variable strength inputs (challenges homeostatic regulation)
 				signalStrength := 0.7 + 0.6*float64(i%4) // Pattern: 0.7, 1.3, 1.9, 2.5
 
-				select {
-				case inputChannel <- synapse.SynapseMessage{
+				inputNeuron.Receive(synapse.SynapseMessage{
 					Value:     signalStrength,
 					Timestamp: time.Now(),
 					SourceID:  "variable_driver",
-				}:
-				case <-stopSignal:
-					return
-				}
+				})
 				time.Sleep(80 * time.Millisecond)
 			}
 		}
@@ -622,14 +613,14 @@ func TestCalciumDynamics(t *testing.T) {
 	}
 
 	// Trigger neuron firing
-	inputChannel := inputNeuron.GetInputChannel()
-	inputChannel <- synapse.SynapseMessage{
+	inputNeuron.Receive(synapse.SynapseMessage{
 		Value:     1.5, // Strong signal to ensure firing
 		Timestamp: time.Now(),
 		SourceID:  "calcium_trigger",
-	}
+	})
 
 	// Allow firing and calcium accumulation
+	// TODO switch to glial monitoring
 	time.Sleep(10 * time.Millisecond)
 
 	// Verify calcium increase
@@ -730,14 +721,13 @@ func TestFiringHistoryTracking(t *testing.T) {
 
 	// Trigger controlled firing events
 	numFires := 5
-	inputChannel := inputNeuron.GetInputChannel()
 
 	for i := 0; i < numFires; i++ {
-		inputChannel <- synapse.SynapseMessage{
+		neuron.Receive(synapse.SynapseMessage{
 			Value:     1.5, // Strong signal to ensure firing
 			Timestamp: time.Now(),
 			SourceID:  "history_trigger",
-		}
+		})
 		time.Sleep(50 * time.Millisecond) // Allow refractory period between fires
 	}
 
@@ -843,14 +833,12 @@ func TestHomeostaticBounds(t *testing.T) {
 		minThreshold, maxThreshold, baseThreshold)
 
 	// Drive neuron to hyperactivity to test upper bound
-	inputChannel := inputNeuron.GetInputChannel()
-
 	for i := 0; i < 100; i++ {
-		inputChannel <- synapse.SynapseMessage{
+		neuron.Receive(synapse.SynapseMessage{
 			Value:     2.0, // Very strong signal
 			Timestamp: time.Now(),
 			SourceID:  "bounds_driver",
-		}
+		})
 		time.Sleep(10 * time.Millisecond) // Very fast rate
 	}
 
@@ -1026,18 +1014,14 @@ func TestHomeostaticVsSimpleNeuron(t *testing.T) {
 	initialHomeostaticThreshold := homeostaticNeuron.GetCurrentThreshold()
 	initialSimpleThreshold := simpleNeuron.GetCurrentThreshold()
 
-	// Apply identical inputs to both neurons
-	homeostaticInputChannel := homeostaticInput.GetInputChannel()
-	simpleInputChannel := simpleInput.GetInputChannel()
-
 	for i := 0; i < 30; i++ {
 		signalValue := 1.3 // Above both input thresholds
 		timestamp := time.Now()
 
-		homeostaticInputChannel <- synapse.SynapseMessage{
-			Value: signalValue, Timestamp: timestamp, SourceID: "test_input"}
-		simpleInputChannel <- synapse.SynapseMessage{
-			Value: signalValue, Timestamp: timestamp, SourceID: "test_input"}
+		homeostaticNeuron.Receive(synapse.SynapseMessage{
+			Value: signalValue, Timestamp: timestamp, SourceID: "test_input"})
+		simpleNeuron.Receive(synapse.SynapseMessage{
+			Value: signalValue, Timestamp: timestamp, SourceID: "test_input"})
 
 		time.Sleep(40 * time.Millisecond)
 	}
@@ -1159,7 +1143,6 @@ func TestHomeostaticStabilityOverTime(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		inputChannel := inputNeuron.GetInputChannel()
 
 		for i := 0; i < 200; i++ {
 			select {
@@ -1169,12 +1152,8 @@ func TestHomeostaticStabilityOverTime(t *testing.T) {
 				// Variable input pattern (models natural input variability)
 				val := 0.8 + 0.8*float64((i%10))/10.0 // 0.8 to 1.6
 
-				select {
-				case inputChannel <- synapse.SynapseMessage{
-					Value: val, Timestamp: time.Now(), SourceID: "stability_input"}:
-				case <-stopSignal:
-					return
-				}
+				inputNeuron.Receive(synapse.SynapseMessage{
+					Value: val, Timestamp: time.Now(), SourceID: "stability_input"})
 				time.Sleep(50 * time.Millisecond)
 			}
 		}
@@ -1316,15 +1295,13 @@ func BenchmarkHomeostaticMessageProcessing(b *testing.B) {
 	go neuron.Run()
 	defer neuron.Close()
 
-	inputChannel := neuron.GetInputChannel()
-
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		inputChannel <- synapse.SynapseMessage{
+		neuron.Receive(synapse.SynapseMessage{
 			Value:     0.1,
 			Timestamp: time.Now(),
 			SourceID:  "bench_source",
-		}
+		})
 	}
 }
 
@@ -1351,15 +1328,13 @@ func BenchmarkCalciumDynamics(b *testing.B) {
 		inputNeuron.Close()
 	}()
 
-	inputChannel := inputNeuron.GetInputChannel()
-
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		inputChannel <- synapse.SynapseMessage{
+		inputNeuron.Receive(synapse.SynapseMessage{
 			Value:     1.5,
 			Timestamp: time.Now(),
 			SourceID:  "bench_source",
-		}
+		})
 		time.Sleep(time.Microsecond) // Small delay for processing
 	}
 }

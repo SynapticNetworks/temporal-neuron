@@ -302,7 +302,7 @@ type NeuronInterface interface {
 	ID() string // Unique neural identifier for monitoring records
 
 	// === COMMUNICATION ACCESS ===
-	GetInputChannel() chan synapse.SynapseMessage // Access to neural input stream
+	Receive(msg synapse.SynapseMessage) // Access to neural input stream
 	// Biological analogy: Glial cells can monitor synaptic inputs through
 	// direct contact with synaptic terminals and neurotransmitter sensing
 
@@ -814,23 +814,12 @@ func (m *BasicProcessingMonitor) SendTestMessage(neuronID string, msg synapse.Sy
 	m.pendingMessages[messageID] = tracker
 	m.messagesMutex.Unlock()
 
-	// Send message to neuron
-	inputChannel := neuron.GetInputChannel()
-
 	// Update processing state to reflect message sending
 	m.updateProcessingState(neuronID, PhaseReceiving, messageID, time.Now())
 
-	select {
-	case inputChannel <- msg:
-		// Message sent successfully
-		return messageID, nil
-	case <-time.After(100 * time.Millisecond):
-		// Timeout sending message - cleanup tracker
-		m.messagesMutex.Lock()
-		delete(m.pendingMessages, messageID)
-		m.messagesMutex.Unlock()
-		return 0, fmt.Errorf("timeout sending message to neuron %s", neuronID)
-	}
+	neuron.Receive(msg)
+
+	return messageID, nil
 }
 
 // WaitForProcessingComplete waits for a specific message to complete processing

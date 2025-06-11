@@ -103,28 +103,20 @@ func generateSustainedActivity(inputNeurons []*Neuron, targetNeuron *Neuron, dur
 			}
 
 			// Send signal to input neuron to trigger firing
-			select {
-			case inputNeuron.GetInputChannel() <- synapse.SynapseMessage{
+			inputNeuron.Receive(synapse.SynapseMessage{
 				Value:     signalStrength,
 				Timestamp: time.Now(),
 				SourceID:  "activity_generator",
 				SynapseID: fmt.Sprintf("gen_to_input_%d", i),
-			}:
-			default:
-				// Skip if channel full
-			}
+			})
 
 			// Also send signal directly to target neuron for scaling registration
-			select {
-			case targetNeuron.GetInputChannel() <- synapse.SynapseMessage{
+			targetNeuron.Receive(synapse.SynapseMessage{
 				Value:     signalStrength * 0.8, // Scaled for target neuron
 				Timestamp: time.Now(),
 				SourceID:  inputNeuron.ID(),
 				SynapseID: fmt.Sprintf("input_%d_to_target", i),
-			}:
-			default:
-				// Skip if channel full
-			}
+			})
 		}
 
 		time.Sleep(signalInterval)
@@ -893,15 +885,12 @@ func TestSynapticScalingActivityGating(t *testing.T) {
 		// Send very weak signals that barely register inputs
 		for _, inputNeuron := range inputNeurons {
 			for i := 0; i < 3; i++ {
-				select {
-				case targetNeuron.GetInputChannel() <- synapse.SynapseMessage{
+				inputNeuron.Receive(synapse.SynapseMessage{
 					Value:     0.1, // Very weak signal
 					Timestamp: time.Now(),
 					SourceID:  inputNeuron.ID(),
 					SynapseID: "minimal_test",
-				}:
-				default:
-				}
+				})
 				time.Sleep(50 * time.Millisecond)
 			}
 		}

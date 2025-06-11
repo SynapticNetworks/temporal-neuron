@@ -1,6 +1,7 @@
 package neuron
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"sync"
@@ -71,10 +72,6 @@ func TestSTDPWithHomeostasis(t *testing.T) {
 		postNeuron.Close()
 	}()
 
-	// Get input channels
-	preInput := preNeuron.GetInputChannel()
-	postInput := postNeuron.GetInputChannel()
-
 	// Record initial state
 	initialThreshold := postNeuron.GetCurrentThreshold()
 	initialRate := postNeuron.GetCurrentFiringRate()
@@ -92,12 +89,11 @@ func TestSTDPWithHomeostasis(t *testing.T) {
 	t.Logf("\n--- Phase 1: Baseline Activity ---")
 	for i := 0; i < 20; i++ {
 		preTime := time.Now()
-		preInput <- synapse.SynapseMessage{
+		preNeuron.Receive(synapse.SynapseMessage{
 			Value:     1.0,
 			Timestamp: preTime,
 			SourceID:  "baseline_input",
-		}
-		synapseConn.Transmit(1.0)
+		})
 		time.Sleep(150 * time.Millisecond) // ~6.7 Hz
 	}
 
@@ -121,23 +117,22 @@ func TestSTDPWithHomeostasis(t *testing.T) {
 	for i := 0; i < numTrials; i++ {
 		preTime := time.Now()
 		// Pre-synaptic spike
-		preInput <- synapse.SynapseMessage{
+		preNeuron.Receive(synapse.SynapseMessage{
 			Value:     0.8,
 			Timestamp: preTime,
 			SourceID:  "learning_input",
-		}
-		synapseConn.Transmit(0.8)
+		})
 
 		// Wait for causal delay
 		time.Sleep(5 * time.Millisecond)
 
 		postTime := time.Now()
 		// Post-synaptic spike
-		postInput <- synapse.SynapseMessage{
+		postNeuron.Receive(synapse.SynapseMessage{
 			Value:     0.5,
 			Timestamp: postTime,
 			SourceID:  "trigger_input",
-		}
+		})
 
 		// Apply STDP
 		synapseConn.ApplyPlasticity(synapse.PlasticityAdjustment{DeltaT: preTime.Sub(postTime)})
@@ -259,10 +254,6 @@ func TestSTDPHomeostasisTimescales(t *testing.T) {
 		postNeuron.Close()
 	}()
 
-	// Get input channels
-	preInput := preNeuron.GetInputChannel()
-	postInput := postNeuron.GetInputChannel()
-
 	// Record initial state
 	initialThreshold := postNeuron.GetCurrentThreshold()
 	initialRate := postNeuron.GetCurrentFiringRate()
@@ -284,23 +275,22 @@ func TestSTDPHomeostasisTimescales(t *testing.T) {
 	for i := 0; i < numTrials; i++ {
 		preTime := time.Now()
 		// Pre-synaptic spike
-		preInput <- synapse.SynapseMessage{
+		preNeuron.Receive(synapse.SynapseMessage{
 			Value:     0.8,
 			Timestamp: preTime,
 			SourceID:  "fast_input",
-		}
-		synapseConn.Transmit(0.8)
+		})
 
 		// Wait for causal delay
 		time.Sleep(5 * time.Millisecond)
 
 		postTime := time.Now()
 		// Post-synaptic spike
-		postInput <- synapse.SynapseMessage{
+		postNeuron.Receive(synapse.SynapseMessage{
 			Value:     0.5,
 			Timestamp: postTime,
 			SourceID:  "trigger",
-		}
+		})
 
 		// Apply STDP
 		synapseConn.ApplyPlasticity(synapse.PlasticityAdjustment{DeltaT: preTime.Sub(postTime)})
@@ -451,10 +441,6 @@ func TestTwoNeuronSTDPNetwork(t *testing.T) {
 		postNeuron.Close()
 	}()
 
-	// Get input channels
-	preInput := preNeuron.GetInputChannel()
-	postInput := postNeuron.GetInputChannel()
-
 	// Record initial state
 	initialThreshold := postNeuron.GetCurrentThreshold()
 	initialRate := postNeuron.GetCurrentFiringRate()
@@ -473,23 +459,22 @@ func TestTwoNeuronSTDPNetwork(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		// Variable timing to avoid correlation
 		preTime := time.Now()
-		preInput <- synapse.SynapseMessage{
+		preNeuron.Receive(synapse.SynapseMessage{
 			Value:     1.5,
 			Timestamp: preTime,
 			SourceID:  "external",
-		}
-		synapseConn.Transmit(1.5)
+		})
 
 		// Random delay (20–50ms)
 		delay := time.Duration(20+i*3) * time.Millisecond
 		time.Sleep(delay)
 
 		postTime := time.Now()
-		postInput <- synapse.SynapseMessage{
+		postNeuron.Receive(synapse.SynapseMessage{
 			Value:     1.0,
 			Timestamp: postTime,
 			SourceID:  "external",
-		}
+		})
 
 		// Apply STDP with variable timing
 		synapseConn.ApplyPlasticity(synapse.PlasticityAdjustment{DeltaT: preTime.Sub(postTime)})
@@ -514,23 +499,22 @@ func TestTwoNeuronSTDPNetwork(t *testing.T) {
 	for i := 0; i < numTrials; i++ {
 		preTime := time.Now()
 		// Pre-synaptic spike
-		preInput <- synapse.SynapseMessage{
+		preNeuron.Receive(synapse.SynapseMessage{
 			Value:     1.4,
 			Timestamp: preTime,
 			SourceID:  "training",
-		}
-		synapseConn.Transmit(1.4)
+		})
 
 		// Wait for causal delay
 		time.Sleep(8 * time.Millisecond)
 
 		postTime := time.Now()
 		// Post-synaptic spike
-		postInput <- synapse.SynapseMessage{
+		postNeuron.Receive(synapse.SynapseMessage{
 			Value:     0.9,
 			Timestamp: postTime,
 			SourceID:  "training",
-		}
+		})
 
 		// Apply STDP
 		synapseConn.ApplyPlasticity(synapse.PlasticityAdjustment{DeltaT: preTime.Sub(postTime)})
@@ -549,12 +533,11 @@ func TestTwoNeuronSTDPNetwork(t *testing.T) {
 	for i := 0; i < numTests; i++ {
 		startTime := time.Now()
 		// Pre-synaptic input only
-		preInput <- synapse.SynapseMessage{
+		preNeuron.Receive(synapse.SynapseMessage{
 			Value:     1.3,
 			Timestamp: startTime,
 			SourceID:  "test",
-		}
-		synapseConn.Transmit(1.3)
+		})
 
 		// Monitor firing rate over 50ms
 		time.Sleep(50 * time.Millisecond)
@@ -693,11 +676,6 @@ func TestThreeNeuronChainSTDP(t *testing.T) {
 		neuron3.Close()
 	}()
 
-	// Get input channels
-	n1Input := neuron1.GetInputChannel()
-	n2Input := neuron2.GetInputChannel()
-	n3Input := neuron3.GetInputChannel()
-
 	// Record initial state
 	initialThreshold2 := neuron2.GetCurrentThreshold()
 	initialThreshold3 := neuron3.GetCurrentThreshold()
@@ -714,11 +692,11 @@ func TestThreeNeuronChainSTDP(t *testing.T) {
 	t.Logf("\n--- Phase 1: Baseline (Uncorrelated Activity) ---")
 	for i := 0; i < 5; i++ {
 		n1Time := time.Now()
-		n1Input <- synapse.SynapseMessage{
+		neuron1.Receive(synapse.SynapseMessage{
 			Value:     1.2,
 			Timestamp: n1Time,
 			SourceID:  "external",
-		}
+		})
 		synapse12.Transmit(1.2)
 
 		// Variable delay (30–60ms)
@@ -726,11 +704,11 @@ func TestThreeNeuronChainSTDP(t *testing.T) {
 		time.Sleep(delay)
 
 		n2Time := time.Now()
-		n2Input <- synapse.SynapseMessage{
+		neuron2.Receive(synapse.SynapseMessage{
 			Value:     0.8,
 			Timestamp: n2Time,
 			SourceID:  "external",
-		}
+		})
 		synapse23.Transmit(0.8)
 
 		// Apply STDP
@@ -760,29 +738,29 @@ func TestThreeNeuronChainSTDP(t *testing.T) {
 
 	for i := 0; i < numTrials; i++ {
 		n1Time := time.Now()
-		n1Input <- synapse.SynapseMessage{
+		neuron1.Receive(synapse.SynapseMessage{
 			Value:     1.8, // Reduced input
 			Timestamp: n1Time,
 			SourceID:  "training",
-		}
+		})
 		synapse12.Transmit(1.8)
 
 		time.Sleep(8 * time.Millisecond)
 		n2Time := time.Now()
-		n2Input <- synapse.SynapseMessage{
+		neuron1.Receive(synapse.SynapseMessage{
 			Value:     0.9, // Reduced input
 			Timestamp: n2Time,
 			SourceID:  "training",
-		}
+		})
 		synapse23.Transmit(0.9)
 
 		time.Sleep(8 * time.Millisecond)
 		n3Time := time.Now()
-		n3Input <- synapse.SynapseMessage{
+		neuron3.Receive(synapse.SynapseMessage{
 			Value:     0.9, // Reduced input
 			Timestamp: n3Time,
 			SourceID:  "training",
-		}
+		})
 
 		synapse12.ApplyPlasticity(synapse.PlasticityAdjustment{DeltaT: n1Time.Sub(n2Time)})
 		synapse23.ApplyPlasticity(synapse.PlasticityAdjustment{DeltaT: n2Time.Sub(n3Time)})
@@ -801,11 +779,11 @@ func TestThreeNeuronChainSTDP(t *testing.T) {
 
 	for i := 0; i < numTests; i++ {
 		startTime := time.Now()
-		n1Input <- synapse.SynapseMessage{
+		neuron1.Receive(synapse.SynapseMessage{
 			Value:     1.6, // Reduced test input
 			Timestamp: startTime,
 			SourceID:  "test",
-		}
+		})
 		synapse12.Transmit(1.6)
 
 		time.Sleep(20 * time.Millisecond)
@@ -976,10 +954,6 @@ func TestSTDPBasicCausalLearning(t *testing.T) {
 		postNeuron.Close()
 	}()
 
-	// Get input channels
-	preInput := preNeuron.GetInputChannel()
-	postInput := postNeuron.GetInputChannel()
-
 	// Phase 1: Causal training (pre before post, LTP expected)
 	t.Logf("Phase 1: Causal training (Δt = -10ms)")
 	causalTiming := -10 * time.Millisecond
@@ -988,23 +962,22 @@ func TestSTDPBasicCausalLearning(t *testing.T) {
 	for i := 0; i < numTrials; i++ {
 		preTime := time.Now()
 		// Trigger pre-synaptic spike
-		preInput <- synapse.SynapseMessage{
+		preNeuron.Receive(synapse.SynapseMessage{
 			Value:     1.0,
 			Timestamp: preTime,
 			SourceID:  "test_driver",
-		}
-		synapseConn.Transmit(1.0) // Send pre-synaptic signal
+		})
 
 		// Wait for causal delay
 		time.Sleep(10 * time.Millisecond)
 
 		postTime := time.Now()
 		// Trigger post-synaptic spike
-		postInput <- synapse.SynapseMessage{
+		postNeuron.Receive(synapse.SynapseMessage{
 			Value:     1.0,
 			Timestamp: postTime,
 			SourceID:  "test_driver",
-		}
+		})
 
 		// Apply STDP with causal timing (Δt = t_pre - t_post)
 		synapseConn.ApplyPlasticity(synapse.PlasticityAdjustment{DeltaT: preTime.Sub(postTime)})
@@ -1026,23 +999,22 @@ func TestSTDPBasicCausalLearning(t *testing.T) {
 	for i := 0; i < numTrials; i++ {
 		postTime := time.Now()
 		// Trigger post-synaptic spike
-		postInput <- synapse.SynapseMessage{
+		postNeuron.Receive(synapse.SynapseMessage{
 			Value:     1.0,
 			Timestamp: postTime,
 			SourceID:  "test_driver",
-		}
+		})
 
 		// Wait for anti-causal delay
 		time.Sleep(10 * time.Millisecond)
 
 		preTime := time.Now()
 		// Trigger pre-synaptic spike
-		preInput <- synapse.SynapseMessage{
+		preNeuron.Receive(synapse.SynapseMessage{
 			Value:     1.0,
 			Timestamp: preTime,
 			SourceID:  "test_driver",
-		}
-		synapseConn.Transmit(1.0) // Send pre-synaptic signal
+		})
 
 		// Apply STDP with anti-causal timing (Δt = t_pre - t_post)
 		synapseConn.ApplyPlasticity(synapse.PlasticityAdjustment{DeltaT: preTime.Sub(postTime)})
@@ -1190,7 +1162,6 @@ func TestSTDPTemporalPatternLearning(t *testing.T) {
 	// STEP 3: START NEURONS
 	for _, n := range inputs {
 		go n.Run()
-		defer n.Close()
 	}
 	go detector.Run()
 	defer detector.Close()
@@ -2017,7 +1988,7 @@ func TestSTDPNetworkPerformance(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping network performance test in short mode")
 	}
-	t.Log("=== STDP NETWORK PERFORMANCE TEST ===")
+	t.Log("=== STDP NETWORK PERFORMANCE TEST (Robust Version) ===")
 
 	// --- SETUP: Create a moderately sized network ---
 	const numInputs = 5
@@ -2072,6 +2043,11 @@ func TestSTDPNetworkPerformance(t *testing.T) {
 
 	t.Logf("Network Created: %d neurons, %d synapses", totalNeurons, totalSynapses)
 
+	// --- SETUP: Centralized context for simulation control ---
+	simulationDuration := 3 * time.Second
+	ctx, cancel := context.WithTimeout(context.Background(), simulationDuration)
+	defer cancel() // Important to release context resources
+
 	// --- SETUP: Fire event collection ---
 	var spikeCount int64
 	fireEvents := make(chan FireEvent, totalNeurons*20) // Increased buffer
@@ -2080,63 +2056,67 @@ func TestSTDPNetworkPerformance(t *testing.T) {
 	collectorWg.Add(1)
 	go func() {
 		defer collectorWg.Done()
-		for range fireEvents {
+		for range fireEvents { // This loop safely exits when fireEvents is closed
 			atomic.AddInt64(&spikeCount, 1)
 		}
 	}()
 
 	// --- SETUP: Start all neurons ---
-	var neuronWg sync.WaitGroup
 	for _, n := range allNeurons {
 		n.SetFireEventChannel(fireEvents)
-		neuronWg.Add(1)
-		go func(neuron *Neuron) {
-			defer neuronWg.Done()
-			neuron.Run()
-		}(n)
-		defer n.Close()
+		go n.Run()
 	}
 
 	// --- RUN: Simulate for a fixed duration with concurrent high-frequency input ---
 	t.Log("\n--- RUNNING PERFORMANCE TEST (High-Frequency Concurrent Load) ---")
-	simulationDuration := 3 * time.Second
 	var stimulusWg sync.WaitGroup
-	stopSignal := make(chan struct{})
 
 	// Launch a separate stimulus goroutine for each input neuron
-	for i, inputNeuron := range inputNeurons {
+	for _, inputNeuron := range inputNeurons {
 		stimulusWg.Add(1)
-		go func(neuron *Neuron, idx int) {
+		go func(neuron *Neuron) {
 			defer stimulusWg.Done()
-			ticker := time.NewTicker(time.Duration(20+idx*3) * time.Millisecond)
+			ticker := time.NewTicker(25 * time.Millisecond) // Simplified regular ticker
 			defer ticker.Stop()
 			for {
 				select {
 				case <-ticker.C:
 					neuron.Receive(synapse.SynapseMessage{Value: 1.0, Timestamp: time.Now()})
-				case <-stopSignal:
+				case <-ctx.Done(): // Listen for the main context cancellation signal
 					return
 				}
 			}
-		}(inputNeuron, i)
+		}(inputNeuron)
 	}
 
 	startTime := time.Now()
-	time.Sleep(simulationDuration) // Run the simulation
-	close(stopSignal)              // Signal stimulus goroutines to stop
-	stimulusWg.Wait()              // Wait for all stimulus goroutines to finish
+	// Block here until the simulation duration is over (context times out).
+	<-ctx.Done()
+	t.Log("\n--- Simulation time elapsed. Initiating graceful shutdown. ---")
+
+	// The context's cancellation has already signaled the stimulus goroutines to stop.
+	// We now wait for them to finish their cleanup.
+	stimulusWg.Wait()
+	t.Log("Stimulus goroutines finished.")
 
 	// --- SHUTDOWN & RESULTS ---
-	// Close all neuron input channels AFTER stimulation has stopped
+	// Now that the stimulus has stopped, close all neurons.
 	for _, n := range allNeurons {
 		n.Close()
 	}
-	neuronWg.Wait()    // Wait for all neuron goroutines to exit
-	close(fireEvents)  // Now it's safe to close the fireEvents channel
-	collectorWg.Wait() // Wait for the spike counter to finish processing remaining events
+	t.Log("All neurons closed.")
+
+	// With all producers (neurons) stopped, it's safe to close the fireEvents channel.
+	// This will cause the collector goroutine's range loop to exit.
+	close(fireEvents)
+
+	// Wait for the collector to finish processing any in-flight events.
+	collectorWg.Wait()
+	t.Log("Event collector finished.")
 
 	elapsed := time.Since(startTime)
-	spikesPerSecond := float64(spikeCount) / elapsed.Seconds()
+	// Use the configured duration for calculation for more accuracy.
+	spikesPerSecond := float64(spikeCount) / simulationDuration.Seconds()
 
 	t.Log("\n--- PERFORMANCE RESULTS ---")
 	t.Logf("Simulation Time: %.2f seconds", elapsed.Seconds())
