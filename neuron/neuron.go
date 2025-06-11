@@ -1742,3 +1742,52 @@ func (n *Neuron) Receive(msg synapse.SynapseMessage) {
 		// 3. Drop message (chosen - models biological saturation)
 	}
 }
+
+// ============================================================================
+// METHODS FOR TEST, MONITORING AND OBSERVATION
+// ============================================================================
+
+// GetAccumulator returns the current accumulator value for testing/debugging
+func (n *Neuron) GetAccumulator() float64 {
+	n.stateMutex.Lock()
+	defer n.stateMutex.Unlock()
+	return n.accumulator
+}
+
+// ResetAccumulator clears the accumulator for testing purposes
+func (n *Neuron) ResetAccumulator() {
+	n.stateMutex.Lock()
+	defer n.stateMutex.Unlock()
+	n.accumulator = 0.0
+}
+
+// GetNeuronState returns comprehensive neuron state for debugging
+func (n *Neuron) GetNeuronState() map[string]interface{} {
+	n.stateMutex.Lock()
+	defer n.stateMutex.Unlock()
+
+	return map[string]interface{}{
+		"id":                n.id,
+		"accumulator":       n.accumulator,
+		"threshold":         n.threshold,
+		"baseThreshold":     n.baseThreshold,
+		"lastFireTime":      n.lastFireTime,
+		"calciumLevel":      n.homeostatic.calciumLevel,
+		"currentFiringRate": n.calculateCurrentFiringRateUnsafe(),
+		"refractoryPeriod":  n.refractoryPeriod,
+		"decayRate":         n.decayRate,
+	}
+}
+
+// WaitForQuiescence waits for the neuron to reach a stable state
+func (n *Neuron) WaitForQuiescence(timeout time.Duration) bool {
+	start := time.Now()
+	for time.Since(start) < timeout {
+		acc := n.GetAccumulator()
+		if acc < 0.001 { // Close to zero
+			return true
+		}
+		time.Sleep(1 * time.Millisecond)
+	}
+	return false
+}
