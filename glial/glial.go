@@ -385,6 +385,47 @@ type ProcessingMonitor interface {
 }
 
 // =================================================================================
+// FACTORY METHODS FOR CREATION AND INITIALIZATION
+// =================================================================================
+
+// NewGlialCell acts as a factory for creating different types of GlialCell instances.
+// It takes a GlialType to determine which concrete implementation to instantiate.
+// This decouples the client code from the specific implementation details of each cell.
+//
+// Parameters:
+//   - cellType: The type of glial cell to create (e.g., ProcessingMonitorType).
+//   - id: The unique identifier for the new glial cell.
+//   - config: The configuration for the specific monitor type. For now, this is
+//     *ProcessingMonitorConfig, but it may need to be generalized later.
+//
+// Returns:
+//   - A GlialCell interface pointing to the newly created cell.
+//   - An error if the cellType is unknown or unimplemented.
+func NewGlialCell(cellType GlialType, id string, config *ProcessingMonitorConfig) (GlialCell, error) {
+	switch cellType {
+	case ProcessingMonitorType:
+		// This is your current, existing implementation
+		return NewBasicProcessingMonitor(id, config), nil
+
+	case AstrocyteType:
+		// Placeholder for your future Phase 2 implementation.
+		return nil, fmt.Errorf("glial type not yet implemented: %s", cellType.String())
+
+	case MicrogliaType:
+		// Placeholder for your future Phase 3 implementation.
+		return nil, fmt.Errorf("glial type not yet implemented: %s", cellType.String())
+
+	case OligodendrocyteType:
+		// Placeholder for your future Phase 4 implementation.
+		return nil, fmt.Errorf("glial type not yet implemented: %s", cellType.String())
+
+	default:
+		// Handle unknown types gracefully.
+		return nil, fmt.Errorf("unknown glial type requested: %s", cellType.String())
+	}
+}
+
+// =================================================================================
 // PROCESSING MONITOR IMPLEMENTATION
 // Core glial monitoring functionality focused on neural message processing
 // =================================================================================

@@ -8,6 +8,7 @@ package glial
 import (
 	"fmt"
 	"math"
+	"os"
 	"testing"
 	"time"
 
@@ -48,10 +49,8 @@ func TestBasicProcessingMonitor(t *testing.T) {
 	defer testNeuron.Close()
 
 	// === STEP 2: CREATE GLIAL MONITORING SYSTEM ===
-	// Initialize glial cell with biologically-realistic monitoring parameters
-	monitor := NewBasicProcessingMonitor("astrocyte_1", CreateDefaultProcessingMonitorConfig())
-
-	// Start glial monitoring (autonomous operation like biological glial cells)
+	// Create a glial cell using the factory for better decoupling
+	monitor := createTestMonitor(t, ProcessingMonitorType, "astrocyte_1", CreateDefaultProcessingMonitorConfig())
 	err := monitor.Run()
 	if err != nil {
 		t.Fatalf("Failed to start glial monitoring: %v", err)
@@ -200,10 +199,19 @@ func TestMultipleProcessingEvents(t *testing.T) {
 	go testNeuron.Run()
 	defer testNeuron.Close()
 
-	monitor := NewBasicProcessingMonitor("astrocyte_multi", CreateDefaultProcessingMonitorConfig())
+	// === STEP 2: CREATE GLIAL MONITORING SYSTEM ===
+	// Create a glial cell using the factory for better decoupling
+	monitor := createTestMonitor(t, ProcessingMonitorType, "astrocyte_multi", CreateDefaultProcessingMonitorConfig())
 	err := monitor.Run()
 	if err != nil {
 		t.Fatalf("Failed to start monitor: %v", err)
+	}
+	defer monitor.Stop()
+
+	// Start glial monitoring (autonomous operation like biological glial cells)
+	err = monitor.Run()
+	if err != nil {
+		t.Fatalf("Failed to start glial monitoring: %v", err)
 	}
 	defer monitor.Stop()
 
@@ -255,7 +263,9 @@ func TestProcessingTimeout(t *testing.T) {
 	go stubbornNeuron.Run()
 	defer stubbornNeuron.Close()
 
-	monitor := NewBasicProcessingMonitor("astrocyte_timeout", CreateDefaultProcessingMonitorConfig())
+	// === STEP 2: CREATE GLIAL MONITORING SYSTEM ===
+	// Create a glial cell using the factory for better decoupling
+	monitor := createTestMonitor(t, ProcessingMonitorType, "astrocyte_multi", CreateDefaultProcessingMonitorConfig())
 	err := monitor.Run()
 	if err != nil {
 		t.Fatalf("Failed to start monitor: %v", err)
@@ -312,8 +322,10 @@ func TestMonitoringCapacity(t *testing.T) {
 	config := CreateDefaultProcessingMonitorConfig()
 	config.MaxMonitoredNeurons = 3 // Small capacity for testing
 
-	monitor := NewBasicProcessingMonitor("capacity_test_glia", config)
-	err := monitor.Run()
+	// === STEP 2: CREATE GLIAL MONITORING SYSTEM ===
+	// Create a glial cell using the factory for better decoupling
+	monitor := createTestMonitor(t, ProcessingMonitorType, "capacity_test_glia", config)
+	err := monitor.Run() // Start glial monitoring (autonomous operation like biological glial cells)
 	if err != nil {
 		t.Fatalf("Failed to start monitor: %v", err)
 	}
@@ -380,7 +392,13 @@ func TestMonitoringCapacity(t *testing.T) {
 func TestGlialStatus(t *testing.T) {
 	t.Log("=== TESTING GLIAL STATUS REPORTING ===")
 
-	monitor := NewBasicProcessingMonitor("status_test_glia", CreateDefaultProcessingMonitorConfig())
+	// === STEP 2: CREATE GLIAL MONITORING SYSTEM ===
+	// Create a glial cell using the factory for better decoupling
+	glialCell, err := NewGlialCell(ProcessingMonitorType, "status_test_glia", CreateDefaultProcessingMonitorConfig())
+	if err != nil {
+		t.Fatalf("Factory creation failed: %v", err)
+	}
+	monitor := glialCell.(ProcessingMonitor)
 
 	// Check initial status
 	initialStatus := monitor.GetStatus()
@@ -406,7 +424,7 @@ func TestGlialStatus(t *testing.T) {
 	}
 
 	// Start monitoring and add neurons
-	err := monitor.Run()
+	err = monitor.Run()
 	if err != nil {
 		t.Fatalf("Failed to start monitor: %v", err)
 	}
@@ -467,7 +485,8 @@ func TestBiologicalRealism(t *testing.T) {
 	defer biologicalNeuron.Close()
 
 	// Create glial monitor with high sensitivity for detailed phase detection
-	monitor := NewBasicProcessingMonitor("realistic_astrocyte", CreateHighSensitivityConfig())
+	// === STEP 2: CREATE GLIAL MONITORING SYSTEM ===
+	monitor := createTestMonitor(t, ProcessingMonitorType, "realistic_astrocyte", CreateHighSensitivityConfig())
 	err := monitor.Run()
 	if err != nil {
 		t.Fatalf("Failed to start monitor: %v", err)
@@ -621,8 +640,19 @@ func BenchmarkMonitoringOverhead(b *testing.B) {
 	defer testNeuron.Close()
 
 	// Create monitor
-	monitor := NewBasicProcessingMonitor("benchmark_monitor", CreateLowOverheadConfig())
-	monitor.Run()
+	// === STEP 2: CREATE GLIAL MONITORING SYSTEM ===
+	// Create a glial cell using the factory for better decoupling
+	glialCell, err := NewGlialCell(ProcessingMonitorType, "benchmark_monitor", CreateLowOverheadConfig())
+	if err != nil {
+		b.Fatalf("Factory creation failed: %v", err)
+	}
+	monitor := glialCell.(ProcessingMonitor)
+
+	// Start glial monitoring (autonomous operation like biological glial cells)
+	err = monitor.Run()
+	if err != nil {
+		b.Fatalf("Failed to start glial monitoring: %v", err)
+	}
 	defer monitor.Stop()
 	monitor.MonitorNeuron(testNeuron)
 
@@ -656,8 +686,28 @@ func ExampleBasicProcessingMonitor() {
 	defer myNeuron.Close()
 
 	// Create glial monitor
-	monitor := NewBasicProcessingMonitor("my_astrocyte", CreateDefaultProcessingMonitorConfig())
-	monitor.Run()
+	// === STEP 2: CREATE GLIAL MONITORING SYSTEM ===
+	// Create a glial cell using the factory for better decoupling
+	glialCell, err := NewGlialCell(ProcessingMonitorType, "astrocyte_1", CreateDefaultProcessingMonitorConfig())
+	if err != nil {
+		fmt.Printf("Failed to create glial cell from factory: %v", err)
+		os.Exit(-1)
+	}
+
+	// The factory returns the base GlialCell interface.
+	// We need to perform a type assertion to access the specific
+	// methods of the ProcessingMonitor interface, like MonitorNeuron().
+	monitor, ok := glialCell.(ProcessingMonitor)
+	if !ok {
+		fmt.Errorf("Created glial cell is not a ProcessingMonitor")
+	}
+
+	// Start glial monitoring (autonomous operation like biological glial cells)
+	err = monitor.Run()
+	if err != nil {
+		fmt.Printf("Failed to start glial monitoring: %v", err)
+		os.Exit(-1)
+	}
 	defer monitor.Stop()
 
 	// Start monitoring
@@ -674,7 +724,7 @@ func ExampleBasicProcessingMonitor() {
 	messageID, _ := monitor.SendTestMessage(myNeuron.ID(), message)
 
 	// Wait for processing completion (replaces unreliable time.Sleep!)
-	err := monitor.WaitForProcessingComplete(myNeuron.ID(), messageID, 500*time.Millisecond)
+	err = monitor.WaitForProcessingComplete(myNeuron.ID(), messageID, 500*time.Millisecond)
 	if err != nil {
 		fmt.Printf("Processing failed: %v\n", err)
 		return
@@ -685,4 +735,22 @@ func ExampleBasicProcessingMonitor() {
 	// Get final state
 	state, _ := monitor.GetProcessingState(myNeuron.ID())
 	fmt.Printf("Final neural phase: %s\n", state.Phase)
+}
+
+// Helper function to create a monitor from the factory and handle errors
+func createTestMonitor(t *testing.T, cellType GlialType, id string, config *ProcessingMonitorConfig) ProcessingMonitor {
+	// Use the new factory to create a glial cell
+	glialCell, err := NewGlialCell(cellType, id, config)
+	if err != nil {
+		t.Fatalf("Failed to create glial cell from factory: %v", err)
+	}
+
+	// The factory returns the base GlialCell interface. We need to perform a
+	// type assertion to access the specific methods of the ProcessingMonitor interface.
+	monitor, ok := glialCell.(ProcessingMonitor)
+	if !ok {
+		t.Fatalf("Created glial cell is not a ProcessingMonitor")
+	}
+
+	return monitor
 }
