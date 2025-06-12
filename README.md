@@ -24,7 +24,7 @@ This repository now contains a sophisticated, biologically realistic neural comp
 - **✅ GABAergic Networks**: Fast-spiking interneurons with precise inhibitory control
 - **✅ Synaptic Scaling**: Homeostatic receptor regulation for network stability
 - **✅ Compartmental Models**: Foundation for complex dendritic architectures
-- **✅ Stateful Gates**: Dynamic pathway modulation and transient rewiring
+- **🚧 Stateful Gates**: Dynamic pathway modulation and transient rewiring
 - **🚧 Extracellular Matrix**: Coordination layer for dynamic network structure (in development)
 - **🔄 NetworkGenome Manager**: Serialization and remote control (planned)
 
@@ -80,7 +80,7 @@ Traditional artificial neural networks suffer from fundamental limitations that 
 - **Temporal Summation**: Coincidence detection within biologically realistic windows
 - **Shunting Inhibition**: Divisive inhibition modeling GABA-A receptor effects
 - **Dendritic Spikes**: NMDA-like regenerative events for feature binding
-- **Stateful Gates**: Dynamic pathway modulation with biological trigger mechanisms
+- **Stateful Gates**: Dynamic pathway modulation with biological trigger mechanisms (wip)
 
 ### GABAergic Network Control
 - **Fast-Spiking Interneurons**: Sub-millisecond response with immediate inhibition
