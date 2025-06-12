@@ -227,6 +227,19 @@ type SynapticScalingConfig struct {
 	// Limited to recent history to prevent unlimited memory growth
 }
 
+// HomeostaticInfo contains read-only homeostatic state information
+// Used for monitoring and analysis of neural self-regulation
+type HomeostaticInfo struct {
+	targetFiringRate      float64       // Target firing rate for regulation
+	homeostasisStrength   float64       // Strength of homeostatic adjustments
+	calciumLevel          float64       // Current calcium concentration
+	firingHistory         []time.Time   // Recent firing times (copy)
+	minThreshold          float64       // Minimum allowed threshold
+	maxThreshold          float64       // Maximum allowed threshold
+	activityWindow        time.Duration // Time window for rate calculation
+	lastHomeostaticUpdate time.Time     // When homeostasis last ran
+}
+
 // InputActivity represents a single, discrete synaptic input event and its effect on the postsynaptic neuron.
 // This structure serves as a fundamental unit of "synaptic trace memory," a short-lived record of
 // recent activity that is essential for the neuron's internal homeostatic and computational mechanisms.
@@ -413,6 +426,10 @@ type Neuron struct {
 	stateMutex sync.Mutex // Protects internal state during message processing
 	// Ensures atomic updates to accumulator, timing, and homeostatic state
 
+	// === DENDRITIC INTEGRATION STRATEGY ===
+	// This is the new field that holds the current strategy for processing inputs.
+	dendriticIntegrationMode DendriticIntegrationMode
+
 	// === LIFECYCLE MANAGEMENT ===
 	// Use a context for managing the lifecycle of the neuron's goroutine.
 	// This is a standard and robust pattern in Go for managing cancellation.
@@ -508,6 +525,7 @@ func NewNeuron(id string, threshold float64, decayRate float64, refractoryPeriod
 			LastScalingUpdate:   time.Time{},            // Will be set when scaling starts
 			ScalingHistory:      make([]float64, 0, 10), // Track recent scaling factors
 		},
+		dendriticIntegrationMode: NewPassiveMembraneMode(),
 
 		// Initialize activity tracking
 		inputActivityHistory:   make(map[string][]InputActivity),
@@ -933,9 +951,31 @@ func (n *Neuron) Run() {
 		// Timescale: 1ms intervals (membrane electrical dynamics)
 		case <-decayTicker.C:
 			n.stateMutex.Lock()
+			// --- CHANGE: PROCESS BUFFERED INPUTS ---
+			// Before applying decay, we call the strategy's Process() method.
+			// For PassiveMembraneMode, this does nothing.
+			// For buffered modes (TemporalSummation, etc.), this is where the
+			// collected inputs from the past tick are summed and returned.
+			stateSnapshot := MembraneSnapshot{
+				Accumulator:      n.accumulator,
+				CurrentThreshold: n.threshold,
+			}
+			result := n.dendriticIntegrationMode.Process(stateSnapshot)
+			if result != nil {
+				// The result is added to the accumulator before decay.
+				n.accumulator += result.NetInput
+			}
 
 			// Apply membrane potential decay (fastest process)
 			n.applyMembraneDecayUnsafe()
+
+			// --- CHANGE 2: RE-ADD FIRING CHECK ---
+			// It is critical to check for firing *after* both buffered inputs
+			// have been processed and decay has been applied for the tick.
+			if n.accumulator >= n.threshold {
+				n.fireUnsafe()
+				n.resetAccumulatorUnsafe()
+			}
 
 			// Apply calcium decay for homeostatic sensing (medium timescale)
 			n.updateCalciumLevelUnsafe()
@@ -988,53 +1028,6 @@ func (n *Neuron) applyMembraneDecayUnsafe() {
 	// This prevents accumulation of floating-point precision errors
 	if n.accumulator < 1e-10 && n.accumulator > -1e-10 {
 		n.accumulator = 0.0
-	}
-}
-
-// processMessageWithDecay handles incoming synaptic signals with continuous leaky integration
-// Now includes biologically accurate synaptic scaling through post-synaptic receptor sensitivity
-// and tracks input activity for biologically accurate scaling decisions
-//
-// Biological process modeled:
-// 1. Synaptic signal arrives at dendrite (postsynaptic potential)
-// 2. Apply post-synaptic receptor gain (synaptic scaling)
-// 3. Track effective input strength for scaling algorithm
-// 4. Signal adds to current membrane potential (no time window constraints)
-// 5. Continuous decay is handled separately by applyMembraneDecay()
-// 6. If accumulated potential reaches threshold, action potential is triggered
-// 7. Update homeostatic state (calcium, firing history)
-// 8. Refractory period constraints are enforced during firing attempts
-func (n *Neuron) processMessageWithDecay(msg synapse.SynapseMessage) {
-	n.stateMutex.Lock()
-	defer n.stateMutex.Unlock()
-
-	// === BIOLOGICALLY ACCURATE SYNAPTIC SCALING ===
-	// Apply post-synaptic receptor gain to incoming signal
-	// This models how the post-synaptic neuron controls its own sensitivity
-	// to different input sources through receptor density regulation
-	finalSignalValue := n.applyPostSynapticGainUnsafe(msg)
-
-	// === BIOLOGICAL ACTIVITY TRACKING FOR SCALING AND COINCIDENCE DETECTION ===
-	// Record the effective input strength for scaling algorithm AND coincidence detection
-	// This models how neurons monitor their actual synaptic input patterns
-	// over time to detect when scaling should occur AND when coincident inputs arrive
-
-	// FIX: Always record input activity when coincidence detection is enabled OR scaling is enabled
-	if (n.scalingConfig.Enabled || n.EnableCoincidenceDetection) && msg.SourceID != "" {
-		n.recordInputActivityUnsafe(msg.SourceID, finalSignalValue)
-	}
-
-	// Directly add scaled signal to current membrane potential
-	// Models: postsynaptic potential summing with existing membrane charge
-	// No time window checks - integration is continuous like real neurons
-	n.accumulator += finalSignalValue
-
-	// Check if accumulated charge has reached the firing threshold
-	// Models: action potential initiation at the axon hillock
-	// Refractory period enforcement is handled within fireUnsafe()
-	if n.accumulator >= n.threshold {
-		n.fireUnsafe()             // Generate action potential (includes refractory check)
-		n.resetAccumulatorUnsafe() // Return to resting potential after firing
 	}
 }
 
@@ -1593,19 +1586,6 @@ func (n *Neuron) GetCurrentFiringRate() float64 {
 	return n.calculateCurrentFiringRateUnsafe()
 }
 
-// HomeostaticInfo contains read-only homeostatic state information
-// Used for monitoring and analysis of neural self-regulation
-type HomeostaticInfo struct {
-	targetFiringRate      float64       // Target firing rate for regulation
-	homeostasisStrength   float64       // Strength of homeostatic adjustments
-	calciumLevel          float64       // Current calcium concentration
-	firingHistory         []time.Time   // Recent firing times (copy)
-	minThreshold          float64       // Minimum allowed threshold
-	maxThreshold          float64       // Maximum allowed threshold
-	activityWindow        time.Duration // Time window for rate calculation
-	lastHomeostaticUpdate time.Time     // When homeostasis last ran
-}
-
 // GetHomeostaticInfo returns a snapshot of homeostatic state (thread-safe)
 // Returns a copy of internal data to prevent external modification
 func (n *Neuron) GetHomeostaticInfo() HomeostaticInfo {
@@ -1699,6 +1679,14 @@ func (n *Neuron) GetScalingHistory() []float64 {
 	return history
 }
 
+// SetDendriticIntegrationMode allows swapping the neuron's input processing strategy.
+// This enables dynamic changes to a neuron's computational behavior.
+func (n *Neuron) SetDendriticIntegrationMode(mode DendriticIntegrationMode) {
+	n.stateMutex.Lock()
+	defer n.stateMutex.Unlock()
+	n.dendriticIntegrationMode = mode
+}
+
 // SetInputGain manually sets the receptor gain for a specific input source
 // This allows external control of synaptic scaling for experimental purposes
 //
@@ -1758,7 +1746,39 @@ func (n *Neuron) Receive(msg synapse.SynapseMessage) {
 	if n.ctx.Err() != nil {
 		return
 	}
-	n.processMessageWithDecay(msg)
+	// Create a mutable copy of the message so we can modify its value.
+	modifiedMsg := msg
+
+	// Lock the state to safely apply gain and record activity.
+	n.stateMutex.Lock()
+
+	// Apply post-synaptic receptor gain to the incoming signal.
+	// This function call is what correctly registers new input sources.
+	finalSignalValue := n.applyPostSynapticGainUnsafe(modifiedMsg)
+	modifiedMsg.Value = finalSignalValue // Update the message value with the scaled one.
+
+	// Record the effective input strength for scaling and coincidence detection.
+	if (n.scalingConfig.Enabled || n.EnableCoincidenceDetection) && modifiedMsg.SourceID != "" {
+		n.recordInputActivityUnsafe(modifiedMsg.SourceID, finalSignalValue)
+	}
+
+	n.stateMutex.Unlock()
+
+	// Now, delegate the MODIFIED message (with scaled value) to the dendritic strategy.
+	result := n.dendriticIntegrationMode.Handle(msg)
+
+	// For modes like PassiveMembrane, Handle() returns an immediate result.
+	// For buffered modes, it returns nil, and processing is deferred to the Run() loop.
+	// This block ensures immediate processing for backward compatibility.
+	if result != nil {
+		n.stateMutex.Lock()
+		n.accumulator += result.NetInput
+		if n.accumulator >= n.threshold {
+			n.fireUnsafe()
+			n.resetAccumulatorUnsafe()
+		}
+		n.stateMutex.Unlock()
+	}
 }
 
 // ============================================================================
