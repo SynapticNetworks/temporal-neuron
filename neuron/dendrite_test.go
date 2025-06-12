@@ -194,14 +194,20 @@ func TestDendriteTemporalSummationMode(t *testing.T) {
 //   - Zero inhibition should result in the full excitatory value being passed through.
 func TestDendriteShuntingInhibitionMode(t *testing.T) {
 	t.Log("=== TESTING ShuntingInhibitionMode ===")
-	mode := NewShuntingInhibitionMode(0.5) // A strength of 0.5 for testing
+	// Create a standard, deterministic biological config for the test.
+	bioConfig := CreateCorticalPyramidalConfig()
+	bioConfig.MembraneNoise = 0  // Disable noise for predictable results
+	bioConfig.TemporalJitter = 0 // Disable jitter for predictable results
+
+	mode := NewShuntingInhibitionMode(0.5, bioConfig) // A strength of 0.5 for testing
 
 	// Test 1: No inhibition
 	t.Run("NoInhibition", func(t *testing.T) {
 		mode.Handle(synapse.SynapseMessage{Value: 2.0})
 		result := mode.Process(MembraneSnapshot{})
-		if result.NetInput != 2.0 {
-			t.Errorf("With no inhibition, expected NetInput 2.0, got %.2f", result.NetInput)
+		// Expected: Input 2.0 -> spatial decay: 2.0 * 0.7 = 1.4
+		if result.NetInput < 1.39 || result.NetInput > 1.41 {
+			t.Errorf("With no inhibition, expected NetInput 1.4, got %.2f", result.NetInput)
 		}
 		t.Log("✓ Correctly passes full excitation with zero inhibition.")
 	})
@@ -212,10 +218,12 @@ func TestDendriteShuntingInhibitionMode(t *testing.T) {
 		mode.Handle(synapse.SynapseMessage{Value: -1.0}) // totalInhibition = 1.0
 		result := mode.Process(MembraneSnapshot{})
 
-		// Expected: shuntingFactor = 1.0 - (1.0 * 0.5) = 0.5
-		// NetInput = 2.0 * 0.5 = 1.0
-		if result.NetInput < 0.99 || result.NetInput > 1.01 {
-			t.Errorf("Expected shunted NetInput of ~1.0, got %.2f", result.NetInput)
+		// Expected: decayedExcitation = 2.0 * 0.7 = 1.4
+		// decayedInhibition = 1.0 * 0.7 = 0.7
+		// shuntingFactor = 1.0 - (0.7 * 0.5) = 0.65
+		// NetInput = 1.4 * 0.65 = 0.91
+		if result.NetInput < 0.90 || result.NetInput > 0.92 {
+			t.Errorf("Expected shunted NetInput of ~0.91, got %.2f", result.NetInput)
 		}
 		t.Logf("✓ Moderate inhibition correctly reduced excitatory impact to %.2f.", result.NetInput)
 	})
@@ -226,10 +234,12 @@ func TestDendriteShuntingInhibitionMode(t *testing.T) {
 		mode.Handle(synapse.SynapseMessage{Value: -3.0}) // totalInhibition = 3.0
 		result := mode.Process(MembraneSnapshot{})
 
-		// shuntingFactor = 1.0 - (3.0 * 0.5) = -0.5, which should be floored to 0.1
-		// NetInput = 2.0 * 0.1 = 0.2
-		if result.NetInput < 0.19 || result.NetInput > 0.21 {
-			t.Errorf("Expected floored shunted NetInput of ~0.2, got %.2f", result.NetInput)
+		// Expected: decayedExcitation = 2.0 * 0.7 = 1.4
+		// decayedInhibition = 3.0 * 0.7 = 2.1
+		// shuntingFactor = 1.0 - (2.1 * 0.5) = -0.05, which should be floored to 0.1
+		// NetInput = 1.4 * 0.1 = 0.14
+		if result.NetInput < 0.13 || result.NetInput > 0.15 {
+			t.Errorf("Expected floored shunted NetInput of ~0.14, got %.2f", result.NetInput)
 		}
 		t.Log("✓ Strong inhibition was correctly floored, preventing inversion of signal.")
 	})
@@ -262,7 +272,11 @@ func TestDendriteActiveDendriteMode(t *testing.T) {
 		DendriticSpikeThreshold: 1.2, // Spike triggers above 1.2
 		NMDASpikeAmplitude:      1.0, // Spike adds +1.0
 	}
-	mode := NewActiveDendriteMode(config)
+	// Create a standard biological config to pass to the constructors.
+	bioConfig := CreateCorticalPyramidalConfig()
+	bioConfig.MembraneNoise = 0
+	bioConfig.TemporalJitter = 0
+	mode := NewActiveDendriteMode(config, bioConfig)
 
 	// Test Case 1: FIX - This test now has a more specific config to isolate saturation.
 	t.Run("JustSaturation", func(t *testing.T) {
@@ -273,13 +287,13 @@ func TestDendriteActiveDendriteMode(t *testing.T) {
 			NMDASpikeAmplitude:      1.0,
 			ShuntingStrength:        0.4,
 		}
-		isoMode := NewActiveDendriteMode(isoConfig)
+		isoMode := NewActiveDendriteMode(isoConfig, bioConfig)
 		isoMode.Handle(synapse.SynapseMessage{Value: 5.0})
 		result := isoMode.Process(MembraneSnapshot{})
-		// Expected: Input 5.0 is capped at 1.1. No inhibition. netExcitation is 1.1.
-		// 1.1 is NOT > 1.2, so NO spike. Final result is 1.1.
-		if result.NetInput < 1.09 || result.NetInput > 1.11 {
-			t.Errorf("Expected isolated saturated NetInput of ~1.1, got %.2f", result.NetInput)
+		// Expected: Input 5.0 -> saturated to 1.1 -> spatial decay: 1.1 * 0.7 = 0.77
+		// 0.77 is NOT > 1.2, so NO spike. Final result is 0.77.
+		if result.NetInput < 0.76 || result.NetInput > 0.78 {
+			t.Errorf("Expected saturated NetInput plus spike of ~3.5, got %.2f", result.NetInput)
 		}
 		t.Logf("✓ 'JustSaturation' test correctly isolated and verified capping at %.2f.", isoConfig.MaxSynapticEffect)
 	})
@@ -288,11 +302,11 @@ func TestDendriteActiveDendriteMode(t *testing.T) {
 	t.Run("SaturationPlusSpike", func(t *testing.T) {
 		mode.Handle(synapse.SynapseMessage{Value: 5.0}) // Should be capped at 2.5
 		result := mode.Process(MembraneSnapshot{})
-		// Expected: Input 5.0 capped to 2.5. netExcitation is 2.5.
-		// 2.5 > 1.2 (DendriticSpikeThreshold), so spike is triggered.
-		// finalNetInput = 2.5 + 1.0 (NMDASpikeAmplitude) = 3.5
-		if result.NetInput < 3.49 || result.NetInput > 3.51 {
-			t.Errorf("Expected saturated NetInput plus spike of ~3.5, got %.2f", result.NetInput)
+		// Expected: Input 5.0 -> saturated to 2.5 -> spatial decay: 2.5 * 0.7 = 1.75
+		// 1.75 > 1.2 (DendriticSpikeThreshold), so spike is triggered.
+		// finalNetInput = 1.75 + 1.0 (NMDASpikeAmplitude) = 2.75
+		if result.NetInput < 2.74 || result.NetInput > 2.76 {
+			t.Errorf("Expected saturated NetInput plus spike of ~2.75, got %.2f", result.NetInput)
 		}
 		t.Logf("✓ 'SaturationPlusSpike' correctly verified capping and subsequent spike.")
 	})
@@ -304,14 +318,14 @@ func TestDendriteActiveDendriteMode(t *testing.T) {
 		mode.Handle(synapse.SynapseMessage{Value: -1.0})
 		result := mode.Process(MembraneSnapshot{})
 
-		// totalExcitation = 2.5 + 1.0 = 3.5
-		// totalInhibition = 1.0
-		// shuntingFactor = 1.0 - (1.0 * 0.4) = 0.6
-		// netExcitation = 3.5 * 0.6 = 2.1
-		// Since netExcitation (2.1) > DendriticSpikeThreshold (1.2), add spike amplitude.
-		// finalNetInput = 2.1 + 1.0 = 3.1
-		if result.NetInput < 3.09 || result.NetInput > 3.11 {
-			t.Errorf("Expected final NetInput of ~3.1, got %.2f", result.NetInput)
+		// decayedExcitation = (2.5 * 0.7) + (1.0 * 0.7) = 1.75 + 0.7 = 2.45
+		// decayedInhibition = 1.0 * 0.7 = 0.7
+		// shuntingFactor = 1.0 - (0.7 * 0.4) = 0.72
+		// netExcitation = 2.45 * 0.72 = 1.764
+		// Since netExcitation (1.764) > DendriticSpikeThreshold (1.2), add spike amplitude.
+		// finalNetInput = 1.764 + 1.0 = 2.764
+		if result.NetInput < 2.75 || result.NetInput > 2.77 {
+			t.Errorf("Expected final NetInput of ~2.76, got %.2f", result.NetInput)
 		}
 		t.Logf("✓ Saturation, shunting, and NMDA spike logic combined correctly.")
 	})
@@ -322,14 +336,14 @@ func TestDendriteActiveDendriteMode(t *testing.T) {
 		mode.Handle(synapse.SynapseMessage{Value: -2.0}) // Strong inhibition
 		result := mode.Process(MembraneSnapshot{})
 
-		// totalExcitation = 2.0
-		// totalInhibition = 2.0
-		// shuntingFactor = 1.0 - (2.0 * 0.4) = 0.2
-		// netExcitation = 2.0 * 0.2 = 0.4
-		// Since netExcitation (0.4) < DendriticSpikeThreshold (1.2), NO spike.
-		// finalNetInput = 0.4
-		if result.NetInput < 0.39 || result.NetInput > 0.41 {
-			t.Errorf("Expected final NetInput of ~0.4, got %.2f", result.NetInput)
+		// decayedExcitation = 2.0 * 0.7 = 1.4
+		// decayedInhibition = 2.0 * 0.7 = 1.4
+		// shuntingFactor = 1.0 - (1.4 * 0.4) = 0.44
+		// netExcitation = 1.4 * 0.44 = 0.616
+		// Since netExcitation (0.616) < DendriticSpikeThreshold (1.2), NO spike.
+		// finalNetInput = 0.616
+		if result.NetInput < 0.60 || result.NetInput > 0.63 {
+			t.Errorf("Expected final NetInput of ~0.62, got %.2f", result.NetInput)
 		}
 		t.Log("✓ Correctly avoided dendritic spike for sub-threshold dendritic potential.")
 	})
@@ -358,19 +372,24 @@ func TestDendriteActiveDendriteMode(t *testing.T) {
 func TestDendriteConcurrencyAndEdges(t *testing.T) {
 	t.Log("=== TESTING Concurrency and Edge Cases ===")
 
+	// Define a shared, deterministic bioConfig for all relevant test cases.
+	bioConfig := CreateCorticalPyramidalConfig()
+	bioConfig.MembraneNoise = 0
+	bioConfig.TemporalJitter = 0
+
 	// Test concurrency on all modes that use a buffer and mutex.
 	modesToTest := []struct {
 		mode            DendriticIntegrationMode
 		concurrentValue float64 // The expected result from the concurrency test
 	}{
 		{NewTemporalSummationMode(), 10.0},
-		{NewShuntingInhibitionMode(0.5), 10.0}, // No inhibition, so shunting factor is 1.0
+		{NewShuntingInhibitionMode(0.5, bioConfig), 7.0}, // No inhibition, so shunting factor is 1.0
 		{NewActiveDendriteMode(ActiveDendriteConfig{
 			MaxSynapticEffect:       2.5,
 			ShuntingStrength:        0.4,
 			DendriticSpikeThreshold: 1.2,
 			NMDASpikeAmplitude:      1.0,
-		}), 11.0}, // 10.0 excitation > 1.2 threshold -> +1.0 spike
+		}, bioConfig), 7.0},
 	}
 
 	for _, tc := range modesToTest {
@@ -391,7 +410,15 @@ func TestDendriteConcurrencyAndEdges(t *testing.T) {
 			}
 			wg.Wait()
 
-			result := tc.mode.Process(MembraneSnapshot{})
+			var result *IntegratedPotential
+			// Use a type assertion to check for modes that have ProcessImmediate.
+			// This allows us to test the summation logic without temporal decay, making the test deterministic.
+			if bioMode, ok := tc.mode.(interface{ ProcessImmediate() *IntegratedPotential }); ok {
+				result = bioMode.ProcessImmediate()
+			} else {
+				// Fallback for modes without ProcessImmediate, like TemporalSummationMode.
+				result = tc.mode.Process(MembraneSnapshot{})
+			}
 			expected := tc.concurrentValue
 
 			// We can now check the result for all modes
@@ -490,11 +517,13 @@ func TestDendriteModeSolvesRaceCondition(t *testing.T) {
 
 // BenchmarkDendriteModes compares the performance overhead of each integration strategy.
 func BenchmarkDendriteModes(b *testing.B) {
+	// Define a biological config to use for all relevant modes in the benchmark.
+	bioConfig := CreateCorticalPyramidalConfig()
 	modes := []DendriticIntegrationMode{
 		NewPassiveMembraneMode(),
 		NewTemporalSummationMode(),
-		NewShuntingInhibitionMode(0.5),
-		NewActiveDendriteMode(ActiveDendriteConfig{}),
+		NewShuntingInhibitionMode(0.5, bioConfig),
+		NewActiveDendriteMode(ActiveDendriteConfig{}, bioConfig),
 	}
 
 	msg := synapse.SynapseMessage{Value: 0.1}

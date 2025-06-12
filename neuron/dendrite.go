@@ -44,6 +44,8 @@ gates to:
 package neuron
 
 import (
+	"math"
+	"math/rand"
 	"sync"
 	"time"
 
@@ -241,6 +243,10 @@ type DendriticGate interface {
 	// This ensures clean shutdown and prevents resource leaks.
 	Close()
 }
+
+// NEW: An InputProcessor can modify a single synaptic input value before it is decayed.
+// This is a generic, reusable function signature.
+type InputProcessorFunc func(value float64) float64
 
 // ============================================================================
 // GATE FACTORY AND CONFIGURATION
@@ -528,19 +534,19 @@ func (m *TemporalSummationMode) Close() {
 // of excitatory signals, rather than just subtracting from their value. This is
 // a highly effective and efficient way to control a neuron's output gain.
 type ShuntingInhibitionMode struct {
-	TemporalSummationMode // Embed the basic temporal summation for its buffering logic.
-	ShuntingStrength      float64
+	BiologicalTemporalSummationMode // Embed the basic temporal summation for its buffering logic.
+	ShuntingStrength                float64
 }
 
 // NewShuntingInhibitionMode creates a mode that models divisive inhibition.
 // strength: A factor (e.g., 0.1-1.0) determining how powerful the shunting effect is.
-func NewShuntingInhibitionMode(strength float64) *ShuntingInhibitionMode {
+func NewShuntingInhibitionMode(strength float64, config BiologicalConfig) *ShuntingInhibitionMode {
 	if strength <= 0 {
 		strength = 0.5 // Default to a reasonable strength.
 	}
 	return &ShuntingInhibitionMode{
-		TemporalSummationMode: *NewTemporalSummationMode(),
-		ShuntingStrength:      strength,
+		BiologicalTemporalSummationMode: *NewBiologicalTemporalSummationMode(config),
+		ShuntingStrength:                strength,
 	}
 }
 
@@ -553,41 +559,23 @@ func (m *ShuntingInhibitionMode) AddGate(gate DendriticGate) {
 }
 
 // Process overrides the embedded Process method to implement shunting logic.
+// AFTER (Corrected): Shunting mode's Process method using the complete helper.
 func (m *ShuntingInhibitionMode) Process(state MembraneSnapshot) *IntegratedPotential {
-	m.mutex.Lock()
-	if len(m.buffer) == 0 {
-		m.mutex.Unlock()
+	// Step 1: Call the reusable helper.
+	// This mode has no special per-input logic, so it passes `nil` for the processor.
+	totalExcitation, totalInhibition := m.processDecayedComponents(time.Now(), nil)
+
+	// Early exit if no significant input after decay.
+	if math.Abs(totalExcitation) < 0.001 && math.Abs(totalInhibition) < 0.001 {
 		return nil
 	}
-	currentBatch := make([]synapse.SynapseMessage, len(m.buffer))
-	copy(currentBatch, m.buffer)
-	m.buffer = m.buffer[:0]
-	m.mutex.Unlock()
 
-	var totalExcitation float64
-	var totalInhibition float64
-
-	for _, msg := range currentBatch {
-		if msg.Value >= 0 {
-			totalExcitation += msg.Value
-		} else {
-			// Use the absolute value for inhibition strength calculation.
-			totalInhibition += -msg.Value
-		}
-	}
-
-	// Calculate the shunting factor. More inhibition leads to a smaller factor.
-	// This multiplicatively reduces the effect of all excitatory inputs.
+	// Step 2: Apply the shunting logic to the decayed, summed inputs.
 	shuntingFactor := 1.0 - (totalInhibition * m.ShuntingStrength)
-
-	// Ensure the shunting factor doesn't become negative or zero, which would
-	// be biologically unrealistic. It can suppress, but not invert, excitation.
 	if shuntingFactor < 0.1 {
 		shuntingFactor = 0.1
 	}
 
-	// The final input is the shunted excitation. Note that we don't subtract
-	// the inhibition, as its effect is already baked into the shuntingFactor.
 	netInput := totalExcitation * shuntingFactor
 
 	return &IntegratedPotential{NetInput: netInput}
@@ -616,13 +604,9 @@ func (m *ShuntingInhibitionMode) Name() string { return "ShuntingInhibition" }
 //     mechanism for "feature binding" and Hebbian learning ("cells that fire
 //     together, wire together").
 type ActiveDendriteMode struct {
-	TemporalSummationMode // Embed buffering logic.
+	BiologicalTemporalSummationMode                      // Embed buffering logic.
+	Config                          ActiveDendriteConfig // Holds all specific parameters for this mode
 
-	// Configuration for non-linear effects.
-	MaxSynapticEffect       float64
-	ShuntingStrength        float64
-	DendriticSpikeThreshold float64
-	NMDASpikeAmplitude      float64
 }
 
 // ActiveDendriteConfig holds the parameters for the ActiveDendriteMode.
@@ -634,7 +618,7 @@ type ActiveDendriteConfig struct {
 }
 
 // NewActiveDendriteMode creates a new instance of the advanced integration mode.
-func NewActiveDendriteMode(config ActiveDendriteConfig) *ActiveDendriteMode {
+func NewActiveDendriteMode(config ActiveDendriteConfig, bioConfig BiologicalConfig) *ActiveDendriteMode {
 	// Provide sensible defaults if values are zero.
 	if config.MaxSynapticEffect <= 0 {
 		config.MaxSynapticEffect = 2.0
@@ -649,11 +633,8 @@ func NewActiveDendriteMode(config ActiveDendriteConfig) *ActiveDendriteMode {
 		config.NMDASpikeAmplitude = 1.0
 	}
 	return &ActiveDendriteMode{
-		TemporalSummationMode:   *NewTemporalSummationMode(),
-		MaxSynapticEffect:       config.MaxSynapticEffect,
-		ShuntingStrength:        config.ShuntingStrength,
-		DendriticSpikeThreshold: config.DendriticSpikeThreshold,
-		NMDASpikeAmplitude:      config.NMDASpikeAmplitude,
+		BiologicalTemporalSummationMode: *NewBiologicalTemporalSummationMode(bioConfig),
+		Config:                          config, // Assign the config struct directly
 	}
 }
 
@@ -668,46 +649,38 @@ func (m *ActiveDendriteMode) AddGate(gate DendriticGate) {
 }
 
 // Process implements the full, non-linear integration logic.
+// AFTER: The refactored Process method for ActiveDendriteMode.
+// AFTER (Corrected): The final, clean Process method.
 func (m *ActiveDendriteMode) Process(state MembraneSnapshot) *IntegratedPotential {
-	m.mutex.Lock()
-	if len(m.buffer) == 0 {
-		m.mutex.Unlock()
+	// Step 1: Define the saturation logic specific to this mode as a function.
+	saturator := func(value float64) float64 {
+		if value > m.Config.MaxSynapticEffect {
+			return m.Config.MaxSynapticEffect
+		}
+		if value < -m.Config.MaxSynapticEffect {
+			return -m.Config.MaxSynapticEffect
+		}
+		return value
+	}
+
+	// Step 2: Call the reusable helper, passing in the mode-specific saturation function.
+	totalExcitation, totalInhibition := m.processDecayedComponents(time.Now(), saturator)
+
+	// Early exit if no significant input after decay and saturation.
+	if math.Abs(totalExcitation) < 0.001 && math.Abs(totalInhibition) < 0.001 {
 		return nil
 	}
-	currentBatch := make([]synapse.SynapseMessage, len(m.buffer))
-	copy(currentBatch, m.buffer)
-	m.buffer = m.buffer[:0]
-	m.mutex.Unlock()
 
-	var totalExcitation, totalInhibition float64
-
-	// Step 1: Process individual synaptic events with saturation.
-	for _, msg := range currentBatch {
-		value := msg.Value
-		// Apply Synaptic Saturation.
-		if value > m.MaxSynapticEffect {
-			value = m.MaxSynapticEffect
-		} else if value < -m.MaxSynapticEffect {
-			value = -m.MaxSynapticEffect
-		}
-
-		if value >= 0 {
-			totalExcitation += value
-		} else {
-			totalInhibition += -value
-		}
-	}
-
-	// Step 2: Apply Shunting Inhibition.
-	shuntingFactor := 1.0 - (totalInhibition * m.ShuntingStrength)
+	// Step 3: Apply Shunting Inhibition to the decayed, saturated, and summed inputs.
+	shuntingFactor := 1.0 - (totalInhibition * m.Config.ShuntingStrength)
 	if shuntingFactor < 0.1 {
 		shuntingFactor = 0.1
 	}
 	netExcitation := totalExcitation * shuntingFactor
 
-	// Step 3: Model NMDA-like Dendritic Spikes.
-	if netExcitation > m.DendriticSpikeThreshold {
-		netExcitation += m.NMDASpikeAmplitude
+	// Step 4: Model NMDA-like Dendritic Spikes on the shunted potential.
+	if netExcitation > m.Config.DendriticSpikeThreshold {
+		netExcitation += m.Config.NMDASpikeAmplitude
 	}
 
 	return &IntegratedPotential{NetInput: netExcitation}
@@ -715,3 +688,415 @@ func (m *ActiveDendriteMode) Process(state MembraneSnapshot) *IntegratedPotentia
 
 // Name returns the identifier for this strategy.
 func (m *ActiveDendriteMode) Name() string { return "ActiveDendrite" }
+
+/*
+BIOLOGICALLY REALISTIC TEMPORAL SUMMATION WITH EXPONENTIAL DECAY
+=================================================================
+
+FIXED IMPLEMENTATION: Proper exponential temporal decay
+This corrects the accumulation issue and implements true biological membrane dynamics
+
+BIOLOGICAL REALITY:
+- Membrane time constant τ = Rm × Cm (typically 10-50ms)
+- PSPs decay exponentially: V(t) = V₀ × e^(-t/τ)
+- Each input contributes according to its age since arrival
+- Continuous membrane potential evolution between Process() calls
+
+MATHEMATICAL MODEL:
+V(t) = V₀ × e^(-t/τ) where:
+- V₀ = initial PSP amplitude
+- t = time since PSP arrival
+- τ = membrane time constant
+- e = Euler's number (2.718...)
+
+EXPECTED TEST RESULTS:
+- Delay 0ms: integration ≈ 1.000 (no decay)
+- Delay 5ms: integration ≈ 0.779 (τ/4 decay)
+- Delay 10ms: integration ≈ 0.607 (τ/2 decay)
+- Delay 20ms: integration ≈ 0.368 (1/e decay at τ)
+- Delay 40ms: integration ≈ 0.135 (2τ decay)
+- Delay 100ms: integration ≈ 0.007 (5τ decay)
+*/
+
+// BiologicalTemporalSummationMode implements realistic dendritic integration
+// with exponential decay, membrane time constants, and temporal dynamics
+type BiologicalTemporalSummationMode struct {
+	// === TEMPORAL DECAY PARAMETERS ===
+	membraneTimeConstant time.Duration // τ = Rm × Cm (biological: 10-50ms)
+	leakConductance      float64       // Membrane leak (biological: 0.95-0.99)
+
+	// === BUFFERED INPUTS WITH TIMESTAMPS ===
+	buffer          []TimestampedInput
+	bufferMutex     sync.Mutex
+	lastProcessTime time.Time
+
+	// === DENDRITIC HETEROGENEITY ===
+	branchTimeConstants map[string]time.Duration // Different τ per branch
+	spatialDecayFactor  float64                  // Distance-dependent attenuation
+
+	// === BIOLOGICAL NOISE AND VARIATION ===
+	membraneNoise  float64       // Thermal and channel noise
+	temporalJitter time.Duration // Realistic timing variability
+	noiseSeed      int64         // Deterministic noise seed for reproducible trials
+
+	// === GATE MIDDLEWARE CHAIN ===
+	gateChain []DendriticGate // Middleware chain for signal processing
+}
+
+// TimestampedInput represents a synaptic input with precise timing
+type TimestampedInput struct {
+	Message     synapse.SynapseMessage
+	ArrivalTime time.Time
+	DecayFactor float64 // Pre-computed spatial factor
+}
+
+// NewBiologicalTemporalSummationMode creates realistic dendritic integration
+func NewBiologicalTemporalSummationMode(config BiologicalConfig) *BiologicalTemporalSummationMode {
+	return &BiologicalTemporalSummationMode{
+		membraneTimeConstant: config.MembraneTimeConstant,
+		leakConductance:      config.LeakConductance,
+		buffer:               make([]TimestampedInput, 0, 100),
+		lastProcessTime:      time.Now(),
+		branchTimeConstants:  config.BranchTimeConstants,
+		spatialDecayFactor:   config.SpatialDecayFactor,
+		membraneNoise:        config.MembraneNoise,
+		temporalJitter:       config.TemporalJitter,
+		noiseSeed:            time.Now().UnixNano(), // Initialize with unique seed
+		gateChain:            make([]DendriticGate, 0),
+	}
+}
+
+type BiologicalConfig struct {
+	MembraneTimeConstant time.Duration            // τ = Rm × Cm (10-50ms typical)
+	LeakConductance      float64                  // 0.95-0.99 per ms (not used in corrected version)
+	BranchTimeConstants  map[string]time.Duration // Heterogeneous dendrites
+	SpatialDecayFactor   float64                  // Distance attenuation
+	MembraneNoise        float64                  // Biological noise level
+	TemporalJitter       time.Duration            // Timing variability
+}
+
+// Handle buffers input with timestamp for realistic temporal processing
+func (m *BiologicalTemporalSummationMode) Handle(msg synapse.SynapseMessage) *IntegratedPotential {
+	// === GATE MIDDLEWARE CHAIN ===
+	currentMsg := &msg
+	for _, gate := range m.gateChain {
+		modifiedMsg, shouldContinue := gate.Apply(*currentMsg, MembraneSnapshot{})
+		if !shouldContinue {
+			return nil // Blocked by this gate in the chain
+		}
+		currentMsg = modifiedMsg
+	}
+
+	now := time.Now()
+
+	// Apply spatial decay based on source branch
+	spatialWeight := m.calculateSpatialWeight(currentMsg.SourceID)
+
+	// Create timestamped input with biological modifications
+	input := TimestampedInput{
+		Message:     *currentMsg,
+		ArrivalTime: now,
+		DecayFactor: spatialWeight,
+	}
+
+	// Add temporal jitter for biological realism
+	if m.temporalJitter > 0 {
+		jitter := time.Duration(rand.NormFloat64() * float64(m.temporalJitter))
+		input.ArrivalTime = input.ArrivalTime.Add(jitter)
+	}
+
+	m.bufferMutex.Lock()
+	m.buffer = append(m.buffer, input)
+	m.bufferMutex.Unlock()
+
+	return nil // Process during Process() call
+}
+
+// Process performs biologically realistic temporal integration with exponential decay
+// AFTER (Corrected): The public Process method for the base mode.
+func (m *BiologicalTemporalSummationMode) Process(state MembraneSnapshot) *IntegratedPotential {
+	// Step 1: Call the reusable helper.
+	// This base mode has no special per-input logic (like saturation), so it passes `nil` for the processor.
+	totalExcitation, totalInhibition := m.processDecayedComponents(time.Now(), nil)
+
+	// Step 2: Combine the results. Inhibition is subtractive.
+	netInput := totalExcitation - totalInhibition
+
+	// Step 3: Apply the final biological constraints from the original method.
+	if netInput > 100.0 { // Biological maximum
+		netInput = 100.0
+	} else if netInput < -100.0 { // Biological minimum
+		netInput = -100.0
+	}
+
+	// Step 4: Only return significant changes to avoid floating-point noise.
+	if math.Abs(netInput) < 0.001 {
+		return nil
+	}
+
+	return &IntegratedPotential{NetInput: netInput}
+}
+
+// A new, reusable helper method on BiologicalTemporalSummationMode
+// This logic is extracted from the original BiologicalTemporalSummationMode.Process method.
+// AFTER (Corrected): The complete, reusable helper with all timing and noise logic.
+// This logic is a direct and complete extraction from BiologicalTemporalSummationMode.Process.
+func (m *BiologicalTemporalSummationMode) processDecayedComponents(now time.Time, processor InputProcessorFunc) (totalExcitation, totalInhibition float64) {
+	m.bufferMutex.Lock()
+	defer m.bufferMutex.Unlock()
+
+	if len(m.buffer) == 0 {
+		m.lastProcessTime = now
+		return 0.0, 0.0
+	}
+
+	// --- The following is the complete logic from the original Process method, ---
+	// --- refactored to use the processor function correctly. ---
+
+	var mostRecentTime time.Time
+	for _, input := range m.buffer {
+		if input.ArrivalTime.After(mostRecentTime) {
+			mostRecentTime = input.ArrivalTime
+		}
+	}
+	//
+
+	processTime := mostRecentTime
+	if processTime.IsZero() {
+		processTime = now
+	}
+	//
+
+	var decayedExcitation, decayedInhibition float64
+
+	for _, input := range m.buffer {
+		var ageOfInput time.Duration
+
+		if !mostRecentTime.IsZero() && now.Sub(mostRecentTime) < 5*time.Millisecond {
+			ageOfInput = processTime.Sub(input.ArrivalTime)
+		} else {
+			ageOfInput = now.Sub(input.ArrivalTime)
+		}
+		//
+
+		if ageOfInput >= 0 {
+			// Start with the original value from the message.
+			value := input.Message.Value
+
+			// If a processor function was provided, use it to transform the value.
+			if processor != nil {
+				value = processor(value)
+			}
+
+			// --- All subsequent calculations now correctly use the processed `value` ---
+
+			timeConstant := m.getEffectiveTimeConstant(input.Message.SourceID) //
+			tauInSeconds := timeConstant.Seconds()
+
+			var temporalDecay float64
+			if tauInSeconds > 0 {
+				temporalDecay = math.Exp(-ageOfInput.Seconds() / tauInSeconds)
+			} else {
+				temporalDecay = 0.0
+			}
+			//
+
+			// CRITICAL FIX: Use the processed `value` here, not `input.Message.Value`.
+			effectiveInput := value * input.DecayFactor * temporalDecay
+
+			if m.membraneNoise > 0 {
+				nanoTime := float64(input.ArrivalTime.UnixNano())
+				seedFactor := float64(m.noiseSeed % 1000000)
+				inputIndex := float64(len(m.buffer))
+				noise1 := math.Sin(nanoTime*1e-9*11.0 + seedFactor*1e-6)
+				noise2 := math.Cos(nanoTime*1e-9*17.0 + seedFactor*1e-5)
+				noise3 := math.Sin(seedFactor*0.001 + inputIndex*0.1)
+				normalApprox := (noise1 + noise2 + noise3) / 3.0
+				noise := normalApprox * m.membraneNoise * 2.0
+				effectiveInput += noise
+				m.noiseSeed = (m.noiseSeed*1103515245 + 12345) % (1 << 31)
+			}
+			//
+
+			if effectiveInput >= 0 {
+				decayedExcitation += effectiveInput
+			} else {
+				decayedInhibition += -effectiveInput // Store as a positive value
+			}
+		}
+	}
+
+	m.buffer = m.buffer[:0]
+	m.lastProcessTime = now
+	//
+
+	return decayedExcitation, decayedInhibition
+}
+
+// calculateSpatialWeight models distance-dependent signal attenuation
+// λ = sqrt(Rm/Ri) - biological space constant
+func (m *BiologicalTemporalSummationMode) calculateSpatialWeight(sourceID string) float64 {
+	// Simplified spatial model - could be enhanced with actual positions
+	baseWeight := 1.0
+
+	// Apply distance-based decay if spatial information available
+	if m.spatialDecayFactor > 0 {
+		// Model: different branches have different effective distances
+		if sourceID == "distal" {
+			baseWeight = baseWeight * 0.5 // 50% attenuation for distal inputs
+		} else if sourceID == "proximal" {
+			baseWeight *= 1.0 // No attenuation for proximal
+		} else {
+			baseWeight *= 0.7 // Moderate attenuation for mid-dendrite
+		}
+	}
+
+	return baseWeight
+}
+
+// getEffectiveTimeConstant returns branch-specific time constant
+func (m *BiologicalTemporalSummationMode) getEffectiveTimeConstant(sourceID string) time.Duration {
+	// Use branch-specific time constant if available
+	if branchTau, exists := m.branchTimeConstants[sourceID]; exists {
+		return branchTau
+	}
+
+	// Use default membrane time constant
+	return m.membraneTimeConstant
+}
+
+// SetGates configures the gate middleware chain
+func (m *BiologicalTemporalSummationMode) SetGates(gates []DendriticGate) {
+	m.gateChain = gates
+}
+
+// AddGate adds a single gate to the middleware chain
+func (m *BiologicalTemporalSummationMode) AddGate(gate DendriticGate) {
+	m.gateChain = append(m.gateChain, gate)
+}
+
+// Name returns identifier for this integration mode
+func (m *BiologicalTemporalSummationMode) Name() string {
+	return "BiologicalTemporalSummation"
+}
+
+// Close releases resources and closes all gates
+func (m *BiologicalTemporalSummationMode) Close() {
+	// Close all gates in the chain
+	for _, gate := range m.gateChain {
+		if gate != nil {
+			gate.Close()
+		}
+	}
+
+	// Clear buffer and gate chain
+	m.bufferMutex.Lock()
+	m.buffer = m.buffer[:0]
+	m.bufferMutex.Unlock()
+
+	m.gateChain = nil
+}
+
+// ProcessImmediate processes all buffered inputs immediately without temporal decay
+// This is useful for testing scenarios where immediate processing is expected
+func (m *BiologicalTemporalSummationMode) ProcessImmediate() *IntegratedPotential {
+	m.bufferMutex.Lock()
+	defer m.bufferMutex.Unlock()
+
+	// Early exit if no inputs to process
+	if len(m.buffer) == 0 {
+		return nil
+	}
+
+	var totalInput float64 = 0.0
+
+	for _, input := range m.buffer {
+		// Apply spatial decay but no temporal decay (immediate processing)
+		effectiveInput := input.Message.Value * input.DecayFactor
+
+		// Add biological membrane noise (deterministic for testing)
+		if m.membraneNoise > 0 {
+			nanoTime := float64(input.ArrivalTime.UnixNano())
+			seedFactor := float64(m.noiseSeed % 1000000)
+
+			// Use multiple frequencies for better distribution
+			noise1 := math.Sin(nanoTime*1e-9*11.0 + seedFactor*1e-6)
+			noise2 := math.Cos(nanoTime*1e-9*17.0 + seedFactor*1e-5)
+			noise3 := math.Sin(seedFactor * 0.001)
+
+			// Create stronger, more proportional noise
+			normalApprox := (noise1 + noise2 + noise3) / 3.0
+			noise := normalApprox * m.membraneNoise * 2.0
+			effectiveInput += noise
+		}
+
+		totalInput += effectiveInput
+	}
+
+	// Clear the buffer after processing
+	m.buffer = m.buffer[:0]
+
+	// Apply biological constraints
+	if totalInput > 100.0 {
+		totalInput = 100.0
+	} else if totalInput < -100.0 {
+		totalInput = -100.0
+	}
+
+	if math.Abs(totalInput) < 0.001 {
+		return nil
+	}
+
+	return &IntegratedPotential{NetInput: totalInput}
+}
+
+// === FACTORY FUNCTIONS FOR REALISTIC CONFIGURATIONS ===
+
+// CreateCorticalPyramidalConfig returns realistic cortical neuron parameters
+func CreateCorticalPyramidalConfig() BiologicalConfig {
+	return BiologicalConfig{
+		MembraneTimeConstant: 20 * time.Millisecond,                          // Typical cortical τ
+		LeakConductance:      0.97,                                           // 3% leak per ms (legacy, not used)
+		SpatialDecayFactor:   0.1,                                            // 10% per distance unit
+		MembraneNoise:        0.01,                                           // 1% noise level
+		TemporalJitter:       time.Duration(0.5 * float64(time.Millisecond)), // 0.5ms timing variability
+		BranchTimeConstants: map[string]time.Duration{
+			"apical":   25 * time.Millisecond, // Longer for apical dendrites
+			"basal":    15 * time.Millisecond, // Shorter for basal dendrites
+			"distal":   30 * time.Millisecond, // Longest for distal branches
+			"proximal": 10 * time.Millisecond, // Shortest for proximal
+		},
+	}
+}
+
+// CreateHippocampalConfig returns hippocampal CA1 pyramidal parameters
+func CreateHippocampalConfig() BiologicalConfig {
+	return BiologicalConfig{
+		MembraneTimeConstant: 35 * time.Millisecond,                          // Longer τ for hippocampus
+		LeakConductance:      0.98,                                           // Less leaky than cortex (legacy)
+		SpatialDecayFactor:   0.05,                                           // Less spatial decay
+		MembraneNoise:        0.005,                                          // Lower noise
+		TemporalJitter:       time.Duration(0.3 * float64(time.Millisecond)), // Tighter timing
+
+		BranchTimeConstants: map[string]time.Duration{
+			"apical":   45 * time.Millisecond,
+			"basal":    25 * time.Millisecond,
+			"distal":   50 * time.Millisecond,
+			"proximal": 15 * time.Millisecond,
+		},
+	}
+}
+
+// CreateInterneuronConfig returns fast-spiking interneuron parameters
+func CreateInterneuronConfig() BiologicalConfig {
+	return BiologicalConfig{
+		MembraneTimeConstant: 8 * time.Millisecond,   // Fast τ for interneurons
+		LeakConductance:      0.93,                   // More leaky membrane (legacy)
+		SpatialDecayFactor:   0.2,                    // Compact dendritic tree
+		MembraneNoise:        0.02,                   // Higher noise
+		TemporalJitter:       1.0 * time.Millisecond, // More variable timing
+		BranchTimeConstants: map[string]time.Duration{
+			"dendrite": 8 * time.Millisecond, // Uniform fast dendrites
+		},
+	}
+}
