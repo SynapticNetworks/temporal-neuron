@@ -70,7 +70,7 @@ We're looking for forward-thinking organizations and individuals who want to sup
 #### How to Sponsor
 
 Contact us to discuss sponsorship opportunities:
-- **Email**: sponsors@synapticnetworks.org
+- **Email**: sponsors@synapticnetworks.io
 - **GitHub Sponsors**: [Support this project](https://github.com/sponsors/SynapticNetworks)
 - **Discussions**: [GitHub Discussions](https://github.com/SynapticNetworks/temporal-neuron/discussions)
 
