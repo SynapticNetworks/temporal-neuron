@@ -796,22 +796,37 @@ func TestLongRunningStability(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), testDuration)
 	defer cancel()
 
-	// Steady workload
+	// Track completion
+	done := make(chan struct{})
+
+	// Steady workload - fixed to work with synchronous Transmit()
 	go func() {
+		defer close(done) // Signal completion when this goroutine exits
+
 		ticker := time.NewTicker(10 * time.Millisecond)
 		defer ticker.Stop()
 
 		for {
 			select {
 			case <-ctx.Done():
-				return
+				return // Exit cleanly when context is cancelled
 			case <-ticker.C:
+				// Transmit is now synchronous, but this should be fast
+				// No blocking behavior expected with zero delay
 				synapse.Transmit(1.0)
 			}
 		}
 	}()
 
-	<-ctx.Done()
+	// Wait for either completion or timeout
+	select {
+	case <-done:
+		t.Log("Workload goroutine completed successfully")
+	case <-ctx.Done():
+		t.Log("Test duration completed, stopping workload")
+		// Give a brief moment for cleanup
+		time.Sleep(10 * time.Millisecond)
+	}
 
 	// Validate final state
 	finalWeight := synapse.GetWeight()

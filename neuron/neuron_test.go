@@ -19,16 +19,19 @@ import (
 // This mock neuron models a simplified post-synaptic neuron that can receive
 // and record synaptic inputs for verification during testing.
 type MockSynapseCompatibleNeuron struct {
-	id           string
-	receivedMsgs []synapse.SynapseMessage
-	mutex        sync.Mutex
+	id              string
+	receivedSignals []synapse.SynapseMessage
+	receiveCount    int
+	mutex           sync.Mutex
+	shouldPanic     bool          // For testing error conditions
+	receiveDelay    time.Duration // For testing timing
 }
 
 // NewMockNeuron creates a mock neuron for testing synapse communication
 func NewMockNeuron(id string) *MockSynapseCompatibleNeuron {
 	return &MockSynapseCompatibleNeuron{
-		id:           id,
-		receivedMsgs: make([]synapse.SynapseMessage, 0),
+		id:              id,
+		receivedSignals: make([]synapse.SynapseMessage, 0),
 	}
 }
 
@@ -37,12 +40,27 @@ func (m *MockSynapseCompatibleNeuron) ID() string {
 	return m.id
 }
 
+func (m *MockSynapseCompatibleNeuron) GetReceivedCount() int {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+	return m.receiveCount
+}
+
 // Receive implements the synapse.SynapseCompatibleNeuron interface
 // Records all received messages for test verification
 func (m *MockSynapseCompatibleNeuron) Receive(msg synapse.SynapseMessage) {
+	if m.shouldPanic {
+		panic("mock neuron panic for testing")
+	}
+
+	if m.receiveDelay > 0 {
+		time.Sleep(m.receiveDelay)
+	}
+
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
-	m.receivedMsgs = append(m.receivedMsgs, msg)
+	m.receivedSignals = append(m.receivedSignals, msg)
+	m.receiveCount++
 }
 
 // GetReceivedMessages returns a copy of all received messages for testing
@@ -51,8 +69,8 @@ func (m *MockSynapseCompatibleNeuron) GetReceivedMessages() []synapse.SynapseMes
 	defer m.mutex.Unlock()
 
 	// Return a copy to prevent external modification
-	messages := make([]synapse.SynapseMessage, len(m.receivedMsgs))
-	copy(messages, m.receivedMsgs)
+	messages := make([]synapse.SynapseMessage, len(m.receivedSignals))
+	copy(messages, m.receivedSignals)
 	return messages
 }
 
@@ -60,7 +78,7 @@ func (m *MockSynapseCompatibleNeuron) GetReceivedMessages() []synapse.SynapseMes
 func (m *MockSynapseCompatibleNeuron) ClearReceivedMessages() {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
-	m.receivedMsgs = m.receivedMsgs[:0]
+	m.receivedSignals = m.receivedSignals[:0]
 }
 
 // ============================================================================

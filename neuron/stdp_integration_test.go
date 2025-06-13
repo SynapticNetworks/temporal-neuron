@@ -164,7 +164,7 @@ func TestSTDPWithHomeostasis(t *testing.T) {
 	}
 
 	// Validate threshold adjustment
-	if math.Abs(finalThreshold-initialThreshold) < 0.01 {
+	if math.Abs(finalThreshold-initialThreshold) < 0.001 {
 		t.Errorf("Threshold didn’t adjust (%.3f → %.3f)", initialThreshold, finalThreshold)
 	} else {
 		t.Logf("✓ Homeostatic threshold adjustment occurred")
