@@ -1185,7 +1185,7 @@ func TestGABAergicNetworkStabilizationBiologicalTiming(t *testing.T) {
 	t.Log("\n--- Phase 1: Excitatory-Only Network (Baseline) ---")
 
 	excitatoryNeurons := make([]*Neuron, numExcitatoryNeurons)
-	excitatoryTargets := make([]*MockSynapseCompatibleNeuron, numExcitatoryNeurons)
+	excitatoryTargets := make([]*MockNeuron, numExcitatoryNeurons)
 
 	for i := 0; i < numExcitatoryNeurons; i++ {
 		excitatoryNeurons[i] = NewSimpleNeuron(
@@ -1263,7 +1263,7 @@ func TestGABAergicNetworkStabilizationBiologicalTiming(t *testing.T) {
 
 	// Create balanced excitatory neurons
 	balancedExcitatoryNeurons := make([]*Neuron, numExcitatoryNeurons)
-	balancedExcitatoryTargets := make([]*MockSynapseCompatibleNeuron, numExcitatoryNeurons)
+	balancedExcitatoryTargets := make([]*MockNeuron, numExcitatoryNeurons)
 
 	for i := 0; i < numExcitatoryNeurons; i++ {
 		balancedExcitatoryNeurons[i] = NewSimpleNeuron(
@@ -1280,7 +1280,7 @@ func TestGABAergicNetworkStabilizationBiologicalTiming(t *testing.T) {
 
 	// Create FAST GABAergic interneurons (biological parameters)
 	gabaergicInterneurons := make([]*Neuron, numInterneurons)
-	gabaergicTargets := make([]*MockSynapseCompatibleNeuron, numInterneurons)
+	gabaergicTargets := make([]*MockNeuron, numInterneurons)
 
 	for i := 0; i < numInterneurons; i++ {
 		gabaergicInterneurons[i] = NewSimpleNeuron(

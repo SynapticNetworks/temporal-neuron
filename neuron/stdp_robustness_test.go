@@ -49,6 +49,11 @@ func (m *mockReceptor) Receive(msg synapse.SynapseMessage) {
 	}
 }
 
+func (m *mockReceptor) ScheduleDelayedDelivery(message synapse.SynapseMessage, target synapse.SynapseCompatibleNeuron, delay time.Duration) {
+	// Simple mock implementation - immediate delivery
+	target.Receive(message)
+}
+
 // TestSTDPRobustnessRegressionBaseline ensures that standard STDP behavior remains
 // consistent across code changes. This test locks in the exact weight changes
 // for a set of standard timing patterns, serving as a regression detector.
