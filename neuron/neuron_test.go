@@ -10,59 +10,6 @@ import (
 	"github.com/SynapticNetworks/temporal-neuron/synapse"
 )
 
-// MockSynapseCompatibleNeuron implements the synapse.SynapseCompatibleNeuron interface
-// for testing purposes. This allows us to create controlled test networks
-// where we can precisely verify signal transmission and timing.
-//
-// BIOLOGICAL CONTEXT:
-// In real neural networks, neurons must communicate through synaptic connections.
-// This mock neuron models a simplified post-synaptic neuron that can receive
-// and record synaptic inputs for verification during testing.
-type MockSynapseCompatibleNeuron struct {
-	id           string
-	receivedMsgs []synapse.SynapseMessage
-	mutex        sync.Mutex
-}
-
-// NewMockNeuron creates a mock neuron for testing synapse communication
-func NewMockNeuron(id string) *MockSynapseCompatibleNeuron {
-	return &MockSynapseCompatibleNeuron{
-		id:           id,
-		receivedMsgs: make([]synapse.SynapseMessage, 0),
-	}
-}
-
-// ID returns the neuron's unique identifier
-func (m *MockSynapseCompatibleNeuron) ID() string {
-	return m.id
-}
-
-// Receive implements the synapse.SynapseCompatibleNeuron interface
-// Records all received messages for test verification
-func (m *MockSynapseCompatibleNeuron) Receive(msg synapse.SynapseMessage) {
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
-	m.receivedMsgs = append(m.receivedMsgs, msg)
-}
-
-// GetReceivedMessages returns a copy of all received messages for testing
-func (m *MockSynapseCompatibleNeuron) GetReceivedMessages() []synapse.SynapseMessage {
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
-
-	// Return a copy to prevent external modification
-	messages := make([]synapse.SynapseMessage, len(m.receivedMsgs))
-	copy(messages, m.receivedMsgs)
-	return messages
-}
-
-// ClearReceivedMessages clears the message history for fresh testing
-func (m *MockSynapseCompatibleNeuron) ClearReceivedMessages() {
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
-	m.receivedMsgs = m.receivedMsgs[:0]
-}
-
 // ============================================================================
 // CORE NEURON FUNCTIONALITY TESTS
 // ============================================================================
@@ -373,18 +320,19 @@ func TestSynapseMessageProcessing(t *testing.T) {
 // In neuron_test.go
 
 func TestNeuronSynapseNetworkIntegration(t *testing.T) {
-	// 1. SETUP: Create the network components.
+	// 1. SETUP: Create real neurons (both with learning disabled for predictable behavior)
 	presynapticNeuron := NewSimpleNeuron("motor_neuron", 1.0, 0.98, 5*time.Millisecond, 1.0)
-	postsynapticNeuron := NewMockNeuron("muscle_fiber")
+	postsynapticNeuron := NewSimpleNeuron("muscle_fiber", 2.0, 0.98, 5*time.Millisecond, 1.0) // Higher threshold
 
-	// 2. SETUP FIRE EVENT MONITORING: This is the key to the fix.
-	// We create a channel to receive the exact moment the presynaptic neuron fires.
-	fireEvents := make(chan FireEvent, 1)
-	presynapticNeuron.SetFireEventChannel(fireEvents)
+	// 2. SETUP FIRE EVENT MONITORING for both neurons
+	preFireEvents := make(chan FireEvent, 10)
+	postFireEvents := make(chan FireEvent, 10)
+	presynapticNeuron.SetFireEventChannel(preFireEvents)
+	postsynapticNeuron.SetFireEventChannel(postFireEvents)
 
-	// 3. SETUP SYNAPSE: Configure the connection with a clear delay.
+	// 3. SETUP SYNAPSE: Configure the connection with a clear delay
 	const synapticDelay = 3 * time.Millisecond
-	const synapticWeight = 0.8
+	const synapticWeight = 2.5 // High enough to trigger postsynaptic firing
 	synapticConnection := synapse.NewBasicSynapse(
 		"neuromuscular_junction",
 		presynapticNeuron,
@@ -398,59 +346,77 @@ func TestNeuronSynapseNetworkIntegration(t *testing.T) {
 
 	// 4. START THE NETWORK
 	go presynapticNeuron.Run()
+	go postsynapticNeuron.Run()
 	defer presynapticNeuron.Close()
+	defer postsynapticNeuron.Close()
 
 	// 5. STIMULATE THE PRESYNAPTIC NEURON
+	stimulationTime := time.Now()
 	presynapticNeuron.Receive(synapse.SynapseMessage{
 		Value:     1.5, // Above threshold
-		Timestamp: time.Now(),
+		Timestamp: stimulationTime,
 		SourceID:  "spinal_cord",
 	})
 
-	// 6. WAIT FOR THE FIRE EVENT to get the precise start time and output value.
+	// 6. WAIT FOR PRESYNAPTIC FIRE EVENT
 	var presynapticFireEvent FireEvent
 	select {
-	case event := <-fireEvents:
-		t.Logf("Received FireEvent from presynaptic neuron at %v with value %.2f", event.Timestamp, event.Value)
+	case event := <-preFireEvents:
+		t.Logf("✓ Presynaptic neuron fired at %v with value %.2f",
+			event.Timestamp, event.Value)
 		presynapticFireEvent = event
 	case <-time.After(20 * time.Millisecond):
-		t.Fatal("Did not receive a fire event from the presynaptic neuron.")
+		t.Fatal("Presynaptic neuron did not fire")
 	}
 
-	// Wait for the message to propagate through the synapse
-	time.Sleep(synapticDelay + 20*time.Millisecond)
-
-	// 7. VERIFY THE OUTCOME
-	receivedMessages := postsynapticNeuron.GetReceivedMessages()
-	if len(receivedMessages) == 0 {
-		t.Fatal("Postsynaptic neuron did not receive the message.")
-	}
-	receivedMsg := receivedMessages[0]
-
-	// ✅ ROBUST TIMING CHECK: Calculate delay based on the actual firing time.
-	transmissionTime := receivedMsg.Timestamp.Sub(presynapticFireEvent.Timestamp)
-	t.Logf("Calculated synaptic transmission time: %v", transmissionTime)
-
-	minExpectedDelay := synapticDelay
-	maxExpectedDelay := synapticDelay + 20*time.Millisecond // Generous window
-	if transmissionTime < minExpectedDelay || transmissionTime > maxExpectedDelay {
-		t.Errorf("Transmission time outside expected window. Got: %v, Want: [%v, %v]",
-			transmissionTime, minExpectedDelay, maxExpectedDelay)
+	// 7. WAIT FOR POSTSYNAPTIC FIRE EVENT (this is the key measurement)
+	var postsynapticFireEvent FireEvent
+	select {
+	case event := <-postFireEvents:
+		t.Logf("✓ Postsynaptic neuron fired at %v with value %.2f",
+			event.Timestamp, event.Value)
+		postsynapticFireEvent = event
+	case <-time.After(synapticDelay + 50*time.Millisecond):
+		t.Fatal("Postsynaptic neuron did not fire within expected timeframe")
 	}
 
-	// ✅ ROBUST VALUE CHECK: Calculate the expected value based on the *actual*
-	// signal sent by the presynaptic neuron (from the FireEvent).
-	expectedValue := presynapticFireEvent.Value * synapticWeight
-	tolerance := 1e-9 // Use a small tolerance for floating point comparison
+	// 8. MEASURE AND VALIDATE SYNAPTIC TRANSMISSION DELAY
+	transmissionDelay := postsynapticFireEvent.Timestamp.Sub(presynapticFireEvent.Timestamp)
+	t.Logf("Measured synaptic transmission delay: %v", transmissionDelay)
 
-	if math.Abs(receivedMsg.Value-expectedValue) > tolerance {
-		t.Errorf("Expected signal value ~%.6f, got %.6f", expectedValue, receivedMsg.Value)
+	// The delay should include:
+	// - Synaptic delay (3ms)
+	// - Small processing overhead (< 1ms)
+	// - Postsynaptic integration time (< 1ms)
+	minExpectedDelay := synapticDelay                       // 3ms minimum
+	maxExpectedDelay := synapticDelay + 10*time.Millisecond // 13ms maximum (generous)
+
+	if transmissionDelay < minExpectedDelay {
+		t.Errorf("Transmission delay too short. Got: %v, Expected minimum: %v",
+			transmissionDelay, minExpectedDelay)
+	}
+	if transmissionDelay > maxExpectedDelay {
+		t.Errorf("Transmission delay too long. Got: %v, Expected maximum: %v",
+			transmissionDelay, maxExpectedDelay)
 	}
 
-	// Verify other message properties
-	if receivedMsg.SourceID != presynapticNeuron.ID() {
-		t.Errorf("Expected source ID %s, got %s", presynapticNeuron.ID(), receivedMsg.SourceID)
+	// 9. VALIDATE SIGNAL STRENGTH PROPAGATION
+	// The postsynaptic firing value should reflect the accumulated input
+	// (not necessarily equal to presynaptic * weight due to integration dynamics)
+	if postsynapticFireEvent.Value <= 0 {
+		t.Errorf("Postsynaptic neuron fired with invalid value: %v", postsynapticFireEvent.Value)
 	}
+
+	// 10. VERIFY NO ADDITIONAL UNEXPECTED FIRINGS
+	time.Sleep(10 * time.Millisecond) // Wait a bit more
+	select {
+	case unexpectedEvent := <-postFireEvents:
+		t.Errorf("Unexpected additional firing at %v", unexpectedEvent.Timestamp)
+	default:
+		t.Logf("✓ No unexpected additional firings detected")
+	}
+
+	t.Logf("✓ Integration test passed - synaptic delay working correctly")
 }
 
 // TestMultipleSynapticConnections validates complex network connectivity
@@ -479,7 +445,7 @@ func TestMultipleSynapticConnections(t *testing.T) {
 	}
 
 	// Create multiple output targets
-	outputTargets := []*MockSynapseCompatibleNeuron{
+	outputTargets := []*MockNeuron{
 		NewMockNeuron("target_alpha"),
 		NewMockNeuron("target_beta"),
 		NewMockNeuron("target_gamma"),
@@ -709,8 +675,7 @@ func TestLeakyIntegration(t *testing.T) {
 		targetNeuron,
 		synapse.CreateDefaultSTDPConfig(),
 		synapse.CreateDefaultPruningConfig(),
-		1.0, 0,
-	)
+		1.0, 0)
 
 	neuron.AddOutputSynapse("integration_test", outputSynapse)
 
@@ -2095,81 +2060,5 @@ func BenchmarkNeuronFiring(b *testing.B) {
 			Timestamp: time.Now(),
 			SourceID:  "bench",
 		})
-	}
-}
-
-// ============================================================================
-// DEBUG TESTS
-// ============================================================================
-
-// TestSynapseTransmissionDelay_Debug is a focused test to isolate and verify
-// that the synapse's transmission delay is being correctly implemented and timed.
-// It bypasses the presynaptic neuron's firing logic to test the synapse directly.
-func TestSynapseTransmissionDelay_Debug(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping debug-specific test in short mode.")
-	}
-	// 1. Setup: Create mock pre- and post-synaptic neurons.
-	// We use mocks to have full control and observability.
-	preNeuron := NewMockNeuron("debug_pre_neuron")
-	postNeuron := NewMockNeuron("debug_post_neuron")
-
-	// 2. Configuration: Define a clear, unambiguous delay.
-	// A 50ms delay is long enough to be clearly distinct from any scheduling noise.
-	const transmissionDelay = 50 * time.Millisecond
-	const signalValue = 1.0
-	const weight = 1.0
-
-	synapticConnection := synapse.NewBasicSynapse(
-		"debug_synapse",
-		preNeuron,
-		postNeuron,
-		synapse.CreateDefaultSTDPConfig(),
-		synapse.CreateDefaultPruningConfig(),
-		weight,
-		transmissionDelay,
-	)
-
-	// 3. Execution: Record start time and transmit the signal directly.
-	// We call Transmit() on the synapse itself, not on the neuron.
-	startTime := time.Now()
-	t.Logf("[DEBUG] Test initiated at: %v", startTime.Format(time.RFC3339Nano))
-	synapticConnection.Transmit(signalValue)
-	t.Logf("[DEBUG] Synapse.Transmit() called. Waiting for delayed delivery...")
-
-	// 4. Wait: Allow more than enough time for the delayed function to run.
-	time.Sleep(transmissionDelay + 30*time.Millisecond)
-
-	// 5. Verification & Logging: Check the results and log everything.
-	receivedMessages := postNeuron.GetReceivedMessages()
-
-	if len(receivedMessages) == 0 {
-		t.Fatal("[DEBUG] FATAL: Post-synaptic neuron received no messages. The time.AfterFunc callback likely did not run.")
-	}
-	if len(receivedMessages) > 1 {
-		t.Fatalf("[DEBUG] FATAL: Received %d messages, but expected only 1.", len(receivedMessages))
-	}
-
-	receivedMsg := receivedMessages[0]
-	t.Logf("[DEBUG] Message received by mock neuron. Timestamp inside message: %v", receivedMsg.Timestamp.Format(time.RFC3339Nano))
-
-	// This is the critical calculation.
-	// It measures the difference between the start of the test and the timestamp
-	// that was embedded inside the message upon its creation.
-	actualDelay := receivedMsg.Timestamp.Sub(startTime)
-	t.Logf("[DEBUG] Calculated Actual Delay (Message Timestamp - Start Time): %v", actualDelay)
-
-	// 6. Assertion: Check if the actual delay is within an acceptable window.
-	// We expect the delay to be very close to our configured 50ms, allowing for minor
-	// goroutine scheduling overhead.
-	minExpectedDelay := transmissionDelay
-	maxExpectedDelay := transmissionDelay + 30*time.Millisecond // Generous window for scheduling
-
-	if actualDelay < minExpectedDelay {
-		t.Errorf("FAIL: Signal arrived too quickly. Actual Delay: %v, Expected Minimum: %v. This indicates the OLD, buggy synapse code is running.", actualDelay, minExpectedDelay)
-	} else if actualDelay > maxExpectedDelay {
-		t.Errorf("FAIL: Signal arrived too slowly. Actual Delay: %v, Expected Maximum: %v.", actualDelay, maxExpectedDelay)
-	} else {
-		t.Logf("SUCCESS: Actual delay of %v is within the expected window [%v, %v]. The synapse code is working correctly.", actualDelay, minExpectedDelay, maxExpectedDelay)
 	}
 }

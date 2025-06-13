@@ -34,28 +34,6 @@ import (
 	"github.com/SynapticNetworks/temporal-neuron/synapse"
 )
 
-// MockNeuron provides a minimal implementation for STDP testing
-// This replaces the need for full neuron instances during focused synapse testing
-type MockNeuron struct {
-	id           string
-	receivedMsgs []synapse.SynapseMessage
-}
-
-func (m *MockNeuron) ID() string {
-	return m.id
-}
-
-func (m *MockNeuron) Receive(msg synapse.SynapseMessage) {
-	if m.receivedMsgs == nil {
-		m.receivedMsgs = make([]synapse.SynapseMessage, 0)
-	}
-	m.receivedMsgs = append(m.receivedMsgs, msg)
-}
-
-func (m *MockNeuron) GetReceivedMessages() []synapse.SynapseMessage {
-	return m.receivedMsgs
-}
-
 // ============================================================================
 // BIOLOGICAL STDP TESTING FRAMEWORK
 // ============================================================================

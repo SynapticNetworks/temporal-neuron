@@ -240,6 +240,15 @@ type HomeostaticInfo struct {
 	lastHomeostaticUpdate time.Time     // When homeostasis last ran
 }
 
+// delayedMessage represents a synaptic message awaiting axonal delivery.
+// Models action potential propagation down the axon with timing delays
+// before reaching target synapses. Includes both synaptic and spatial delays.
+type delayedMessage struct {
+	message      synapse.SynapseMessage          // The synaptic message to deliver
+	target       synapse.SynapseCompatibleNeuron // Target post-synaptic neuron
+	deliveryTime time.Time                       // When the message should be delivered
+}
+
 // InputActivity represents a single, discrete synaptic input event and its effect on the postsynaptic neuron.
 // This structure serves as a fundamental unit of "synaptic trace memory," a short-lived record of
 // recent activity that is essential for the neuron's internal homeostatic and computational mechanisms.
@@ -314,6 +323,20 @@ type Neuron struct {
 	// Models the time after firing when neuron cannot fire again
 	// In biology: Na+ channels are inactivated, preventing new action potentials
 	// C. elegans neurons: typically 5-15ms depending on neuron type
+
+	// === NEW: INPUT BUFFERING SYSTEM ===
+	// Models biological dendritic capacity constraints for simultaneous inputs.
+	// Real dendrites can only handle limited concurrent postsynaptic potentials
+	// before saturation occurs, leading to input loss under overload conditions.
+	inputBuffer chan synapse.SynapseMessage // Bounded buffer (size 10) for incoming messages
+
+	// === NEW: AXONAL DELIVERY SYSTEM ===
+	// Models the biological axon: each neuron has one axon that handles all
+	// outgoing signal delivery with appropriate propagation delays. This replaces
+	// the goroutine-per-message approach with a single delivery worker per neuron,
+	// eliminating goroutine explosion while maintaining biological realism.
+	deliveryQueue  chan delayedMessage // Queue for messages awaiting axonal delivery
+	deliveryWorker sync.Once           // Ensures exactly one delivery goroutine per neuron
 
 	decayRate float64 // Membrane potential decay rate per time step
 	// Models the leaky nature of biological neural membranes
@@ -497,6 +520,11 @@ func NewNeuron(id string, threshold float64, decayRate float64, refractoryPeriod
 		fireEvents:                 nil,                                        // Optional fire event reporting (disabled by default)
 		EnableCoincidenceDetection: false,                                      // deactivated by default - TODO check if we can activate
 		CoincidenceWindow:          50 * time.Millisecond,
+
+		// NEW: Initialize input buffering system
+		// Buffer size of 10 reflects biological dendritic capacity constraints
+		// Larger buffers reduce message loss but increase memory usage
+		inputBuffer: make(chan synapse.SynapseMessage, 10),
 
 		// Initialize homeostatic plasticity system
 		homeostatic: HomeostaticMetrics{
@@ -925,78 +953,100 @@ func (n *Neuron) GetOutputSynapseWeight(id string) (float64, bool) {
 // - Membrane dynamics: 1ms (fastest - electrical properties)
 // - Homeostatic plasticity: seconds to minutes (intrinsic regulation)
 // - Synaptic scaling: minutes to hours (synaptic homeostasis - slowest)
+//
+// BUFFERED ARCHITECTURE:
+// Inputs are processed individually from the buffer, maintaining temporal order
+// and allowing immediate firing checks after each input. This models the
+// continuous nature of biological neural processing while using discrete
+// computational cycles for efficiency.
+//
+// MUST be called as a goroutine: go neuron.Run()
+// Each neuron operates independently, modeling biological neural autonomy.
 func (n *Neuron) Run() {
-	// Create decay timer for continuous membrane potential decay
-	// Models the biological membrane time constant (RC circuit behavior)
-	// Decay interval of 1ms provides good temporal resolution for C. elegans scale
-	decayInterval := 1 * time.Millisecond
-	decayTicker := time.NewTicker(decayInterval)
+	// Create decay timer for continuous biological processes
+	// 1ms interval provides good resolution for neural dynamics while
+	// remaining computationally efficient
+	decayTicker := time.NewTicker(1 * time.Millisecond)
 	defer decayTicker.Stop()
 
-	// Create scaling timer for synaptic homeostasis (much slower than membrane dynamics)
-	// Models the biological timescale of synaptic scaling (minutes to hours)
-	// Check interval of 1 second allows responsive scaling without excessive computation
-	scalingCheckInterval := 1 * time.Second
-	scalingTicker := time.NewTicker(scalingCheckInterval)
-	defer scalingTicker.Stop()
-
-	// Main event loop - the neuron's "life cycle" with multi-timescale biological dynamics
-	// Processes events in order of biological priority and timescale:
+	// Main neural processing loop - handles inputs and biological maintenance
 	for {
 		select {
-		// Event: Membrane potential and calcium decay timer (continuous biological processes)
-		// Models: membrane capacitance discharge, ion channel leakage,
-		//         calcium removal, return toward resting potential
-		// Regular biological processes that occur continuously
-		// Timescale: 1ms intervals (membrane electrical dynamics)
+		// EVENT 1: Process individual synaptic input
+		// Models arrival of postsynaptic potential (PSP) at dendrites
+		// Each input processed individually to maintain temporal precision
+		case msg := <-n.inputBuffer:
+			n.stateMutex.Lock()
+
+			// Apply post-synaptic receptor scaling (synaptic homeostasis)
+			// Models AMPA/NMDA receptor density changes at post-synaptic sites
+			finalSignalValue := n.applyPostSynapticGainUnsafe(msg)
+			modifiedMsg := msg
+			modifiedMsg.Value = finalSignalValue
+
+			// Record input activity for homeostatic scaling and coincidence detection
+			// Models calcium-dependent activity sensing for regulatory mechanisms
+			if (n.scalingConfig.Enabled || n.EnableCoincidenceDetection) && modifiedMsg.SourceID != "" {
+				n.recordInputActivityUnsafe(modifiedMsg.SourceID, finalSignalValue)
+			}
+
+			// Process through dendritic integration strategies
+			// Models sophisticated dendritic computation (summation, gating, etc.)
+			result := n.dendriticIntegrationMode.Handle(modifiedMsg)
+			if result != nil {
+				n.accumulator += result.NetInput
+			}
+
+			// Immediate firing check after each input
+			// Models continuous threshold monitoring at axon hillock
+			if n.accumulator >= n.threshold {
+				n.fireUnsafe()
+				n.resetAccumulatorUnsafe()
+			}
+
+			n.stateMutex.Unlock()
+
+		// EVENT 2: Regular biological maintenance cycle
+		// Models continuous cellular processes independent of synaptic input
 		case <-decayTicker.C:
 			n.stateMutex.Lock()
-			// --- CHANGE: PROCESS BUFFERED INPUTS ---
-			// Before applying decay, we call the strategy's Process() method.
-			// For PassiveMembraneMode, this does nothing.
-			// For buffered modes (TemporalSummation, etc.), this is where the
-			// collected inputs from the past tick are summed and returned.
+
+			// Process any buffered dendritic computations
+			// Some integration modes batch inputs for temporal summation
 			stateSnapshot := MembraneSnapshot{
 				Accumulator:      n.accumulator,
 				CurrentThreshold: n.threshold,
 			}
 			result := n.dendriticIntegrationMode.Process(stateSnapshot)
 			if result != nil {
-				// The result is added to the accumulator before decay.
 				n.accumulator += result.NetInput
 			}
 
-			// Apply membrane potential decay (fastest process)
+			// Apply continuous membrane potential decay
+			// Models charge dissipation through membrane resistance (RC circuit)
 			n.applyMembraneDecayUnsafe()
 
-			// --- CHANGE 2: RE-ADD FIRING CHECK ---
-			// It is critical to check for firing *after* both buffered inputs
-			// have been processed and decay has been applied for the tick.
+			// Update calcium dynamics for homeostatic sensing
+			// Models intracellular calcium as biological activity sensor
+			n.updateCalciumLevelUnsafe()
+
+			// Check firing after decay (may have reached threshold)
 			if n.accumulator >= n.threshold {
 				n.fireUnsafe()
 				n.resetAccumulatorUnsafe()
 			}
 
-			// Apply calcium decay for homeostatic sensing (medium timescale)
-			n.updateCalciumLevelUnsafe()
-
-			// Check if it's time for homeostatic adjustment (medium timescale)
-			// Operates on seconds to minutes - much slower than membrane dynamics
+			// Homeostatic threshold adjustment (seconds to minutes timescale)
+			// Models activity-dependent intrinsic excitability regulation
 			if n.shouldPerformHomeostaticUpdateUnsafe() {
 				n.performHomeostaticAdjustmentUnsafe()
 			}
 
 			n.stateMutex.Unlock()
 
-		// Event: Synaptic scaling timer (slowest biological process)
-		// Models: synaptic homeostasis, input strength balance maintenance
-		// Operates on minutes to hours - slowest regulatory mechanism
-		// Timescale: 1s check interval, actual scaling every 30s-10min depending on configuration
-		case <-scalingTicker.C:
-			// Apply synaptic scaling to maintain stable input strength
-			// This is the slowest homeostatic mechanism, operating on the longest timescale
-			// Preserves learned patterns while maintaining overall synaptic balance
-			n.applySynapticScaling()
+		// EVENT 3: Controlled shutdown
+		case <-n.ctx.Done():
+			return
 		}
 	}
 }
@@ -1231,6 +1281,116 @@ func (n *Neuron) DetectCoincidentInputsRelativeToMostRecent() int {
 	}
 
 	return len(uniqueSources)
+}
+
+// scheduleDelayedDelivery queues a message for delivery after total propagation delay.
+// This method models the biological axon with both synaptic and spatial delay components.
+//
+// BIOLOGICAL PROCESS MODELED:
+// When a neuron fires, the action potential must propagate down the axon to reach
+// target synapses. The total delay includes both synaptic processing time
+// (neurotransmitter release, receptor binding) and spatial propagation time
+// (axonal conduction velocity, distance, myelination).
+//
+// ARCHITECTURE:
+// Each neuron has exactly one delivery worker goroutine (created on first use)
+// that handles all delayed deliveries. This models the biological reality that
+// each neuron has one axon, eliminating the goroutine explosion that occurred
+// with per-message goroutines.
+//
+// Parameters:
+//
+//	message: The synaptic message to deliver (includes timing and source info)
+//	target: The post-synaptic neuron to receive the message
+//	delay: Total delay including synaptic and spatial components
+func (n *Neuron) ScheduleDelayedDelivery(message synapse.SynapseMessage, target synapse.SynapseCompatibleNeuron, delay time.Duration) {
+	// Initialize delivery system on first use (exactly once per neuron)
+	// Models biological axon development and maturation
+	n.deliveryWorker.Do(func() {
+		n.deliveryQueue = make(chan delayedMessage, 100)
+		go n.axonDeliveryWorker()
+	})
+
+	// Create delivery entry with precise timing
+	// Models action potential propagation with calculated arrival time
+	delayedMsg := delayedMessage{
+		message:      message,
+		target:       target,
+		deliveryTime: time.Now().Add(delay),
+	}
+
+	// Queue for axonal delivery (non-blocking)
+	select {
+	case n.deliveryQueue <- delayedMsg:
+		// Successfully queued for delivery via axonal propagation
+	default:
+		// Delivery queue full - immediate delivery fallback
+		// Models graceful degradation under extreme network load
+		target.Receive(message)
+	}
+}
+
+// axonDeliveryWorker handles all delayed message delivery for this neuron.
+// This goroutine models the biological axon: it manages precise timing of
+// action potential arrival at target synapses after propagation delays.
+//
+// BIOLOGICAL CORRESPONDENCE:
+// Real neurons generate action potentials at the axon hillock, which then
+// propagate down all axon branches to reach target synapses. Different targets
+// receive the signal at different times based on distance, axon diameter,
+// and myelination. This worker models that propagation and delivery process.
+//
+// PERFORMANCE BENEFITS:
+// - Fixed resource usage: N neurons = N delivery goroutines (not millions)
+// - Precise timing: 100μs resolution for biological realism
+// - Efficient batching: Multiple messages delivered per cycle
+// - Graceful scaling: Performance predictable regardless of activity level
+func (n *Neuron) axonDeliveryWorker() {
+	// Pending deliveries sorted by delivery time
+	// Pre-allocate to avoid memory allocation overhead
+	pending := make([]delayedMessage, 0, 100)
+
+	// High-frequency timer for precise delivery timing
+	// 100μs provides excellent temporal resolution for biological realism
+	// while remaining computationally efficient
+	ticker := time.NewTicker(100 * time.Microsecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		// New message queued for delayed delivery
+		case msg := <-n.deliveryQueue:
+			pending = append(pending, msg)
+
+		// Check for messages ready for delivery
+		case <-ticker.C:
+			if len(pending) == 0 {
+				continue // No pending deliveries
+			}
+
+			now := time.Now()
+			remaining := pending[:0] // Reuse slice capacity efficiently
+
+			// Deliver all messages whose delivery time has arrived
+			for _, msg := range pending {
+				if now.After(msg.deliveryTime) || now.Equal(msg.deliveryTime) {
+					// Delivery time reached - transmit to target neuron
+					// Models action potential arrival at target synapse
+					msg.target.Receive(msg.message)
+				} else {
+					// Not yet time - keep in pending list for future delivery
+					remaining = append(remaining, msg)
+				}
+			}
+
+			// Update pending list (removes delivered messages)
+			pending = remaining
+
+		// Shutdown signal - clean termination of delivery worker
+		case <-n.ctx.Done():
+			return
+		}
+	}
 }
 
 // applyPostSynapticGainUnsafe applies receptor sensitivity scaling to incoming signals
@@ -1715,69 +1875,48 @@ func (n *Neuron) SetInputGain(sourceID string, gain float64) {
 // RECEIVE METHOD
 // ============================================================================
 
-// Receive accepts a synapse message and integrates it into the neuron's processing pipeline
-// This method implements the synapse.SynapseCompatibleNeuron interface, allowing this neuron
-// to work seamlessly with the synapse package for biologically accurate connections
+// Receive accepts a synapse message and queues it for processing.
+// This method implements biological dendritic reception with realistic
+// capacity constraints and refractory period enforcement.
 //
-// BIOLOGICAL CONTEXT:
-// In real neurons, synaptic inputs arrive at dendrites and are integrated at the cell body (soma).
-// This method models the dendritic integration process where synaptic signals are converted
-// to postsynaptic potentials and integrated with existing membrane dynamics.
+// BIOLOGICAL PROCESS MODELED:
+// In real neurons, synaptic inputs arrive at dendrites and create postsynaptic
+// potentials (PSPs). This method models dendritic reception with finite capacity:
+// when dendrites are saturated or the neuron is in refractory period, additional
+// inputs are lost, which is biologically realistic.
 //
-// CONCURRENCY SAFETY:
-// This method is thread-safe and designed to be called from multiple synapse goroutines
-// simultaneously. The select statement with default case ensures non-blocking operation,
-// preventing synapses from being blocked if the neuron's input buffer is full.
+// BUFFERED ARCHITECTURE:
+// All inputs are queued in a bounded buffer for processing by the main Run() loop.
+// This maintains single-threaded processing within each neuron while allowing
+// concurrent input delivery from multiple source neurons. The small buffer size
+// (10 messages) reflects biological dendritic capacity limitations.
 //
 // Parameters:
-// msg: SynapseMessage containing the synaptic signal with timing and source information
+//
+//	msg: SynapseMessage containing synaptic signal with timing and source information
+//
+// The method is thread-safe and non-blocking. Refractory period and buffer overflow
+// result in message loss, modeling realistic biological constraints.
 func (n *Neuron) Receive(msg synapse.SynapseMessage) {
-	// Forward to the neuron's input processing pipeline
-	// This integrates the synaptic signal into the neuron's standard processing workflow,
-	// ensuring that synaptic inputs are handled with all biological mechanisms:
-	// - Leaky integration (membrane decay)
-	// - Homeostatic plasticity (activity tracking and threshold adjustment)
-	// - Synaptic scaling (receptor sensitivity adjustment)
-	// - Refractory period enforcement
-	// - Fire event reporting
-
-	// Check if the neuron's context is done. If so, the neuron is shutting down
-	// and should not process new messages.
-	if n.ctx.Err() != nil {
+	// BIOLOGICAL CONSTRAINT: Refractory period enforcement
+	// During refractory period, voltage-gated sodium channels are inactivated
+	// and the neuron cannot respond to inputs regardless of strength.
+	// This models the absolute refractory period in biological neurons.
+	if !n.lastFireTime.IsZero() && time.Since(n.lastFireTime) < n.refractoryPeriod {
+		// Message lost during refractory period - biologically accurate
 		return
 	}
-	// Create a mutable copy of the message so we can modify its value.
-	modifiedMsg := msg
 
-	// Lock the state to safely apply gain and record activity.
-	n.stateMutex.Lock()
-
-	// Apply post-synaptic receptor gain to the incoming signal.
-	// This function call is what correctly registers new input sources.
-	finalSignalValue := n.applyPostSynapticGainUnsafe(modifiedMsg)
-	modifiedMsg.Value = finalSignalValue // Update the message value with the scaled one.
-
-	// Record the effective input strength for scaling and coincidence detection.
-	if (n.scalingConfig.Enabled || n.EnableCoincidenceDetection) && modifiedMsg.SourceID != "" {
-		n.recordInputActivityUnsafe(modifiedMsg.SourceID, finalSignalValue)
-	}
-
-	n.stateMutex.Unlock()
-
-	// Now, delegate the MODIFIED message (with scaled value) to the dendritic strategy.
-	result := n.dendriticIntegrationMode.Handle(msg)
-
-	// For modes like PassiveMembrane, Handle() returns an immediate result.
-	// For buffered modes, it returns nil, and processing is deferred to the Run() loop.
-	// This block ensures immediate processing for backward compatibility.
-	if result != nil {
-		n.stateMutex.Lock()
-		n.accumulator += result.NetInput
-		if n.accumulator >= n.threshold {
-			n.fireUnsafe()
-			n.resetAccumulatorUnsafe()
-		}
-		n.stateMutex.Unlock()
+	// SIMPLIFIED INPUT HANDLING: Always use buffer approach
+	// This eliminates complexity while maintaining biological realism.
+	// Maximum 1ms delay from buffering is negligible compared to biological
+	// neural processing timescales (10-50ms membrane time constants).
+	select {
+	case n.inputBuffer <- msg:
+		// Successfully queued for processing in next computational cycle
+	default:
+		// Buffer full - input lost due to dendritic saturation
+		// This models realistic biological behavior under high input load
 	}
 }
 
