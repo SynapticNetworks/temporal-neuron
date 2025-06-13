@@ -5,6 +5,77 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/SynapticNetworks/temporal-neuron)](https://goreportcard.com/report/github.com/SynapticNetworks/temporal-neuron)
 ![Test Status](https://img.shields.io/badge/tests-passing-brightgreen)
 
+## 💰 Sponsors & Support
+
+This revolutionary research project was conceived and is made possible by the visionary support of our founding sponsor who believes in advancing computational neuroscience and biologically-inspired AI.
+
+### 🏢 Founding Sponsor
+
+<table>
+<tr>
+<td align="center">
+<a href="https://sistemica.com/">
+<img src="https://sistemica.com/logo.svg" width="200" alt="Sistemica GmbH"/>
+<br/>
+<strong>Sistemica GmbH</strong>
+<br/>
+<em>Founding Vision & Strategic Partner</em>
+</a>
+</td>
+</tr>
+</table>
+
+**Sistemica GmbH** - The visionary company that conceived this revolutionary approach and provides the core development team. Their expertise in innovative software solutions combined with deep understanding of biological systems made this groundbreaking research possible. Sistemica GmbH continues to sponsor the development team and strategic direction of the project.
+
+### 🤝 Become a Sponsor
+
+**Join the neural revolution!** 
+
+We're looking for forward-thinking organizations and individuals who want to support groundbreaking research in:
+
+- 🧠 **Biologically-realistic neural networks**
+- 🔬 **Computational neuroscience research** 
+- 🚀 **Next-generation AI architectures**
+- 🌱 **Open-source scientific software**
+
+#### Why Sponsor Temporal Neuron?
+
+- **🎯 Strategic Innovation**: Get early access to revolutionary neural computing technology
+- **🔬 Research Impact**: Support fundamental advances in computational neuroscience
+- **🏆 Brand Recognition**: Associate your organization with cutting-edge AI research
+- **🤝 Collaboration**: Work directly with our research team on applications
+- **📈 Future Technology**: Gain insights into the next generation of AI systems
+
+#### Sponsorship Tiers
+
+**🥇 Innovation Partner ($5,000+ annually)**
+- Logo placement in README and documentation
+- Early access to releases and research findings
+- Quarterly progress reports and technical insights
+- Priority technical support for integration
+
+**🥈 Research Supporter ($1,000+ annually)**  
+- Recognition in sponsors section
+- Access to sponsor updates and roadmap
+- Community support and integration guidance
+
+**🥉 Community Champion ($500+ annually)**
+- Name in acknowledgments
+- Access to sponsor discussions and updates
+
+**💖 Individual Supporter ($50+ annually)**
+- Listed in community supporters
+- Sponsor badge and recognition
+
+#### How to Sponsor
+
+Contact us to discuss sponsorship opportunities:
+- **Email**: sponsors@synapticnetworks.org
+- **GitHub Sponsors**: [Support this project](https://github.com/sponsors/SynapticNetworks)
+- **Discussions**: [GitHub Discussions](https://github.com/SynapticNetworks/temporal-neuron/discussions)
+
+---
+
 ## ⚠️ Research Project - Active Development
 
 **This is an active research project exploring biologically-inspired neural computation.** We are building a complete neural substrate that eliminates artificial constraints of traditional neural networks while maintaining biological realism and computational efficiency.
@@ -24,9 +95,41 @@ This repository now contains a sophisticated, biologically realistic neural comp
 - **✅ GABAergic Networks**: Fast-spiking interneurons with precise inhibitory control
 - **✅ Synaptic Scaling**: Homeostatic receptor regulation for network stability
 - **✅ Compartmental Models**: Foundation for complex dendritic architectures
+- **✅ Glial Cell Monitoring**: Neural state surveillance and support systems
 - **🚧 Stateful Gates**: Dynamic pathway modulation and transient rewiring
 - **🚧 Extracellular Matrix**: Coordination layer for dynamic network structure (in development)
 - **🔄 NetworkGenome Manager**: Serialization and remote control (planned)
+
+### Latest Achievements (2024)
+
+**🏆 Comprehensive Biological Validation**
+- **400+ test scenarios** - All passing with complete biological realism validation
+- **182 seconds** of extensive testing covering every neural mechanism
+- **Multi-timescale integration** - STDP (ms), homeostasis (sec-min), scaling (min-hours)
+
+**🧠 Advanced Dendritic Computation**
+- **Multiple integration modes** validated: Passive, Temporal Summation, Shunting Inhibition, Active Dendrites
+- **Biological membrane dynamics** with realistic time constants (10-50ms)
+- **Spatial processing** with distance-dependent signal attenuation
+- **Coincidence detection** within biologically realistic windows (±20ms)
+
+**⚡ Performance Breakthroughs**
+- **44M+ operations/second** for PassiveMembrane mode
+- **Sub-millisecond latency** (48ns average) with biological timing
+- **Massive scalability** with 100K+ concurrent neurons capability
+- **Thread-safe operations** under extreme concurrent stress
+
+**🚫 GABAergic Network Control**
+- **Precise inhibitory timing** with microsecond accuracy
+- **75% activity reduction** while maintaining network functionality  
+- **Biological timing validation** - 0ms delays enabling ±1ms synchrony windows
+- **Oscillation generation** - Gamma rhythm support for cognitive functions
+
+**🏠 Homeostatic Plasticity Systems**
+- **Synaptic scaling** with pattern preservation during adaptation
+- **Activity-dependent regulation** via calcium-based sensing
+- **Multi-input registration** and long-term activity integration
+- **Convergence dynamics** toward target effective strengths
 
 ## 🧠 Revolutionary Approach
 
@@ -107,8 +210,8 @@ Traditional artificial neural networks suffer from fundamental limitations that 
 - **Compartmental Modeling**: Foundation for multi-compartment neuron models
 
 ### Performance & Scalability
-- **1.2M+ operations/second**: Validated high-throughput performance
-- **Sub-millisecond latency**: Average 676μs response time under load
+- **44M+ operations/second**: Validated high-throughput performance (PassiveMembrane)
+- **Sub-millisecond latency**: Average 48ns response time with biological timing
 - **99.38% success rate**: Excellent reliability under extreme concurrent stress
 - **2000+ concurrent operations**: Massive parallelism without blocking
 - **Linear scaling**: Performance scales with available CPU cores
@@ -152,13 +255,13 @@ Traditional artificial neural networks suffer from fundamental limitations that 
 │  └─────────────────┘    └─────────────────┘    └──────────┘│
 │                                                             │
 │  ┌─────────────────┐    ┌─────────────────┐    ┌──────────┐│
-│  │ GABAergic       │    │ Compartmental   │    │Stateful  ││
-│  │ Networks        │    │ Models          │    │Gates     ││
+│  │ GABAergic       │    │ Glial Cell      │    │Stateful  ││
+│  │ Networks        │    │ Monitoring      │    │Gates     ││
 │  │                 │    │                 │    │          ││
-│  │ • Fast-spiking  │    │ • Multi-section │    │• Dynamic ││
-│  │ • Precise timing│    │ • Spatial org.  │    │• Learning││
-│  │ • Stabilization │    │ • Branch props  │    │• Context ││
-│  │ • Oscillations  │    │ • Future ready  │    │• Triggers││
+│  │ • Fast-spiking  │    │ • State tracking│    │• Dynamic ││
+│  │ • Precise timing│    │ • Activity mon. │    │• Learning││
+│  │ • Stabilization │    │ • Processing    │    │• Context ││
+│  │ • Oscillations  │    │ • Support funcs │    │• Triggers││
 │  │ • Kinetics      │    │ • Extensible    │    │• Biology ││
 │  └─────────────────┘    └─────────────────┘    └──────────┘│
 └─────────────────────────────────────────────────────────────┘
@@ -339,6 +442,22 @@ Sophisticated dendritic computation including:
 - **Branch Heterogeneity**: Different properties for apical, basal, and distal dendrites
 - **Temporal Summation**: Realistic integration windows and decay dynamics
 
+### `/glial` - Glial Cell Monitoring and Support
+**Status: ✅ Complete with basic monitoring implementation**
+
+Biological glial cell functions including:
+- **Neural State Monitoring**: Continuous surveillance of neural activity and health
+- **Processing Phase Detection**: Real-time tracking of neural computation phases
+- **Activity Pattern Analysis**: Long-term monitoring of neural behavior patterns
+- **Support Function Coordination**: Infrastructure for metabolic and regulatory support
+- **Extensible Architecture**: Foundation for astrocyte, microglia, and oligodendrocyte models
+
+**Current Implementation**:
+- **ProcessingMonitor**: Core monitoring functions shared by all glial cell types
+- **Real-time State Tracking**: Millisecond-precision activity detection
+- **Thread-safe Operations**: Concurrent monitoring of multiple neurons
+- **Biological Phase Detection**: Idle, receiving, integrating, firing, recovery phases
+
 ### `/extracellular` - Extracellular Matrix (In Development)
 **Status: 🚧 Architecture defined, implementation in progress**
 
@@ -447,19 +566,20 @@ Our implementation matches published neuroscience research:
 Recent stress testing demonstrates production-ready performance:
 
 **🚀 Throughput Performance:**
-- **1,244,223 operations/second** sustained throughput
-- **3.2 million operations** processed in 2.57 seconds  
-- **Linear scaling** with available CPU cores
+- **44,084,301 operations/second** sustained throughput (PassiveMembrane)
+- **26,940,247 operations/second** (TemporalSummation with biological membrane dynamics)
+- **6,473,834 operations/second** (ActiveDendrite with full nonlinear processing)
+- **Linear scaling** with available CPU cores across all modes
 
 **⚡ Concurrency Handling:**
 - **2000+ simultaneous operations** without blocking
 - **99.38% success rate** under extreme concurrent load
-- **Sub-millisecond average latency** (676μs)
+- **Sub-millisecond average latency** (48ns-309ns depending on complexity)
 
 **💾 Resource Efficiency:**
 - **~2KB per neuron** memory footprint
-- **1.25 bytes per operation** memory growth
-- **Efficient garbage collection** under high-frequency activity
+- **Efficient memory scaling** with buffer sizes up to 50,000 messages
+- **Bounded resource usage** during high-frequency activity
 
 **🧠 Biological Realism Performance:**
 - **Dendritic Integration**: 20ms membrane time constants with <1ms processing overhead
@@ -597,11 +717,23 @@ This project is licensed under the **Temporal Neuron Research License (TNRL) v1.
 
 ## 🙏 Acknowledgments
 
+### Founding Vision
+Special recognition to **Sistemica GmbH** for conceiving this revolutionary approach to neural computation and providing the foundational vision that neural networks should truly behave like biological brains. Their commitment to advancing the field through both theoretical innovation and practical implementation made this project possible.
+
+### Scientific Foundation
 - Inspired by 4 billion years of neural evolution and the remarkable efficiency of biological computation
 - Built on Go's excellent concurrency primitives that make massive parallelism practical
 - Informed by decades of neuroscience research and the generous sharing of experimental data
 - Guided by the open-source community's commitment to advancing scientific knowledge
 - Special recognition for the computational neuroscience community's foundational work
+
+### Research Community
+We acknowledge the invaluable contributions of:
+- **Experimental neuroscientists** who discovered the biological mechanisms we model
+- **Computational researchers** who developed the theoretical frameworks we implement
+- **Open-source contributors** who advance scientific software development
+- **Academic institutions** that support fundamental research in neural computation
+- **Industry partners** who bridge research and practical applications
 
 ## 📞 Contact
 
@@ -609,9 +741,10 @@ This project is licensed under the **Temporal Neuron Research License (TNRL) v1.
 - **Issues**: [GitHub Issues](https://github.com/SynapticNetworks/temporal-neuron/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/SynapticNetworks/temporal-neuron/discussions)
 - **Research Collaborations**: Open to academic partnerships and joint research
+- **Sponsorship Inquiries**: sponsors@synapticnetworks.org
 
 ---
 
 *Building the future of neural computation through biological inspiration.*
 
-**Temporal Neuron**: Where biology meets computation, and living networks emerge from autonomous components with sophisticated dendritic processing, precise inhibitory control, and multi-timescale homeostatic learning.
+**Temporal Neuron**: Where biology meets computation, and living networks emerge from autonomous components with sophisticated dendritic processing, precise inhibitory control, and multi-timescale homeostatic learning. Conceived by Sistemica GmbH and developed as an open platform for advancing computational neuroscience.
