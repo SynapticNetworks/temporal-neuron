@@ -124,6 +124,9 @@ func TestBiologicalChemicalKinetics(t *testing.T) {
 
 	// Wait for glutamate clearance (should be fast)
 	time.Sleep(GLUTAMATE_CLEARANCE_TIME)
+
+	// ADD THIS LINE - force decay processing
+	matrix.chemicalModulator.ForceDecayUpdate() // Force immediate decay
 	clearedConc := matrix.chemicalModulator.GetConcentration(LigandGlutamate, postsynapticPos)
 
 	t.Logf("Concentration after clearance (5ms): %.4f mM", clearedConc)
@@ -140,6 +143,13 @@ func TestBiologicalChemicalKinetics(t *testing.T) {
 
 	// === DOPAMINE VOLUME TRANSMISSION TEST ===
 	t.Log("\n--- Testing Dopamine Volume Transmission ---")
+
+	// ADD THIS LINE - register the dopamine terminal
+	matrix.RegisterComponent(ComponentInfo{
+		ID: "dopamine_terminal", Type: ComponentSynapse,
+		Position: Position3D{X: 0, Y: 0, Z: 0}, // Same position as glutamate for comparison
+		State:    StateActive, RegisteredAt: time.Now(),
+	})
 
 	// Dopamine should have slower kinetics and wider spatial distribution
 	err = matrix.ReleaseLigand(LigandDopamine, "dopamine_terminal", DOPAMINE_PEAK)
