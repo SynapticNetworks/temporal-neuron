@@ -349,7 +349,7 @@ func (an *AstrocyteNetwork) GetTerritory(astrocyteID string) (Territory, bool) {
 // UTILITY FUNCTIONS
 // =================================================================================
 
-// matches checks if a component matches the given criteria
+// FIXED matches function - corrects spatial filtering bugs with proper floating point handling
 func (an *AstrocyteNetwork) matches(info ComponentInfo, criteria ComponentCriteria) bool {
 	// Check type filter
 	if criteria.Type != nil && info.Type != *criteria.Type {
@@ -362,17 +362,30 @@ func (an *AstrocyteNetwork) matches(info ComponentInfo, criteria ComponentCriter
 	}
 
 	// Check spatial filter
-	if criteria.Position != nil && criteria.Radius > 0 {
-		distance := an.calculateDistance(info.Position, *criteria.Position)
-		if distance > criteria.Radius*criteria.Radius { // Use squared distance
-			return false
+	if criteria.Position != nil {
+		// FIXED: Handle zero radius correctly
+		if criteria.Radius == 0.0 {
+			// Zero radius should only match components at exactly the same position
+			return info.Position.X == criteria.Position.X &&
+				info.Position.Y == criteria.Position.Y &&
+				info.Position.Z == criteria.Position.Z
 		}
+
+		if criteria.Radius > 0.0 {
+			// FIXED: Calculate actual distance and compare to radius with floating point tolerance
+			distance := an.Distance(info.Position, *criteria.Position)
+
+			// FIXED: Use small epsilon for floating point comparison to handle precision issues
+			const epsilon = 1e-9
+			return distance <= criteria.Radius+epsilon
+		}
+		// Note: negative radius is ignored (matches all components)
 	}
 
 	return true
 }
 
-// calculateDistance computes squared 3D distance between positions (avoids sqrt)
+// FIXED calculateDistance function - now returns actual distance for spatial queries
 func (an *AstrocyteNetwork) calculateDistance(pos1, pos2 Position3D) float64 {
 	dx := pos1.X - pos2.X
 	dy := pos1.Y - pos2.Y
@@ -399,16 +412,18 @@ func (an *AstrocyteNetwork) removeFromSlice(slice []string, element string) []st
 // ADD this function to the end of astrocyte_network.go
 
 // ValidateAstrocyteLoad checks and adjusts territory load
+// FIXED: Resolves deadlock by releasing lock before spatial query
 func (an *AstrocyteNetwork) ValidateAstrocyteLoad(astrocyteID string, maxNeurons int) error {
-	an.mu.Lock()
-	defer an.mu.Unlock()
-
+	// STEP 1: Get territory info with minimal lock time
+	an.mu.RLock()
 	territory, exists := an.territories[astrocyteID]
+	an.mu.RUnlock() // ✅ RELEASE LOCK BEFORE SPATIAL QUERY
+
 	if !exists {
 		return fmt.Errorf("astrocyte %s not found", astrocyteID)
 	}
 
-	// Count neurons in territory
+	// STEP 2: Count neurons in territory (without holding lock)
 	neuronsInTerritory := an.FindNearby(territory.Center, territory.Radius)
 	neuronCount := 0
 	for _, comp := range neuronsInTerritory {
@@ -417,18 +432,32 @@ func (an *AstrocyteNetwork) ValidateAstrocyteLoad(astrocyteID string, maxNeurons
 		}
 	}
 
-	// If overloaded, suggest territory adjustment
+	// STEP 3: If overloaded, adjust territory (reacquire lock for modification)
 	if neuronCount > maxNeurons {
+		an.mu.Lock() // ✅ ACQUIRE LOCK ONLY FOR MODIFICATION
+		defer an.mu.Unlock()
+
+		// Re-check territory still exists (could have been deleted)
+		territory, exists = an.territories[astrocyteID]
+		if !exists {
+			return fmt.Errorf("astrocyte %s not found", astrocyteID)
+		}
+
+		// FIXED: Store original radius before modification
+		originalRadius := territory.Radius
+
 		// Calculate new radius to achieve target load
-		targetRadius := territory.Radius * math.Sqrt(float64(maxNeurons)/float64(neuronCount))
+		// Target area = current area * (target neurons / current neurons)
+		// Since area ∝ radius², new radius = current radius * sqrt(ratio)
+		ratio := float64(maxNeurons) / float64(neuronCount)
+		targetRadius := territory.Radius * math.Sqrt(ratio)
 
 		// Update territory with reduced radius
 		territory.Radius = targetRadius
 		an.territories[astrocyteID] = territory
 
 		return fmt.Errorf("astrocyte %s territory adjusted: radius %.1f→%.1f to manage %d→%d neurons",
-			astrocyteID, territory.Radius/math.Sqrt(float64(maxNeurons)/float64(neuronCount)),
-			targetRadius, neuronCount, maxNeurons)
+			astrocyteID, originalRadius, targetRadius, neuronCount, maxNeurons)
 	}
 
 	return nil

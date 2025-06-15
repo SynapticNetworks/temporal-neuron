@@ -25,9 +25,19 @@ KEY PRINCIPLES:
 package extracellular
 
 import (
+	"fmt"
 	"math"
 	"sync"
 	"time"
+)
+
+const (
+	GLUTAMATE_MAX_RATE     = 500.0  // Fast vesicle recycling
+	GABA_MAX_RATE          = 500.0  // Fast vesicle recycling
+	DOPAMINE_MAX_RATE      = 100.0  // Synthesis limited
+	SEROTONIN_MAX_RATE     = 80.0   // Synthesis limited
+	ACETYLCHOLINE_MAX_RATE = 300.0  // Intermediate rate
+	GLOBAL_MAX_RATE        = 2000.0 // System-wide metabolic limit
 )
 
 // ChemicalModulator handles biologically accurate chemical signal propagation
@@ -44,6 +54,14 @@ type ChemicalModulator struct {
 
 	// === COMPONENT INTEGRATION ===
 	astrocyteNetwork *AstrocyteNetwork // For component position lookup
+
+	// === RATE LIMITING ===
+	lastRelease   map[string]time.Time // Per-component rate limiting
+	globalRelease struct {             // Global system rate limiting
+		lastTime time.Time
+		count    int
+		mu       sync.Mutex
+	}
 
 	// === STATE MANAGEMENT ===
 	isRunning bool
@@ -96,6 +114,7 @@ func NewChemicalModulator(astrocyteNetwork *AstrocyteNetwork) *ChemicalModulator
 		concentrationFields: make(map[LigandType]*ConcentrationField),
 		releaseEvents:       make([]ChemicalReleaseEvent, 0),
 		ligandKinetics:      make(map[LigandType]LigandKinetics),
+		lastRelease:         make(map[string]time.Time),
 		astrocyteNetwork:    astrocyteNetwork,
 		isRunning:           false,
 	}
@@ -189,8 +208,93 @@ func (cm *ChemicalModulator) initializeBiologicalKinetics() {
 // CHEMICAL RELEASE
 // =================================================================================
 
+// Add these methods after the existing methods:
+// checkRateLimits enforces biological release frequency constraints
+func (cm *ChemicalModulator) checkRateLimits(ligandType LigandType, sourceID string) error {
+	now := time.Now()
+
+	// Check component-specific rate limit
+	if lastTime, exists := cm.lastRelease[sourceID]; exists {
+		minInterval := cm.getMinReleaseInterval(ligandType)
+		if now.Sub(lastTime) < minInterval {
+			return fmt.Errorf("component %s release rate exceeded for %v (biological limit: %.1f Hz)",
+				sourceID, ligandType, 1.0/minInterval.Seconds())
+		}
+	}
+
+	// Check global system rate limit
+	cm.globalRelease.mu.Lock()
+	defer cm.globalRelease.mu.Unlock()
+
+	// Reset counter if more than 1 second has passed
+	if now.Sub(cm.globalRelease.lastTime) > time.Second {
+		cm.globalRelease.count = 0
+		cm.globalRelease.lastTime = now
+	}
+
+	// Check if we're under global rate limit
+	if cm.globalRelease.count >= int(GLOBAL_MAX_RATE) {
+		return fmt.Errorf("global chemical release rate exceeded (biological limit: %.0f/second)", GLOBAL_MAX_RATE)
+	}
+
+	cm.globalRelease.count++
+	return nil
+}
+
+// getMinReleaseInterval returns the minimum time between releases for each neurotransmitter
+func (cm *ChemicalModulator) getMinReleaseInterval(ligandType LigandType) time.Duration {
+	var maxRate float64
+	switch ligandType {
+	case LigandGlutamate:
+		maxRate = GLUTAMATE_MAX_RATE
+	case LigandGABA:
+		maxRate = GABA_MAX_RATE
+	case LigandDopamine:
+		maxRate = DOPAMINE_MAX_RATE
+	case LigandSerotonin:
+		maxRate = SEROTONIN_MAX_RATE
+	case LigandAcetylcholine:
+		maxRate = ACETYLCHOLINE_MAX_RATE
+	default:
+		maxRate = 100.0 // Conservative default
+	}
+
+	return time.Duration(1e9 / maxRate) // Convert Hz to nanoseconds
+}
+
+// GetCurrentReleaseRate returns the current system-wide release rate (for monitoring)
+func (cm *ChemicalModulator) GetCurrentReleaseRate() float64 {
+	cm.globalRelease.mu.Lock()
+	defer cm.globalRelease.mu.Unlock()
+
+	// Return releases per second over the last second
+	if time.Since(cm.globalRelease.lastTime) > time.Second {
+		return 0.0 // No recent activity
+	}
+
+	return float64(cm.globalRelease.count)
+}
+
+// ResetRateLimits clears rate limiting state (useful for testing)
+func (cm *ChemicalModulator) ResetRateLimits() {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
+	cm.lastRelease = make(map[string]time.Time)
+
+	cm.globalRelease.mu.Lock()
+	cm.globalRelease.count = 0
+	cm.globalRelease.lastTime = time.Time{}
+	cm.globalRelease.mu.Unlock()
+}
+
 // Release initiates biologically accurate neurotransmitter release
 func (cm *ChemicalModulator) Release(ligandType LigandType, sourceID string, concentration float64) error {
+	// Check biological rate limits
+	if err := cm.checkRateLimits(ligandType, sourceID); err != nil {
+		return err // Rate limit exceeded - biologically realistic rejection
+	}
+
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
@@ -213,6 +317,9 @@ func (cm *ChemicalModulator) Release(ligandType LigandType, sourceID string, con
 
 	// Record event for analysis
 	cm.releaseEvents = append(cm.releaseEvents, event)
+
+	// Update rate limiting records
+	cm.lastRelease[sourceID] = time.Now()
 
 	// Update concentration field with new release
 	cm.updateConcentrationField(ligandType, sourceInfo.Position, concentration)

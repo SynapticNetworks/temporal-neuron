@@ -22,33 +22,6 @@ import (
 // BIOLOGICAL CONSTANTS AND PARAMETERS
 // =================================================================================
 
-const (
-	// Spatial scales (micrometers)
-	NEURON_SOMA_DIAMETER       = 15.0  // Typical cortical neuron soma: 10-20 μm
-	SYNAPTIC_CLEFT_WIDTH       = 0.02  // Synaptic cleft: 20 nanometers
-	CORTICAL_COLUMN_DIAMETER   = 500.0 // Cortical column: ~500 μm diameter
-	ASTROCYTE_TERRITORY_RADIUS = 50.0  // Astrocyte domain: ~50-100 μm radius
-
-	// Temporal scales
-	ACTION_POTENTIAL_DURATION = 2 * time.Millisecond   // 1-2 ms
-	SYNAPTIC_DELAY            = 1 * time.Millisecond   // 0.5-1 ms
-	GLUTAMATE_CLEARANCE_TIME  = 5 * time.Millisecond   // 1-10 ms
-	GABA_CLEARANCE_TIME       = 10 * time.Millisecond  // 5-20 ms
-	DOPAMINE_HALF_LIFE        = 100 * time.Millisecond // 50-200 ms
-
-	// Concentration ranges (molar)
-	GLUTAMATE_PEAK_CONC = 1.0   // 1 mM peak in synaptic cleft
-	GABA_PEAK_CONC      = 0.5   // 0.5 mM peak concentration
-	DOPAMINE_BASELINE   = 0.001 // 1 μM baseline in striatum
-	DOPAMINE_PEAK       = 0.01  // 10 μM peak during reward
-
-	// Network properties
-	CORTICAL_NEURON_DENSITY  = 150000.0 // ~150k neurons/mm³ in cortex
-	SYNAPSES_PER_NEURON      = 7000     // 5k-10k synapses per cortical neuron
-	GAP_JUNCTION_CONDUCTANCE = 0.1      // 0.1-1 nS typical conductance
-	ASTROCYTE_NEURON_RATIO   = 0.3      // ~1 astrocyte per 3 neurons in cortex
-)
-
 // =================================================================================
 // TEST 1: NEUROTRANSMITTER KINETICS (FIXED)
 // =================================================================================
@@ -704,6 +677,23 @@ func TestBiologicalTemporalDynamics(t *testing.T) {
 // TEST 6: METABOLIC CONSTRAINTS (FIXED)
 // =================================================================================
 
+/*
+=================================================================================
+BIOLOGICAL METABOLIC CONSTRAINTS TEST - FIXED VERSION
+=================================================================================
+
+This is the corrected version of TestBiologicalMetabolicConstraints that properly
+validates chemical release frequency limits and other metabolic constraints
+without violating biological realism.
+
+Key fixes:
+1. Use realistic release intervals (5ms instead of 100μs)
+2. Validate rate limiting behavior
+3. Account for biological rejection of excessive release rates
+4. Test both component-specific and global rate limits
+=================================================================================
+*/
+
 func TestBiologicalMetabolicConstraints(t *testing.T) {
 	t.Log("=== BIOLOGICAL TEST: Metabolic Constraints ===")
 	t.Log("Validating energy costs, resource limitations, and metabolic realism")
@@ -717,15 +707,13 @@ func TestBiologicalMetabolicConstraints(t *testing.T) {
 	defer matrix.Stop()
 
 	// === TEST COMPONENT DENSITY LIMITS ===
-	// === TEST COMPONENT DENSITY LIMITS ===
 	t.Log("\n--- Testing Component Density Limits ---")
 
 	densityTestRadius := 10.0
 	centerPos := Position3D{X: 0, Y: 0, Z: 0}
 
 	neuronsCreated := 0
-	// FIXED: Reduce target to match biological constraints more realistically
-	maxNeuronsInArea := 30 // Increased from 20 to accommodate biological density
+	maxNeuronsInArea := 30 // Reasonable limit for testing
 
 	for i := 0; i < 50; i++ {
 		angle := float64(i) * 2 * math.Pi / 50
@@ -751,19 +739,11 @@ func TestBiologicalMetabolicConstraints(t *testing.T) {
 		}
 	}
 
-	areaM2 := math.Pi * math.Pow(densityTestRadius/1000000, 2)
-	density := float64(neuronsCreated) / areaM2
+	t.Logf("Created %d neurons in %.1fμm radius", neuronsCreated, densityTestRadius)
 
-	t.Logf("Created %d neurons in %.1fμm radius (density: %.0f/m²)",
-		neuronsCreated, densityTestRadius, density)
-
-	// FIXED: More realistic density thresholds
 	if neuronsCreated > maxNeuronsInArea*2 {
 		t.Errorf("BIOLOGY VIOLATION: Neuron density too high (%d > %d)",
 			neuronsCreated, maxNeuronsInArea*2)
-	} else if neuronsCreated > maxNeuronsInArea {
-		t.Logf("Note: Neuron density elevated (%d > %d) but within test tolerance",
-			neuronsCreated, maxNeuronsInArea)
 	} else {
 		t.Logf("✓ Neuron density within biological constraints")
 	}
@@ -777,7 +757,7 @@ func TestBiologicalMetabolicConstraints(t *testing.T) {
 		Position: Position3D{X: 100, Y: 0, Z: 0}, State: StateActive, RegisteredAt: time.Now(),
 	})
 
-	maxConnections := SYNAPSES_PER_NEURON / 1000
+	maxConnections := SYNAPSES_PER_NEURON / 1000 // Scaled for testing
 	connectionsCreated := 0
 
 	for i := 0; i < maxConnections*2; i++ {
@@ -811,7 +791,7 @@ func TestBiologicalMetabolicConstraints(t *testing.T) {
 		t.Logf("✓ Connection count per neuron within biological range")
 	}
 
-	// === TEST CHEMICAL RELEASE FREQUENCY LIMITS ===
+	// === TEST CHEMICAL RELEASE FREQUENCY LIMITS (FIXED) ===
 	t.Log("\n--- Testing Chemical Release Frequency ---")
 
 	releaseNeuronID := "release_test_neuron"
@@ -820,28 +800,95 @@ func TestBiologicalMetabolicConstraints(t *testing.T) {
 		Position: Position3D{X: 200, Y: 0, Z: 0}, State: StateActive, RegisteredAt: time.Now(),
 	})
 
-	releaseCount := 0
-	maxReleases := 100
-
-	startTime := time.Now()
-	for i := 0; i < maxReleases; i++ {
-		err := matrix.ReleaseLigand(LigandGlutamate, releaseNeuronID, 0.5)
-		if err == nil {
-			releaseCount++
-		}
-		time.Sleep(100 * time.Microsecond)
+	// FIXED: Test multiple scenarios with different release rates
+	testScenarios := []struct {
+		name         string
+		interval     time.Duration
+		maxReleases  int
+		expectedRate float64
+		shouldLimit  bool
+	}{
+		{
+			name:         "Biological rate (200 Hz)",
+			interval:     5 * time.Millisecond,
+			maxReleases:  20,
+			expectedRate: 200.0,
+			shouldLimit:  false,
+		},
+		{
+			name:         "High but valid rate (400 Hz)", // CHANGED: Under glutamate limit
+			interval:     2500 * time.Microsecond,        // CHANGED: 2.5ms for 400 Hz
+			maxReleases:  30,                             // CHANGED: More samples
+			expectedRate: 400.0,
+			shouldLimit:  false,
+		},
+		{
+			name:         "Excessive rate (10000 Hz)",
+			interval:     100 * time.Microsecond,
+			maxReleases:  20,
+			expectedRate: 10000.0,
+			shouldLimit:  true,
+		},
 	}
-	totalTime := time.Since(startTime)
 
-	releaseRate := float64(releaseCount) / totalTime.Seconds()
-	t.Logf("Chemical release rate: %.1f releases/second", releaseRate)
+	for _, scenario := range testScenarios {
+		t.Logf("\n--- Testing %s ---", scenario.name)
 
-	maxBiologicalRate := 1000.0
-	if releaseRate > maxBiologicalRate*2 {
-		t.Errorf("BIOLOGY VIOLATION: Chemical release rate too high (%.1f > %.1f)",
-			releaseRate, maxBiologicalRate*2)
-	} else {
-		t.Logf("✓ Chemical release rate within biological limits")
+		// Reset rate limits for fair testing
+		matrix.chemicalModulator.ResetRateLimits()
+
+		releaseCount := 0
+		successfulReleases := 0
+		startTime := time.Now()
+
+		for i := 0; i < scenario.maxReleases; i++ {
+			err := matrix.ReleaseLigand(LigandGlutamate, releaseNeuronID, 0.5)
+			releaseCount++
+
+			if err == nil {
+				successfulReleases++
+			} else {
+				t.Logf("Release %d rejected due to rate limiting: %v", i+1, err)
+			}
+
+			time.Sleep(scenario.interval)
+		}
+
+		totalTime := time.Since(startTime)
+		actualReleaseRate := float64(successfulReleases) / totalTime.Seconds()
+		attemptedReleaseRate := float64(releaseCount) / totalTime.Seconds()
+
+		t.Logf("Results for %s:", scenario.name)
+		t.Logf("  Attempted: %d releases at %.1f Hz", releaseCount, attemptedReleaseRate)
+		t.Logf("  Successful: %d releases at %.1f Hz", successfulReleases, actualReleaseRate)
+
+		// Validate rate limiting behavior
+		maxBiologicalRate := 2000.0
+		rejectionRate := float64(releaseCount-successfulReleases) / float64(releaseCount) * 100
+
+		if scenario.shouldLimit {
+			// High-rate scenarios should trigger rate limiting
+			if rejectionRate < 10.0 {
+				t.Errorf("Rate limiting not working: only %.1f%% rejections at excessive rate", rejectionRate)
+			} else {
+				t.Logf("✓ Rate limiting active: %.1f%% releases rejected", rejectionRate)
+			}
+		} else {
+			// Normal-rate scenarios should not trigger rate limiting
+			if rejectionRate > 5.0 {
+				t.Errorf("Unexpected rate limiting: %.1f%% rejections at normal rate", rejectionRate)
+			} else {
+				t.Logf("✓ Normal rate accepted: %.1f%% rejection rate", rejectionRate)
+			}
+		}
+
+		// Always validate that actual rate doesn't exceed biological limits
+		if actualReleaseRate > maxBiologicalRate {
+			t.Errorf("BIOLOGY VIOLATION: Actual release rate too high (%.1f > %.1f)",
+				actualReleaseRate, maxBiologicalRate)
+		} else {
+			t.Logf("✓ Actual release rate within biological limits: %.1f Hz", actualReleaseRate)
+		}
 	}
 
 	// === TEST RESOURCE CLEANUP EFFICIENCY ===
@@ -872,12 +919,11 @@ func TestBiologicalMetabolicConstraints(t *testing.T) {
 		t.Logf("✓ Resource cleanup efficient and accurate")
 	}
 
-	// === TEST SYSTEM RESOURCE MONITORING (FIXED) ===
+	// === TEST SYSTEM RESOURCE MONITORING ===
 	t.Log("\n--- Testing System Resource Monitoring ---")
 
 	stats := matrix.microglia.GetMaintenanceStats()
 
-	// Fix for infinite division by zero
 	var componentsPerHealthCheck float64
 	if stats.HealthChecks > 0 {
 		componentsPerHealthCheck = float64(finalCount) / float64(stats.HealthChecks)
@@ -898,6 +944,19 @@ func TestBiologicalMetabolicConstraints(t *testing.T) {
 		} else {
 			t.Logf("✓ Maintenance efficiency within biological range")
 		}
+	}
+
+	// === FINAL BIOLOGICAL VALIDATION ===
+	t.Log("\n--- Final Biological Validation ---")
+
+	// Test current chemical release rate monitoring
+	currentRate := matrix.chemicalModulator.GetCurrentReleaseRate()
+	t.Logf("Current system release rate: %.1f releases/second", currentRate)
+
+	if currentRate > 2000.0 {
+		t.Errorf("BIOLOGY VIOLATION: Current release rate exceeds biological limit")
+	} else {
+		t.Logf("✓ Current release rate within biological limits")
 	}
 
 	t.Log("✅ Metabolic constraints and resource management are biologically realistic")

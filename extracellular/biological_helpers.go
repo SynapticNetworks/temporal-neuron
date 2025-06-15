@@ -13,6 +13,35 @@ package extracellular
 import (
 	"math"
 	"math/rand"
+	"time"
+)
+
+const (
+	// Spatial scales (micrometers)
+	NEURON_SOMA_DIAMETER       = 15.0  // Typical cortical neuron soma: 10-20 μm
+	SYNAPTIC_CLEFT_WIDTH       = 0.02  // Synaptic cleft: 20 nanometers
+	CORTICAL_COLUMN_DIAMETER   = 500.0 // Cortical column: ~500 μm diameter
+	ASTROCYTE_TERRITORY_RADIUS = 50.0  // Astrocyte domain: ~50-100 μm radius
+
+	// Temporal scales
+	ACTION_POTENTIAL_DURATION = 2 * time.Millisecond   // 1-2 ms
+	SYNAPTIC_DELAY            = 1 * time.Millisecond   // 0.5-1 ms
+	GLUTAMATE_CLEARANCE_TIME  = 5 * time.Millisecond   // 1-10 ms
+	GABA_CLEARANCE_TIME       = 10 * time.Millisecond  // 5-20 ms
+	DOPAMINE_HALF_LIFE        = 100 * time.Millisecond // 50-200 ms
+
+	// Concentration ranges (molar)
+	GLUTAMATE_PEAK_CONC = 1.0   // 1 mM peak in synaptic cleft
+	GABA_PEAK_CONC      = 0.5   // 0.5 mM peak concentration
+	DOPAMINE_BASELINE   = 0.001 // 1 μM baseline in striatum
+	DOPAMINE_PEAK       = 0.01  // 10 μM peak during reward
+
+	// Network properties
+	CORTICAL_NEURON_DENSITY  = 150000.0 // ~150k neurons/mm³ in cortex
+	GAP_JUNCTION_CONDUCTANCE = 0.1      // 0.1-1 nS typical conductance
+	ASTROCYTE_NEURON_RATIO   = 0.3      // ~1 astrocyte per 3 neurons in cortex
+
+	SYNAPSES_PER_NEURON = 7000 // 5k-10k synapses per cortical neuron (average)
 )
 
 // CreateBiologicalNeuronDensity calculates appropriate neuron count for biological density

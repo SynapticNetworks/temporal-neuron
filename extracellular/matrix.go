@@ -65,10 +65,10 @@ type ExtracellularMatrixConfig struct {
 func NewExtracellularMatrix(config ExtracellularMatrixConfig) *ExtracellularMatrix {
 	ctx, cancel := context.WithCancel(context.Background())
 
-	astrocyteNetwork := NewAstrocyteNetwork()           // was NewComponentRegistry()
-	modulator := NewChemicalModulator(astrocyteNetwork) // was NewChemicalModulator(registry)
-	gapJunctions := NewGapJunctions()                   // was NewSignalCoordinator()
-	microglia := NewMicroglia(astrocyteNetwork)         // was NewLifecycleManager(registry)
+	astrocyteNetwork := NewAstrocyteNetwork()                         // was NewComponentRegistry()
+	modulator := NewChemicalModulator(astrocyteNetwork)               // was NewChemicalModulator(registry)
+	gapJunctions := NewGapJunctions()                                 // was NewSignalCoordinator()
+	microglia := NewMicroglia(astrocyteNetwork, config.MaxComponents) // was NewLifecycleManager(registry)
 	plugins := NewPluginManager()
 
 	return &ExtracellularMatrix{

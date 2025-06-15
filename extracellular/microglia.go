@@ -32,6 +32,7 @@ import (
 type Microglia struct {
 	// === COMPONENT INTEGRATION ===
 	astrocyteNetwork *AstrocyteNetwork // Component tracking and connectivity
+	maxComponents    int               // NEW: Maximum component limit for resource checks
 
 	// === LIFECYCLE TRACKING ===
 	birthRequests  []ComponentBirthRequest // Pending component creation requests
@@ -138,10 +139,16 @@ const (
 )
 
 // NewMicroglia creates a biological lifecycle management system
-func NewMicroglia(astrocyteNetwork *AstrocyteNetwork) *Microglia {
+func NewMicroglia(astrocyteNetwork *AstrocyteNetwork, maxComponents int) *Microglia {
+	// Set a default if a zero or negative value is passed, to avoid issues.
+	limit := maxComponents
+	if limit <= 0 {
+		limit = 1000 // Default fallback
+	}
 	return &Microglia{
 		astrocyteNetwork: astrocyteNetwork,
 		birthRequests:    make([]ComponentBirthRequest, 0),
+		maxComponents:    limit,
 		deathQueue:       make([]ComponentDeathRequest, 0),
 		pruningTargets:   make(map[string]PruningInfo),
 		healthStatus:     make(map[string]ComponentHealth),
@@ -161,27 +168,8 @@ func (mg *Microglia) CreateComponent(info ComponentInfo) error {
 	mg.mu.Lock()
 	defer mg.mu.Unlock()
 
-	// Register with astrocyte network
-	err := mg.astrocyteNetwork.Register(info)
-	if err != nil {
-		return err
-	}
-
-	// Initialize health monitoring
-	mg.healthStatus[info.ID] = ComponentHealth{
-		ComponentID:     info.ID,
-		HealthScore:     1.0, // Perfect health initially
-		ActivityLevel:   0.0, // No activity yet
-		ConnectionCount: 0,
-		LastSeen:        time.Now(),
-		Issues:          make([]string, 0),
-		PatrolCount:     0,
-	}
-
-	// Update statistics
-	mg.maintenanceStats.ComponentsCreated++
-
-	return nil
+	// Call the internal, non-locking version
+	return mg.createComponentUnsafe(info)
 }
 
 // RemoveComponent handles component removal with cleanup
@@ -251,7 +239,7 @@ func (mg *Microglia) ProcessBirthRequests() []ComponentInfo {
 				RegisteredAt: time.Now(),
 			}
 
-			err := mg.CreateComponent(newComponent)
+			err := mg.createComponentUnsafe(newComponent)
 			if err == nil {
 				createdComponents = append(createdComponents, newComponent)
 			}
@@ -262,6 +250,31 @@ func (mg *Microglia) ProcessBirthRequests() []ComponentInfo {
 	}
 
 	return createdComponents
+}
+
+// %createComponentUnsafe handles component creation assuming a lock is already held.
+func (mg *Microglia) createComponentUnsafe(info ComponentInfo) error {
+	// Register with astrocyte network
+	err := mg.astrocyteNetwork.Register(info)
+	if err != nil {
+		return err
+	}
+
+	// Initialize health monitoring
+	mg.healthStatus[info.ID] = ComponentHealth{
+		ComponentID:     info.ID,
+		HealthScore:     1.0, // Perfect health initially
+		ActivityLevel:   0.0, // No activity yet
+		ConnectionCount: 0,
+		LastSeen:        time.Now(),
+		Issues:          make([]string, 0),
+		PatrolCount:     0,
+	}
+
+	// Update statistics
+	mg.maintenanceStats.ComponentsCreated++
+
+	return nil
 }
 
 // =================================================================================
@@ -466,7 +479,7 @@ func (mg *Microglia) evaluateBirthNeed(request ComponentBirthRequest) bool {
 
 	// For lower priority, check resource availability
 	totalComponents := mg.astrocyteNetwork.Count()
-	if totalComponents < 1000 { // Arbitrary limit
+	if totalComponents < mg.maxComponents {
 		return true
 	}
 
