@@ -1,21 +1,45 @@
 /*
 =================================================================================
-GAP JUNCTIONS - BIOLOGICAL ELECTRICAL SIGNALING
+SIGNAL MEDIATOR - BIOLOGICAL ELECTRICAL SIGNALING
 =================================================================================
 
-Models gap junctions that enable direct electrical coupling between neural
-components. Gap junctions allow rapid, bidirectional signal transmission
-without synaptic delays, creating electrical networks within neural tissue.
+              --- ARCHITECTURAL ROLE AND BIOLOGICAL CONTEXT ---
 
-BIOLOGICAL FUNCTIONS:
-- Direct electrical coupling between adjacent cells
-- Rapid signal transmission (faster than chemical synapses)
-- Bidirectional communication channels
-- Network synchronization and coordination
-- Emergency signal broadcasting (like spreading depression)
+This module models ELECTRICAL SYNAPSES (Gap Junctions) and is complementary to,
+not redundant with, the CHEMICAL SYNAPSES handled by the 'synapse' package.
+They represent two distinct, coexisting modes of communication in the brain.
 
-Handles discrete signaling between components, like action potentials,
-connection events, and network-wide coordination signals.
+KEY DISTINCTIONS:
+
+  - CHEMICAL SYNAPSES (direct neuron->synapse->neuron model):
+    - One-way, from presynaptic to postsynaptic.
+    - Slower, with a significant delay from vesicles, diffusion, and receptors.
+    - The primary mechanism for complex computation and learning (plasticity).
+    - Implemented by 'synapse' package using VesicleDynamics.
+
+  - ELECTRICAL SYNAPSES (this module):
+    - Two-way (bidirectional), allowing ions to flow directly between neurons.
+    - Extremely fast, with virtually no delay.
+    - Primarily used for synchronizing the firing of entire neuron populations.
+    - Less plastic and more structural in nature.
+
+WHEN TO USE THIS MODULE:
+You do not need this module for standard information processing via chemical
+synapses. However, it is essential for modeling more advanced phenomena:
+
+  - Network Synchronization: To make groups of inhibitory interneurons fire in
+    unison, creating brain wave oscillations (e.g., gamma waves).
+
+  - Rapid Reflex Pathways: For circuits where speed is more critical than
+    complex computation.
+
+  - Developmental Modeling: To coordinate the activity of developing neurons.
+
+INTEGRATION:
+A single neuron can have both types of connections. It would receive chemical
+inputs on its main input channel (from the 'synapse' package) and electrical
+inputs by implementing the `SignalListener` interface from this package.
+
 =================================================================================
 */
 
@@ -26,8 +50,8 @@ import (
 	"time"
 )
 
-// GapJunctions routes electrical signals between components
-type GapJunctions struct {
+// SignalMediator routes electrical signals between components
+type SignalMediator struct {
 	// === SIGNAL ROUTING ===
 	listeners map[SignalType][]SignalListener // Signal type -> Listeners
 
@@ -63,9 +87,9 @@ type ElectricalCoupling struct {
 	SignalCount int64     `json:"signal_count"`
 }
 
-// NewGapJunctions creates a biological electrical signaling system
-func NewGapJunctions() *GapJunctions {
-	return &GapJunctions{
+// NewSignalMediator creates a biological electrical signaling system
+func NewSignalMediator() *SignalMediator {
+	return &SignalMediator{
 		listeners:     make(map[SignalType][]SignalListener),
 		connections:   make(map[string][]string),
 		conductance:   make(map[string]float64),
@@ -79,7 +103,7 @@ func NewGapJunctions() *GapJunctions {
 // =================================================================================
 
 // Send delivers an electrical signal to all registered listeners
-func (gj *GapJunctions) Send(signalType SignalType, sourceID string, data interface{}) {
+func (gj *SignalMediator) Send(signalType SignalType, sourceID string, data interface{}) {
 	gj.mu.RLock()
 	listeners := make([]SignalListener, len(gj.listeners[signalType]))
 	copy(listeners, gj.listeners[signalType])
@@ -105,7 +129,11 @@ func (gj *GapJunctions) Send(signalType SignalType, sourceID string, data interf
 
 	// Direct delivery to all listeners (broadcast signaling)
 	for _, listener := range listeners {
-		listener.OnSignal(signalType, sourceID, data)
+		// --- FIX: A component should not receive its own broadcast signal. ---
+		// This check prevents a component from reacting to its own events.
+		if listener.ID() != sourceID {
+			listener.OnSignal(signalType, sourceID, data)
+		}
 	}
 
 	// Also send to electrically coupled components if they're listeners
@@ -113,7 +141,7 @@ func (gj *GapJunctions) Send(signalType SignalType, sourceID string, data interf
 }
 
 // AddListener registers a component to receive electrical signals
-func (gj *GapJunctions) AddListener(signalTypes []SignalType, listener SignalListener) {
+func (gj *SignalMediator) AddListener(signalTypes []SignalType, listener SignalListener) {
 	gj.mu.Lock()
 	defer gj.mu.Unlock()
 
@@ -121,19 +149,29 @@ func (gj *GapJunctions) AddListener(signalTypes []SignalType, listener SignalLis
 		if gj.listeners[signalType] == nil {
 			gj.listeners[signalType] = make([]SignalListener, 0)
 		}
-		gj.listeners[signalType] = append(gj.listeners[signalType], listener)
+		// Avoid adding duplicate listeners
+		isAlreadyAdded := false
+		for _, l := range gj.listeners[signalType] {
+			if l.ID() == listener.ID() {
+				isAlreadyAdded = true
+				break
+			}
+		}
+		if !isAlreadyAdded {
+			gj.listeners[signalType] = append(gj.listeners[signalType], listener)
+		}
 	}
 }
 
 // RemoveListener unregisters a component from receiving electrical signals
-func (gj *GapJunctions) RemoveListener(signalTypes []SignalType, listener SignalListener) {
+func (gj *SignalMediator) RemoveListener(signalTypes []SignalType, listener SignalListener) {
 	gj.mu.Lock()
 	defer gj.mu.Unlock()
 
 	for _, signalType := range signalTypes {
 		listeners := gj.listeners[signalType]
 		for i, l := range listeners {
-			if l == listener {
+			if l.ID() == listener.ID() {
 				// Remove listener from slice
 				gj.listeners[signalType] = append(listeners[:i], listeners[i+1:]...)
 				break
@@ -147,7 +185,7 @@ func (gj *GapJunctions) RemoveListener(signalTypes []SignalType, listener Signal
 // =================================================================================
 
 // EstablishElectricalCoupling creates a gap junction between two components
-func (gj *GapJunctions) EstablishElectricalCoupling(componentA, componentB string, conductance float64) error {
+func (gj *SignalMediator) EstablishElectricalCoupling(componentA, componentB string, conductance float64) error {
 	gj.mu.Lock()
 	defer gj.mu.Unlock()
 
@@ -182,7 +220,7 @@ func (gj *GapJunctions) EstablishElectricalCoupling(componentA, componentB strin
 }
 
 // RemoveElectricalCoupling removes a gap junction between components
-func (gj *GapJunctions) RemoveElectricalCoupling(componentA, componentB string) error {
+func (gj *SignalMediator) RemoveElectricalCoupling(componentA, componentB string) error {
 	gj.mu.Lock()
 	defer gj.mu.Unlock()
 
@@ -200,7 +238,7 @@ func (gj *GapJunctions) RemoveElectricalCoupling(componentA, componentB string) 
 }
 
 // GetElectricalCouplings returns all components electrically coupled to the given component
-func (gj *GapJunctions) GetElectricalCouplings(componentID string) []string {
+func (gj *SignalMediator) GetElectricalCouplings(componentID string) []string {
 	gj.mu.RLock()
 	defer gj.mu.RUnlock()
 
@@ -216,7 +254,7 @@ func (gj *GapJunctions) GetElectricalCouplings(componentID string) []string {
 }
 
 // GetConductance returns the electrical conductance between two components
-func (gj *GapJunctions) GetConductance(componentA, componentB string) float64 {
+func (gj *SignalMediator) GetConductance(componentA, componentB string) float64 {
 	gj.mu.RLock()
 	defer gj.mu.RUnlock()
 
@@ -232,7 +270,7 @@ func (gj *GapJunctions) GetConductance(componentA, componentB string) float64 {
 // =================================================================================
 
 // GetRecentSignals returns recent electrical signal events
-func (gj *GapJunctions) GetRecentSignals(count int) []ElectricalSignalEvent {
+func (gj *SignalMediator) GetRecentSignals(count int) []ElectricalSignalEvent {
 	gj.mu.RLock()
 	defer gj.mu.RUnlock()
 
@@ -252,7 +290,7 @@ func (gj *GapJunctions) GetRecentSignals(count int) []ElectricalSignalEvent {
 }
 
 // GetSignalCount returns total number of signals processed
-func (gj *GapJunctions) GetSignalCount() int {
+func (gj *SignalMediator) GetSignalCount() int {
 	gj.mu.RLock()
 	defer gj.mu.RUnlock()
 
@@ -260,7 +298,7 @@ func (gj *GapJunctions) GetSignalCount() int {
 }
 
 // ClearSignalHistory clears the signal history (for memory management)
-func (gj *GapJunctions) ClearSignalHistory() {
+func (gj *SignalMediator) ClearSignalHistory() {
 	gj.mu.Lock()
 	defer gj.mu.Unlock()
 
@@ -272,14 +310,14 @@ func (gj *GapJunctions) ClearSignalHistory() {
 // =================================================================================
 
 // sendToCoupledComponents sends signals to electrically coupled components
-func (gj *GapJunctions) sendToCoupledComponents(signalType SignalType, sourceID string, data interface{}, coupledIDs []string) {
+func (gj *SignalMediator) sendToCoupledComponents(signalType SignalType, sourceID string, data interface{}, coupledIDs []string) {
 	// This could be extended to implement conductance-based signal attenuation
 	// For now, we rely on the broadcast mechanism via listeners
 	// Future enhancement: filter signals based on electrical conductance
 }
 
 // recordSignalEvent adds an event to the signal history
-func (gj *GapJunctions) recordSignalEvent(event ElectricalSignalEvent) {
+func (gj *SignalMediator) recordSignalEvent(event ElectricalSignalEvent) {
 	gj.mu.Lock()
 	defer gj.mu.Unlock()
 
@@ -294,7 +332,7 @@ func (gj *GapJunctions) recordSignalEvent(event ElectricalSignalEvent) {
 }
 
 // contains checks if a string slice contains an element
-func (gj *GapJunctions) contains(slice []string, element string) bool {
+func (gj *SignalMediator) contains(slice []string, element string) bool {
 	for _, item := range slice {
 		if item == element {
 			return true
@@ -304,7 +342,7 @@ func (gj *GapJunctions) contains(slice []string, element string) bool {
 }
 
 // removeFromSlice removes an element from a string slice
-func (gj *GapJunctions) removeFromSlice(slice []string, element string) []string {
+func (gj *SignalMediator) removeFromSlice(slice []string, element string) []string {
 	result := make([]string, 0, len(slice))
 	for _, item := range slice {
 		if item != element {

@@ -1,8 +1,21 @@
 package extracellular
 
+import (
+	"sync"
+	"time"
+)
+
 // =================================================================================
 // MOCK COMPONENTS FOR TESTING
 // =================================================================================
+
+// BindingEvent records a chemical binding event for testing analysis
+type BindingEvent struct {
+	LigandType    LigandType
+	SourceID      string
+	Concentration float64
+	Timestamp     time.Time
+}
 
 // MockNeuron represents a simple neuron for testing
 type MockNeuron struct {
@@ -13,17 +26,24 @@ type MockNeuron struct {
 	currentPotential float64
 	connections      []string
 	isActive         bool
+
+	// Binding event tracking for testing
+	bindingEventCount int
+	bindingHistory    []BindingEvent
+	mu                sync.RWMutex
 }
 
 func NewMockNeuron(id string, pos Position3D, receptors []LigandType) *MockNeuron {
 	return &MockNeuron{
-		id:               id,
-		position:         pos,
-		receptors:        receptors,
-		firingThreshold:  0.7,
-		currentPotential: 0.0,
-		connections:      make([]string, 0),
-		isActive:         true,
+		id:                id,
+		position:          pos,
+		receptors:         receptors,
+		firingThreshold:   0.7,
+		currentPotential:  0.0,
+		connections:       make([]string, 0),
+		isActive:          true,
+		bindingEventCount: 0,
+		bindingHistory:    make([]BindingEvent, 0),
 	}
 }
 
@@ -34,6 +54,18 @@ func (mn *MockNeuron) ComponentType() ComponentType { return ComponentNeuron }
 
 // Implement BindingTarget interface (for chemical signaling)
 func (mn *MockNeuron) Bind(ligandType LigandType, sourceID string, concentration float64) {
+	mn.mu.Lock()
+	defer mn.mu.Unlock()
+
+	// Record binding event for testing
+	mn.bindingEventCount++
+	mn.bindingHistory = append(mn.bindingHistory, BindingEvent{
+		LigandType:    ligandType,
+		SourceID:      sourceID,
+		Concentration: concentration,
+		Timestamp:     time.Now(),
+	})
+
 	// Simple binding model: accumulate potential
 	switch ligandType {
 	case LigandGlutamate:
@@ -58,6 +90,9 @@ func (mn *MockNeuron) Bind(ligandType LigandType, sourceID string, concentration
 
 // Override OnSignal for better electrical responsiveness
 func (mn *MockNeuron) OnSignal(signalType SignalType, sourceID string, data interface{}) {
+	mn.mu.Lock()
+	defer mn.mu.Unlock()
+
 	switch signalType {
 	case SignalFired:
 		// Stronger response to action potentials
@@ -76,23 +111,61 @@ func (mn *MockNeuron) GetPosition() Position3D    { return mn.position }
 
 // Helper methods for testing
 func (mn *MockNeuron) GetCurrentPotential() float64 {
+	mn.mu.RLock()
+	defer mn.mu.RUnlock()
 	return mn.currentPotential
 }
 
 func (mn *MockNeuron) SetPotential(potential float64) {
+	mn.mu.Lock()
+	defer mn.mu.Unlock()
 	mn.currentPotential = potential
 }
 
 func (mn *MockNeuron) GetConnections() []string {
-	return mn.connections
+	mn.mu.RLock()
+	defer mn.mu.RUnlock()
+	// Return copy to avoid race conditions
+	connections := make([]string, len(mn.connections))
+	copy(connections, mn.connections)
+	return connections
 }
 
 func (mn *MockNeuron) IsActive() bool {
+	mn.mu.RLock()
+	defer mn.mu.RUnlock()
 	return mn.isActive
 }
 
 func (mn *MockNeuron) SetActive(active bool) {
+	mn.mu.Lock()
+	defer mn.mu.Unlock()
 	mn.isActive = active
+}
+
+// GetBindingEventCount returns the total number of binding events (REQUIRED FOR TESTS)
+func (mn *MockNeuron) GetBindingEventCount() int {
+	mn.mu.RLock()
+	defer mn.mu.RUnlock()
+	return mn.bindingEventCount
+}
+
+// GetBindingHistory returns a copy of all binding events
+func (mn *MockNeuron) GetBindingHistory() []BindingEvent {
+	mn.mu.RLock()
+	defer mn.mu.RUnlock()
+	// Return copy to avoid race conditions
+	history := make([]BindingEvent, len(mn.bindingHistory))
+	copy(history, mn.bindingHistory)
+	return history
+}
+
+// ResetBindingEvents clears all binding event history (useful for testing)
+func (mn *MockNeuron) ResetBindingEvents() {
+	mn.mu.Lock()
+	defer mn.mu.Unlock()
+	mn.bindingEventCount = 0
+	mn.bindingHistory = mn.bindingHistory[:0] // Clear slice but keep capacity
 }
 
 // MockSynapse represents a simple synapse for testing
@@ -103,6 +176,7 @@ type MockSynapse struct {
 	postsynaptic string
 	weight       float64
 	activity     float64
+	mu           sync.RWMutex
 }
 
 func NewMockSynapse(id string, pos Position3D, pre, post string, weight float64) *MockSynapse {
@@ -123,25 +197,37 @@ func (ms *MockSynapse) ComponentType() ComponentType { return ComponentSynapse }
 
 // Helper methods for testing
 func (ms *MockSynapse) GetWeight() float64 {
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
 	return ms.weight
 }
 
 func (ms *MockSynapse) SetWeight(weight float64) {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
 	ms.weight = weight
 }
 
 func (ms *MockSynapse) GetActivity() float64 {
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
 	return ms.activity
 }
 
 func (ms *MockSynapse) SetActivity(activity float64) {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
 	ms.activity = activity
 }
 
 func (ms *MockSynapse) GetPresynaptic() string {
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
 	return ms.presynaptic
 }
 
 func (ms *MockSynapse) GetPostsynaptic() string {
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
 	return ms.postsynaptic
 }

@@ -39,40 +39,6 @@ This file is the most significant source of hardcoded parameters, primarily beca
     )
     ```
 
-### 2. `microglia.go`
-
-The `Microglia` component's behavior is heavily driven by hardcoded thresholds for health and maintenance.
-
-* **Pruning Logic:** The criteria for when to prune a synapse are hardcoded. A 24-hour age and an 80% score threshold might not be ideal for all simulation types.
-    ```go
-    // in shouldPrune()
-    ageThreshold := 24 * time.Hour
-    scoreThreshold := 0.8
-    ```
-
-* **Health Score Calculation:** This function is a hotspot of hardcoded values that define what is "healthy" vs. "unhealthy". These multipliers and thresholds directly impact component lifecycle.
-    ```go
-    // in calculateHealthScore()
-    if health.ActivityLevel < 0.1 {
-        score *= 0.5 
-    }
-    if health.ConnectionCount < 2 {
-        score *= 0.8
-    }
-    if timeSinceLastSeen > time.Hour {
-        score *= 0.5
-    }
-    // ... and many others
-    ```
-
-* **Health Issue Detection:** Similar to the health score, the thresholds for flagging specific issues are all hardcoded.
-    ```go
-    // in detectHealthIssues()
-    if health.ActivityLevel < 0.02 { // ...
-    if health.ConnectionCount == 0 { // ...
-    if timeSinceLastSeen > 6*time.Hour { // ...
-    if health.PatrolCount > 5 && health.ActivityLevel < 0.15 { // ...
-    ```
 
 ### 3. `gap_junctions.go`
 
@@ -101,20 +67,4 @@ The best practice is to create specific configuration structs for each major com
 4.  Store the config on the component's struct.
 5.  Replace the hardcoded magic numbers in the logic with the corresponding values from the stored config struct.
 
-**Example for `MicrogliaConfig`:**
-
-```go
-type MicrogliaConfig struct {
-    PruningAgeThreshold      time.Duration
-    PruningScoreThreshold    float64
-    HealthScoreLowActivity   float64
-    HealthScoreLowConnection float64
-    // ... etc.
-}
-
-// Then, in NewMicroglia:
-func NewMicroglia(..., config MicrogliaConfig) *Microglia {
-    // ...
-}
-```
 

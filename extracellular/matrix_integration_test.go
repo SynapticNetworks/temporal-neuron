@@ -136,13 +136,13 @@ func TestExtracellularMatrixFullIntegration(t *testing.T) {
 	matrix.ListenForSignals([]SignalType{SignalFired, SignalConnected}, interneuron)
 
 	// Establish gap junction between pyramidal neurons (electrical coupling)
-	err = matrix.gapJunctions.EstablishElectricalCoupling("pyramidal_1", "pyramidal_2", 0.3)
+	err = matrix.signalMediator.EstablishElectricalCoupling("pyramidal_1", "pyramidal_2", 0.3)
 	if err != nil {
 		t.Fatalf("Failed to establish electrical coupling: %v", err)
 	}
 
 	// Verify electrical coupling
-	couplings := matrix.gapJunctions.GetElectricalCouplings("pyramidal_1")
+	couplings := matrix.signalMediator.GetElectricalCouplings("pyramidal_1")
 	if len(couplings) != 1 || couplings[0] != "pyramidal_2" {
 		t.Fatalf("Expected electrical coupling between pyramidal neurons")
 	}
@@ -313,11 +313,11 @@ func TestExtracellularMatrixFullIntegration(t *testing.T) {
 	t.Log("\n--- Step 11: Electrical Signal Analysis ---")
 
 	// Get recent electrical signals
-	recentSignals := matrix.gapJunctions.GetRecentSignals(5)
+	recentSignals := matrix.signalMediator.GetRecentSignals(5)
 	t.Logf("✓ %d recent electrical signals recorded", len(recentSignals))
 
 	// Check electrical conductance
-	conductance := matrix.gapJunctions.GetConductance("pyramidal_1", "pyramidal_2")
+	conductance := matrix.signalMediator.GetConductance("pyramidal_1", "pyramidal_2")
 	t.Logf("✓ Electrical conductance P1→P2: %.3f", conductance)
 
 	// === STEP 12: MAINTENANCE STATISTICS ===

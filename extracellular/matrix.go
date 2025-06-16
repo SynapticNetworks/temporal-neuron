@@ -42,7 +42,7 @@ type ExtracellularMatrix struct {
 	// === CORE BIOLOGICAL SYSTEMS ===
 	astrocyteNetwork  *AstrocyteNetwork  // Who exists + connectivity (was registry + discovery)
 	chemicalModulator *ChemicalModulator // Chemical signaling (neurotransmitters)
-	gapJunctions      *GapJunctions      // Discrete signal routing (was signaling)
+	signalMediator    *SignalMediator    // Discrete signal routing (was signaling)
 	microglia         *Microglia         // Birth/death coordination (was lifecycle)
 	plugins           *PluginManager     // Modular functionality
 
@@ -67,14 +67,14 @@ func NewExtracellularMatrix(config ExtracellularMatrixConfig) *ExtracellularMatr
 
 	astrocyteNetwork := NewAstrocyteNetwork()                         // was NewComponentRegistry()
 	modulator := NewChemicalModulator(astrocyteNetwork)               // was NewChemicalModulator(registry)
-	gapJunctions := NewGapJunctions()                                 // was NewSignalCoordinator()
+	signalMediator := NewSignalMediator()                             // was NewSignalCoordinator()
 	microglia := NewMicroglia(astrocyteNetwork, config.MaxComponents) // was NewLifecycleManager(registry)
 	plugins := NewPluginManager()
 
 	return &ExtracellularMatrix{
 		astrocyteNetwork:  astrocyteNetwork,
 		chemicalModulator: modulator,
-		gapJunctions:      gapJunctions,
+		signalMediator:    signalMediator,
 		microglia:         microglia,
 		plugins:           plugins,
 		ctx:               ctx,
@@ -129,12 +129,12 @@ func (ecm *ExtracellularMatrix) RegisterForBinding(target BindingTarget) error {
 
 // SendSignal sends a discrete signal to listeners
 func (ecm *ExtracellularMatrix) SendSignal(signalType SignalType, sourceID string, data interface{}) {
-	ecm.gapJunctions.Send(signalType, sourceID, data)
+	ecm.signalMediator.Send(signalType, sourceID, data)
 }
 
 // ListenForSignals registers to receive discrete signals
 func (ecm *ExtracellularMatrix) ListenForSignals(signalTypes []SignalType, listener SignalListener) {
-	ecm.gapJunctions.AddListener(signalTypes, listener)
+	ecm.signalMediator.AddListener(signalTypes, listener)
 }
 
 // =================================================================================

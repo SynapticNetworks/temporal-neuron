@@ -71,8 +71,15 @@ type BindingTarget interface {
 	GetPosition() Position3D
 }
 
-// SignalListener receives discrete signals
+// SignalListener defines the interface for any component that can receive
+// discrete signals from the SignalMediator.
 type SignalListener interface {
+	// ID returns the unique identifier of the listener component.
+	// This is crucial for the SignalMediator to prevent a component
+	// from receiving its own broadcasted signals.
+	ID() string
+
+	// OnSignal is the callback method invoked when a subscribed signal is received.
 	OnSignal(signalType SignalType, sourceID string, data interface{})
 }
 

@@ -160,29 +160,29 @@ func TestBiologicalElectricalCoupling(t *testing.T) {
 	for _, conductance := range conductanceValues {
 		t.Logf("\n--- Testing Gap Junction Conductance: %.2f ---", conductance)
 
-		err := matrix.gapJunctions.EstablishElectricalCoupling("interneuron_1", "interneuron_2", conductance)
+		err := matrix.signalMediator.EstablishElectricalCoupling("interneuron_1", "interneuron_2", conductance)
 		if err != nil {
 			t.Fatalf("Failed to establish electrical coupling: %v", err)
 		}
 
-		measuredConductance := matrix.gapJunctions.GetConductance("interneuron_1", "interneuron_2")
+		measuredConductance := matrix.signalMediator.GetConductance("interneuron_1", "interneuron_2")
 		if math.Abs(measuredConductance-conductance) > 0.01 {
 			t.Errorf("Conductance mismatch: expected %.3f, got %.3f", conductance, measuredConductance)
 		}
 
-		reverseConductance := matrix.gapJunctions.GetConductance("interneuron_2", "interneuron_1")
+		reverseConductance := matrix.signalMediator.GetConductance("interneuron_2", "interneuron_1")
 		if math.Abs(reverseConductance-conductance) > 0.01 {
 			t.Errorf("BIOLOGY VIOLATION: Gap junctions should be bidirectional")
 		}
 
 		t.Logf("✓ Bidirectional conductance confirmed: %.3f", reverseConductance)
-		matrix.gapJunctions.RemoveElectricalCoupling("interneuron_1", "interneuron_2")
+		matrix.signalMediator.RemoveElectricalCoupling("interneuron_1", "interneuron_2")
 	}
 
 	// === ACTUAL FAST ELECTRICAL SIGNAL TEST ===
 	t.Log("\n--- Testing Electrical Signal Timing ---")
 
-	matrix.gapJunctions.EstablishElectricalCoupling("interneuron_1", "interneuron_2", GAP_JUNCTION_CONDUCTANCE)
+	matrix.signalMediator.EstablishElectricalCoupling("interneuron_1", "interneuron_2", GAP_JUNCTION_CONDUCTANCE)
 
 	// Create channels to catch immediate signal propagation
 	signal1Received := make(chan bool, 1)
