@@ -118,63 +118,6 @@ With this architecture, the process of building your network becomes declarative
 3.  The matrix handles all the complex wiring and injection behind the scenes.
 4.  The resulting components are fully coordinated and functional without containing any code that makes them dependent on the matrix, achieving your goal of **complete decoupling, high performance, and deep biological realism.**
 
------
 
-
-Astrocyte
-
-While the code quality is high, there is a significant architectural issue that will prevent the system from scaling to the "tens of thousands of components" mentioned in your documentation (ASTROCYTE_NETWORK.md).
-
-The Problem: Linear Scan Discovery
-
-The Find and FindNearby methods work by iterating through every single component in the an.components map and checking if it matches the criteria.
-This is an O(N) operation, meaning the time it takes to find nearby components grows in direct proportion to the total number of components in the entire network.
-The Impact
-
-With 1,000 components, this is fast. With 10,000, it will be noticeably slower. With 50,000 components, every single call to FindNearby (which is essential for patrols, chemical diffusion, and connection formation) will require iterating through all 50,000 components, grinding the simulation to a halt.
-The Solution: Spatial Indexing
-
-To achieve high performance at scale, you should replace the linear scan with a spatial indexing data structure. This structure is designed specifically for efficient spatial queries.
-How it Works: Instead of a single map of all components, you would use a specialized structure that partitions the 3D space. When you need to find components near a certain point, you only have to check the components within the relevant partition(s), rather than the entire list.
-Recommended Options:
-Grid-based Partitioning (Easiest to implement): Divide your 3D space into a grid of cubes (e.g., 100μm x 100μm x 100μm). Each component is stored in a list associated with the cube it resides in. A spatial query then only needs to check the target cube and its immediate neighbors.
-Octree (More powerful for 3D): An octree is a tree data structure where each internal node has eight children, representing a recursive subdivision of the 3D space. This is highly efficient for sparsely populated or non-uniform environments.
-k-d Tree: Another space-partitioning data structure that is very efficient for finding nearest neighbors.
-Conclusion
-The AstrocyteNetwork is arguably your best-written component from a code-purity and concurrency standpoint. It is a fantastic example of a well-designed, biologically-inspired system.
-
-Your immediate focus should not be on "magic numbers" (as there are none of consequence), but on the critical scalability of its discovery service. By replacing the O(N) linear scan in FindNearby with a proper spatial index like a grid or an octree, you will ensure that the AstrocyteNetwork can truly live up to its promise of supporting high-performance simulations with tens of thousands of components.
-
-----
-
-
-
-
-### 3. `gap_junctions.go`
-
-This file has one notable hardcoded value.
-
-* **Signal History Size:** The maximum number of signal events to store in memory is fixed. For very long or complex simulations, a user might want to increase this for better analysis or decrease it to save memory.
-    ```go
-    // in NewGapJunctions()
-    return &GapJunctions{
-        // ...
-        maxHistory:    1000, // Keep last 1000 signals
-    }
-    ```
-
-### Summary and Recommendations
-
-Your code is functionally excellent, but its behavior is defined by these compile-time constants. To elevate the project to a truly flexible simulation platform, you should externalize these parameters.
-
-**Recommendation: Introduce Configuration Structs**
-
-The best practice is to create specific configuration structs for each major component and pass them in during initialization.
-
-1.  Create structs like `MicrogliaConfig`, `ChemicalModulatorConfig`, etc.
-2.  Populate these structs with the hardcoded values identified above.
-3.  Modify the constructors (`NewMicroglia`, `NewChemicalModulator`) to accept these config structs.
-4.  Store the config on the component's struct.
-5.  Replace the hardcoded magic numbers in the logic with the corresponding values from the stored config struct.
 
 
