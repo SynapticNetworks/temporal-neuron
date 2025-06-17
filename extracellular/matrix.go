@@ -78,6 +78,9 @@ type ExtracellularMatrix struct {
 	neurons  map[string]NeuronInterface  // All active neurons in the network
 	synapses map[string]SynapseInterface // All active synaptic connections
 
+	// === RESOURCE MANAGEMENT ===
+	maxComponents int // Maximum number of components (neurons + synapses) allowed
+
 	// === OPERATIONAL STATE ===
 	// Models the matrix's biological lifecycle and activity state
 	ctx     context.Context
@@ -171,6 +174,8 @@ func NewExtracellularMatrix(config ExtracellularMatrixConfig) *ExtracellularMatr
 		// Active component tracking for biological coordination
 		neurons:  make(map[string]NeuronInterface),
 		synapses: make(map[string]SynapseInterface),
+
+		maxComponents: config.MaxComponents,
 
 		// Operational lifecycle management
 		ctx:     ctx,
@@ -266,39 +271,53 @@ func (ecm *ExtracellularMatrix) RegisterSynapseType(synapseType string, factory 
 // Returns:
 //   - NeuronInterface: Fully integrated neuron ready for biological operation
 //   - error: If neurogenesis fails due to resource constraints or configuration issues
-
-/*
-TODO: Potential for Bottlenecking in Creation Methods:
-
-Issue: In CreateNeuron and CreateSynapse, you acquire a single ecm.mu.Lock() at the beginning and hold it for the entire duration of the function. This includes the call to the factory function (factory(...)) and the integration (integrate...(...)).
-Impact: While this is completely thread-safe, it could become a performance bottleneck if many goroutines are trying to create components simultaneously. The entire matrix is locked during the whole creation and wiring process.
-Refinement: For even higher concurrency, you could consider a more fine-grained locking strategy. For example: lock to generate the ID and check the factory, unlock while the (potentially slow) factory() function executes, then re-lock to add the new component to the maps and integrate it. This is more complex but would increase throughput. For most use cases, the current implementation is perfectly fine.
-*/
+//
+// FIXED: Improved concurrency with fine-grained locking to reduce performance bottlenecks
 func (ecm *ExtracellularMatrix) CreateNeuron(config NeuronConfig) (NeuronInterface, error) {
+	// === PHASE 1: VALIDATION AND FACTORY LOOKUP (Quick, locked) ===
 	ecm.mu.Lock()
-	defer ecm.mu.Unlock()
 
 	// Locate the appropriate neurogenesis program
 	factory, exists := ecm.neuronFactories[config.NeuronType]
 	if !exists {
+		ecm.mu.Unlock()
 		return nil, fmt.Errorf("unknown neuron type for neurogenesis: %s", config.NeuronType)
 	}
 
-	// Generate unique biological identifier
+	// Check resource limits EARLY and account for the neuron we're about to add
+	currentComponentCount := len(ecm.neurons) + len(ecm.synapses)
+	if currentComponentCount >= ecm.maxComponents {
+		ecm.mu.Unlock()
+		return nil, fmt.Errorf("resource limit exceeded: cannot create neuron, already at maximum %d components", ecm.maxComponents)
+	}
+
+	// Generate unique biological identifier while locked
 	neuronID := ecm.generateBiologicalNeuronID(config.NeuronType)
 
 	// Create biological callback functions that wire the neuron into matrix systems
-	// This models how developing neurons form connections with their environment
 	callbacks := ecm.createNeuronBiologicalCallbacks(neuronID)
 
+	ecm.mu.Unlock() // UNLOCK before potentially slow factory execution
+
+	// === PHASE 2: NEUROGENESIS EXECUTION (Unlocked, potentially slow) ===
 	// Execute neurogenesis using the specified biological program
+	// This can be slow and doesn't need the global lock
 	neuron, err := factory(neuronID, config, callbacks)
 	if err != nil {
 		return nil, fmt.Errorf("neurogenesis failed: %w", err)
 	}
 
+	// === PHASE 3: INTEGRATION AND REGISTRATION (Re-locked) ===
+	ecm.mu.Lock()
+	defer ecm.mu.Unlock()
+
+	// Double-check resource limits after factory execution (safety)
+	currentComponentCount = len(ecm.neurons) + len(ecm.synapses)
+	if currentComponentCount >= ecm.maxComponents {
+		return nil, fmt.Errorf("resource limit exceeded during integration: cannot register neuron, at maximum %d components", ecm.maxComponents)
+	}
+
 	// Integrate the new neuron into all biological coordination systems
-	// Models the maturation process where new neurons become functional network members
 	err = ecm.integrateNeuronIntoBiologicalSystems(neuron, config)
 	if err != nil {
 		return nil, fmt.Errorf("neural integration failed: %w", err)
@@ -334,34 +353,60 @@ func (ecm *ExtracellularMatrix) CreateNeuron(config NeuronConfig) (NeuronInterfa
 // Returns:
 //   - SynapseInterface: Fully integrated synapse ready for neural transmission
 //   - error: If synaptogenesis fails due to invalid connections or resource limits
+//
+// FIXED: Improved concurrency with fine-grained locking to reduce performance bottlenecks
 func (ecm *ExtracellularMatrix) CreateSynapse(config SynapseConfig) (SynapseInterface, error) {
+	// === PHASE 1: VALIDATION AND FACTORY LOOKUP (Quick, locked) ===
 	ecm.mu.Lock()
-	defer ecm.mu.Unlock()
 
 	// Validate biological connectivity - both neurons must exist
 	if _, exists := ecm.neurons[config.PresynapticID]; !exists {
+		ecm.mu.Unlock()
 		return nil, fmt.Errorf("synaptogenesis failed: presynaptic neuron not found: %s", config.PresynapticID)
 	}
 	if _, exists := ecm.neurons[config.PostsynapticID]; !exists {
+		ecm.mu.Unlock()
 		return nil, fmt.Errorf("synaptogenesis failed: postsynaptic neuron not found: %s", config.PostsynapticID)
 	}
 
 	// Locate the appropriate synaptogenesis program
 	factory, exists := ecm.synapseFactories[config.SynapseType]
 	if !exists {
+		ecm.mu.Unlock()
 		return nil, fmt.Errorf("unknown synapse type for synaptogenesis: %s", config.SynapseType)
 	}
 
-	// Generate unique biological identifier
+	// Check resource limits for synapses too
+	currentComponentCount := len(ecm.neurons) + len(ecm.synapses)
+	if currentComponentCount >= ecm.maxComponents {
+		ecm.mu.Unlock()
+		return nil, fmt.Errorf("resource limit exceeded: cannot create synapse, already at maximum %d components", ecm.maxComponents)
+	}
+
+	// Generate unique biological identifier while locked
 	synapseID := ecm.generateBiologicalSynapseID(config.SynapseType, config.PresynapticID, config.PostsynapticID)
 
 	// Create biological callback functions that wire the synapse into matrix systems
 	callbacks := ecm.createSynapseBiologicalCallbacks(synapseID, config)
 
+	ecm.mu.Unlock() // UNLOCK before potentially slow factory execution
+
+	// === PHASE 2: SYNAPTOGENESIS EXECUTION (Unlocked, potentially slow) ===
 	// Execute synaptogenesis using the specified biological program
+	// This can be slow and doesn't need the global lock
 	synapse, err := factory(synapseID, config, callbacks)
 	if err != nil {
 		return nil, fmt.Errorf("synaptogenesis failed: %w", err)
+	}
+
+	// === PHASE 3: INTEGRATION AND REGISTRATION (Re-locked) ===
+	ecm.mu.Lock()
+	defer ecm.mu.Unlock()
+
+	// Double-check resource limits after factory execution (safety)
+	currentComponentCount = len(ecm.neurons) + len(ecm.synapses)
+	if currentComponentCount >= ecm.maxComponents {
+		return nil, fmt.Errorf("resource limit exceeded during integration: cannot register synapse, at maximum %d components", ecm.maxComponents)
 	}
 
 	// Integrate the new synapse into all biological coordination systems
@@ -636,12 +681,7 @@ func (ecm *ExtracellularMatrix) integrateSynapseIntoBiologicalSystems(synapse Sy
 //
 // This ensures all biological support systems are operational before any
 // neural components begin functioning, preventing developmental failures.
-/*
-Issue: The Start() method iterates through all neurons and calls neuron.Start(). If one neuron fails to start, the function returns an error immediately.
-Impact: This could leave the system in a partially running state, where some neurons are active and others are not.
-Refinement: Consider what the desired behavior should be. Should the entire matrix shut down if one component fails to start? Or should it log the error and continue starting the rest? A more robust approach might be to attempt to start all neurons, collect any errors that occur, and then decide whether to proceed or trigger a full shutdown.
-*/
-
+// FIXED: Robust error handling that continues starting remaining components and provides detailed error reporting
 func (ecm *ExtracellularMatrix) Start() error {
 	ecm.mu.Lock()
 	defer ecm.mu.Unlock()
@@ -656,14 +696,46 @@ func (ecm *ExtracellularMatrix) Start() error {
 		return fmt.Errorf("failed to activate chemical signaling systems: %w", err)
 	}
 
-	// Start all created neurons (activate their biological processes)
-	for _, neuron := range ecm.neurons {
+	// Start all created neurons with robust error handling
+	var startupErrors []string
+	successfulStarts := 0
+
+	for neuronID, neuron := range ecm.neurons {
 		if err := neuron.Start(); err != nil {
-			return fmt.Errorf("failed to start neuron %s: %w", neuron.ID(), err)
+			startupErrors = append(startupErrors, fmt.Sprintf("neuron %s: %v", neuronID, err))
+		} else {
+			successfulStarts++
+		}
+	}
+
+	// Evaluate startup results
+	totalNeurons := len(ecm.neurons)
+
+	if len(startupErrors) > 0 {
+		if successfulStarts == 0 {
+			// Complete failure - shutdown chemical systems and abort
+			ecm.chemicalModulator.Stop()
+			return fmt.Errorf("complete neuron startup failure - no neurons started successfully: %v", startupErrors)
+		} else if len(startupErrors) == totalNeurons {
+			// All neurons failed but somehow successfulStarts != 0 (shouldn't happen, but be safe)
+			ecm.chemicalModulator.Stop()
+			return fmt.Errorf("all %d neurons failed to start: %v", totalNeurons, startupErrors)
+		} else {
+			// Partial failure - log errors but continue with successful neurons
+			// In biological systems, some neurons may fail while others continue
+			fmt.Printf("Warning: %d of %d neurons failed to start (continuing with %d successful): %v\n",
+				len(startupErrors), totalNeurons, successfulStarts, startupErrors)
 		}
 	}
 
 	ecm.started = true
+
+	// If there were partial failures, return a non-fatal error with details
+	if len(startupErrors) > 0 {
+		return fmt.Errorf("partial startup success: %d of %d neurons started successfully, failures: %v",
+			successfulStarts, totalNeurons, startupErrors)
+	}
+
 	return nil
 }
 
