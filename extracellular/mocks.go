@@ -2,6 +2,7 @@ package extracellular
 
 import (
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -230,4 +231,54 @@ func (ms *MockSynapse) GetPostsynaptic() string {
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 	return ms.postsynaptic
+}
+
+// =================================================================================
+// MOCK ASTROCYTE LISTENER FOR CALCIUM WAVE TESTING
+// =================================================================================
+
+// mockAstrocyteListener implements SignalListener for astrocyte calcium testing
+type mockAstrocyteListener struct {
+	id            string
+	receivedCount int32
+	receivedData  []interface{}
+	receivedFrom  []string
+	mu            sync.Mutex
+}
+
+func newMockAstrocyteListener(id string) *mockAstrocyteListener {
+	return &mockAstrocyteListener{
+		id:           id,
+		receivedData: make([]interface{}, 0),
+		receivedFrom: make([]string, 0),
+	}
+}
+
+// ID implements SignalListener interface
+func (m *mockAstrocyteListener) ID() string {
+	return m.id
+}
+
+// OnSignal implements SignalListener interface
+func (m *mockAstrocyteListener) OnSignal(signalType SignalType, sourceID string, data interface{}) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	atomic.AddInt32(&m.receivedCount, 1)
+	m.receivedData = append(m.receivedData, data)
+	m.receivedFrom = append(m.receivedFrom, sourceID)
+}
+
+// GetReceivedCount safely returns the number of received signals
+func (m *mockAstrocyteListener) GetReceivedCount() int {
+	return int(atomic.LoadInt32(&m.receivedCount))
+}
+
+// GetLastReceivedData returns the most recent signal data
+func (m *mockAstrocyteListener) GetLastReceivedData() interface{} {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if len(m.receivedData) == 0 {
+		return nil
+	}
+	return m.receivedData[len(m.receivedData)-1]
 }
