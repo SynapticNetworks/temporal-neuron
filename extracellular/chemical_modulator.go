@@ -132,20 +132,26 @@ func NewChemicalModulator(astrocyteNetwork *AstrocyteNetwork) *ChemicalModulator
 
 // initializeBiologicalKinetics sets kinetic parameters based on neuroscience research
 func (cm *ChemicalModulator) initializeBiologicalKinetics() {
-	// === GLUTAMATE - Fast Excitatory Synaptic Transmission ===
+	// === GLUTAMATE - Fast Excitatory Synaptic Transmission (FIXED) ===
 	// Research basis: Danbolt (2001), Clements et al. (1992)
 	// - Synaptic cleft concentration: 1-10 mM
 	// - Clearance time: 1-2 ms via EAAT1/2/3 transporters
-	// - Diffusion coefficient: ~760 μm²/s in brain tissue
+	// - EAAT transporter density: Very high (fastest clearance in brain)
 	// - Effective range: spillover limited to ~1-2 μm
+	//
+	// FIX: Increased clearance rates to match biological data
+	// Target: >90% clearance within 5ms (exp(-rate * 5) < 0.1)
+	// Required total rate: ln(10)/5 = 0.46, using 0.8 for safety margin
 	cm.ligandKinetics[LigandGlutamate] = LigandKinetics{
 		DiffusionRate:   0.76, // Measured: 760 μm²/s = 0.76 μm²/ms
-		DecayRate:       0.20, // Fast enzymatic breakdown
-		ClearanceRate:   0.30, // Rapid EAAT transporter uptake (Vmax ~500/s)
+		DecayRate:       0.40, // INCREASED: Faster enzymatic breakdown
+		ClearanceRate:   0.50, // INCREASED: Rapid EAAT transporter uptake
 		MaxRange:        5.0,  // Spillover range ~1-2 μm, buffered to 5μm
 		BindingAffinity: 0.9,  // High affinity for AMPA/NMDA receptors
 		Cooperativity:   1.0,  // Non-cooperative binding
 	}
+	// Total clearance rate: 0.40 + 0.50 = 0.90 (1/ms)
+	// 5ms clearance: exp(-0.90 * 5) = exp(-4.5) = 0.011 = 1.1% remaining ✓
 
 	// === GABA - Fast Inhibitory Synaptic Transmission ===
 	// Research basis: Conti et al. (2004), Farrant & Nusser (2005)
@@ -153,13 +159,15 @@ func (cm *ChemicalModulator) initializeBiologicalKinetics() {
 	// - GAT1-4 transporters with lower density than EAAT
 	// - Slightly longer spillover due to slower uptake
 	cm.ligandKinetics[LigandGABA] = LigandKinetics{
-		DiffusionRate:   0.60,  // Slightly slower than glutamate
-		DecayRate:       0.150, // Fast breakdown via GABA transaminase
-		ClearanceRate:   0.200, // GAT transporter uptake (lower density than EAAT)
-		MaxRange:        4.0,   // Short range, similar to glutamate
-		BindingAffinity: 0.8,   // High affinity for GABA-A/B receptors
-		Cooperativity:   1.0,   // Non-cooperative binding
+		DiffusionRate:   0.60, // Slightly slower than glutamate
+		DecayRate:       0.25, // Fast breakdown via GABA transaminase
+		ClearanceRate:   0.35, // GAT transporter uptake (lower density than EAAT)
+		MaxRange:        4.0,  // Short range, similar to glutamate
+		BindingAffinity: 0.8,  // High affinity for GABA-A/B receptors
+		Cooperativity:   1.0,  // Non-cooperative binding
 	}
+	// Total clearance rate: 0.25 + 0.35 = 0.60 (1/ms)
+	// 5ms clearance: exp(-0.60 * 5) = exp(-3.0) = 0.05 = 5% remaining
 
 	// === DOPAMINE - Volume Transmission Neuromodulator ===
 	// Research basis: Floresco et al. (2003), Garris et al. (1994)
@@ -196,10 +204,9 @@ func (cm *ChemicalModulator) initializeBiologicalKinetics() {
 	// - Moderate diffusion range
 	// - Mixed phasic (synaptic) and tonic (volume) signaling
 	cm.ligandKinetics[LigandAcetylcholine] = LigandKinetics{
-		DiffusionRate: 0.40, // Moderate diffusion coefficient
-		// FIX: Rates adjusted to reflect a half-life on the millisecond scale, not microsecond.
-		DecayRate:       0.25, // Slower decay to allow measurement.
-		ClearanceRate:   0.05, // Reduced to reflect "limited reuptake".
+		DiffusionRate:   0.40, // Moderate diffusion coefficient
+		DecayRate:       0.25, // AChE breakdown (still fast, but measurable)
+		ClearanceRate:   0.05, // Limited reuptake (mainly enzymatic clearance)
 		MaxRange:        20.0, // Moderate range for cholinergic signaling
 		BindingAffinity: 0.8,  // High affinity for nAChR/mAChR
 		Cooperativity:   1.0,  // Non-cooperative binding
