@@ -55,7 +55,7 @@ the full range of biological firing patterns and plasticity.
 =================================================================================
 */
 
-package extracellular
+package synapse
 
 import (
 	"math"
@@ -108,34 +108,9 @@ type VesicleReleaseEvent struct {
 	RecoveryTime       time.Duration    `json:"recovery_time"`       // Expected time for this vesicle to be available again
 }
 
-// VesiclePoolState captures the state of all vesicle pools at a given moment
-// Provides detailed information about vesicle availability for biological realism
-type VesiclePoolState struct {
-	ReadyVesicles     int     `json:"ready_vesicles"`     // Immediately available for release
-	RecyclingVesicles int     `json:"recycling_vesicles"` // In recycling process
-	ReserveVesicles   int     `json:"reserve_vesicles"`   // Long-term reserve
-	TotalVesicles     int     `json:"total_vesicles"`     // Total vesicle count
-	DepletionLevel    float64 `json:"depletion_level"`    // Pool depletion (0.0-1.0)
-	FatigueLevel      float64 `json:"fatigue_level"`      // Synaptic fatigue (0.0-1.0)
-}
-
 // Biological constants based on experimental measurements
 const (
-	// VESICLE POOL SIZES (experimentally measured ranges)
-	DEFAULT_READY_POOL_SIZE     = 15   // RRP: 5-20 vesicles typical
-	DEFAULT_RECYCLING_POOL_SIZE = 150  // Recycling pool: 100-200 vesicles
-	DEFAULT_RESERVE_POOL_SIZE   = 1000 // Reserve pool: 1000+ vesicles
-
-	// RECYCLING TIME CONSTANTS (from patch-clamp studies)
-	FAST_RECYCLING_TIME = 2 * time.Second  // Kiss-and-run recycling
-	SLOW_RECYCLING_TIME = 20 * time.Second // Full clathrin-mediated recycling
-	VESICLE_REFILL_TIME = 8 * time.Second  // Neurotransmitter loading time
-	REPRIMING_TIME      = 3 * time.Second  // Release machinery reset time
-
-	// RELEASE PROBABILITY PARAMETERS
-	BASELINE_RELEASE_PROBABILITY = 0.25             // Typical release probability per AP
-	MAX_CALCIUM_ENHANCEMENT      = 3.0              // Maximum calcium-dependent enhancement
-	FATIGUE_RECOVERY_TIME        = 30 * time.Second // Recovery from synaptic depression
+	FATIGUE_RECOVERY_TIME = 30 * time.Second // Recovery from synaptic depression
 
 	// ACTIVITY-DEPENDENT RATES
 	DEFAULT_MAX_RELEASE_RATE  = 50.0 // Conservative maximum sustainable rate (Hz)
@@ -279,6 +254,15 @@ func (vd *VesicleDynamics) GetVesiclePoolState() VesiclePoolState {
 		DepletionLevel:    depletionLevel,
 		FatigueLevel:      vd.fatigueLevel,
 	}
+}
+
+// GetVesicleState implements the VesicleSystem interface by returning the current
+// state of all vesicle pools. It calls the internal GetVesiclePoolState to perform
+// the actual calculation.
+//
+// THIS IS THE NEWLY ADDED METHOD THAT SATISFIES THE INTERFACE.
+func (vd *VesicleDynamics) GetVesicleState() VesiclePoolState {
+	return vd.GetVesiclePoolState()
 }
 
 // SetCalciumLevel updates calcium-dependent release enhancement

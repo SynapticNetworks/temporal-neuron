@@ -1,427 +1,295 @@
 /*
 =================================================================================
-SYNAPSE SYSTEM UNIT TESTS
+SYNAPSE SYSTEM UNIT TESTS - REFACTORED
 =================================================================================
 
 OVERVIEW:
-This file contains comprehensive unit tests for the synapse system, verifying:
-1. Basic synapse creation and property validation
-2. Signal transmission through synapses with weight scaling and delays
-3. Weight management and bounds enforcement
-4. Configuration helper functions
-5. Interface compliance and thread safety
-
-The tests use MockNeuron implementations to isolate synapse functionality
-from actual neuron implementations, allowing focused testing of synaptic
-behavior without dependencies on complex neuron logic.
+This file contains comprehensive unit tests for the new, refactored synapse
+system. It verifies the functionality of the `EnhancedSynapse` and its
+integration with its biological sub-components.
 
 TEST PHILOSOPHY:
-- Each test focuses on a single aspect of synapse functionality
-- Mock objects provide controlled, predictable test environments
-- Tests verify both normal operation and edge cases
-- Timing-sensitive tests include appropriate delays for goroutine scheduling
-- All biological constraints and safety bounds are verified
+- Tests use the new factory pattern (`CreateSynapse`) for construction.
+- Mock callbacks are used to simulate the matrix environment and observe outputs.
+- Tests cover successful operation, failure modes (e.g., vesicle depletion),
+  and biological rules (plasticity, pruning).
 
-BIOLOGICAL CONTEXT:
-These tests validate that the synapse implementation correctly models:
-- Synaptic weight storage and modification (synaptic efficacy)
-- Signal transmission delays (axonal conduction + synaptic delays)
-- Weight bounds enforcement (biological saturation limits)
-- Pruning decision logic (structural plasticity)
-- Configuration parameter validation
+BIOLOGICAL CONTEXT VALIDATED:
+- Correct initialization of all sub-components.
+- The full transmission sequence: vesicle check -> delay calculation -> delivery.
+- Failure of transmission when vesicles are depleted.
+- STDP logic delegating to the PlasticityCalculator.
+- Pruning logic based on activity and weight thresholds.
 */
 
 package synapse
 
 import (
+	"sync"
 	"testing"
 	"time"
 )
+
+// mockCallbacks provides a controllable implementation of SynapseCallbacks for testing.
+// It allows tests to inspect what functions were called and what data was passed.
+type mockCallbacks struct {
+	mu                      sync.Mutex
+	deliveredMessages       []SynapseMessage
+	getCalciumLevel         func() float64
+	getTransmissionDelay    func() time.Duration
+	releaseNeurotransmitter func(ligandType LigandType, concentration float64) error
+	reportPlasticityEvent   func(event PlasticityEvent)
+}
+
+// newMockCallbacks creates a set of default mock callbacks.
+func newMockCallbacks() *mockCallbacks {
+	return &mockCallbacks{
+		deliveredMessages: make([]SynapseMessage, 0),
+		getCalciumLevel: func() float64 {
+			return 1.0 // Default baseline calcium
+		},
+		getTransmissionDelay: func() time.Duration {
+			return 2 * time.Millisecond // Default test delay
+		},
+	}
+}
+
+// DeliverMessage captures the message for later inspection by the test.
+func (mc *mockCallbacks) DeliverMessage(targetID string, message SynapseMessage) error {
+	mc.mu.Lock()
+	defer mc.mu.Unlock()
+	mc.deliveredMessages = append(mc.deliveredMessages, message)
+	return nil
+}
+
+// setupTestSynapse is a helper function to reduce boilerplate in tests.
+// It creates a standard synapse with mock callbacks for testing.
+func setupTestSynapse(t *testing.T) (*EnhancedSynapse, SynapseConfig, *mockCallbacks) {
+	// Use a preset to get a valid base configuration
+	config := CreateExcitatoryGlutamatergicConfig("syn-001", "neuron-pre", "neuron-post")
+	callbacks := newMockCallbacks()
+
+	// Use the actual factory to create the synapse
+	processor, err := CreateSynapse("syn-001", config, SynapseCallbacks{
+		GetCalciumLevel:      callbacks.getCalciumLevel,
+		GetTransmissionDelay: callbacks.getTransmissionDelay,
+		DeliverMessage:       callbacks.DeliverMessage,
+	})
+
+	if err != nil {
+		t.Fatalf("Failed to create synapse for testing: %v", err)
+	}
+
+	synapse, ok := processor.(*EnhancedSynapse)
+	if !ok {
+		t.Fatalf("Created processor is not of type *EnhancedSynapse")
+	}
+
+	return synapse, config, callbacks
+}
 
 // =================================================================================
 // SYNAPSE CREATION AND INITIALIZATION TESTS
 // =================================================================================
 
-// TestSynapseCreation tests basic synapse creation and initialization.
-// This test verifies that synapses are properly constructed with correct
-// initial values, proper bounds enforcement, and appropriate configuration.
-//
-// BIOLOGICAL VALIDATION:
-// This test ensures that:
-// - Synaptic weights are initialized within biological bounds
-// - Transmission delays are non-negative (physically realistic)
-// - Configuration parameters are properly stored and accessible
-// - New synapses are not immediately marked for pruning
-//
-// TEST COVERAGE:
-// - Constructor parameter validation and bounds checking
-// - Initial state verification (weight, delay, ID)
-// - Configuration storage (STDP and pruning settings)
-// - Pruning logic initial state (should not prune new synapses)
-func TestSynapseCreation(t *testing.T) {
-	// Create mock neurons to serve as pre- and post-synaptic endpoints
-	// These provide the necessary interface implementations without
-	// the complexity of full neuron simulation
-	preNeuron := NewMockNeuron("pre_neuron")
-	postNeuron := NewMockNeuron("post_neuron")
+// TestSynapseCreationAndInitialization verifies that the factory correctly
+// constructs an EnhancedSynapse with all its sub-components.
+func TestSynapseCreationAndInitialization(t *testing.T) {
+	synapse, config, _ := setupTestSynapse(t)
 
-	// Create STDP configuration with biologically realistic parameters
-	// These values are based on experimental data from cortical synapses
-	stdpConfig := STDPConfig{
-		Enabled:        true,                   // Enable spike-timing dependent plasticity
-		LearningRate:   0.01,                   // 1% weight change per STDP event (typical range: 0.001-0.1)
-		TimeConstant:   20 * time.Millisecond,  // Exponential decay time constant (typical: 10-50ms)
-		WindowSize:     100 * time.Millisecond, // Maximum timing window for STDP (typical: 50-200ms)
-		MinWeight:      0.001,                  // Minimum weight to prevent elimination (prevents runaway weakening)
-		MaxWeight:      2.0,                    // Maximum weight to prevent runaway strengthening
-		AsymmetryRatio: 1.2,                    // LTD/LTP ratio (slight bias toward depression)
+	if synapse.ID() != config.SynapseID {
+		t.Errorf("Expected synapse ID '%s', got '%s'", config.SynapseID, synapse.ID())
 	}
 
-	// Create pruning configuration with conservative parameters
-	// These settings prevent premature elimination of potentially useful synapses
-	pruningConfig := PruningConfig{
-		Enabled:             true,            // Enable structural plasticity (pruning)
-		WeightThreshold:     0.01,            // Weight below which synapse becomes pruning candidate
-		InactivityThreshold: 5 * time.Minute, // Duration of inactivity required for pruning eligibility
+	if synapse.GetWeight() != config.InitialWeight {
+		t.Errorf("Expected initial weight %f, got %f", config.InitialWeight, synapse.GetWeight())
 	}
 
-	// Test synapse creation with specific initial parameters
-	initialWeight := 0.5          // Moderate initial strength
-	delay := 5 * time.Millisecond // Realistic axonal + synaptic delay
-	synapseID := "test_synapse"   // Unique identifier for this connection
-
-	// Create the synapse using the constructor
-	synapse := NewBasicSynapse(synapseID, preNeuron, postNeuron,
-		stdpConfig, pruningConfig, initialWeight, delay)
-
-	// VERIFICATION 1: Test that synapse ID is properly stored and accessible
-	// This ensures the synapse can be identified and referenced correctly
-	if synapse.ID() != synapseID {
-		t.Errorf("Expected synapse ID '%s', got '%s'", synapseID, synapse.ID())
+	// Verify that sub-components were initialized
+	if synapse.activityMonitor == nil {
+		t.Error("Activity monitor was not initialized")
+	}
+	if synapse.plasticityCalculator == nil {
+		t.Error("Plasticity calculator was not initialized")
+	}
+	if config.VesicleConfig.Enabled && synapse.vesicleSystem == nil {
+		t.Error("Vesicle system was not initialized despite being enabled in config")
 	}
 
-	// VERIFICATION 2: Test that initial weight is correctly set
-	// This verifies that synaptic strength initialization works properly
-	if synapse.GetWeight() != initialWeight {
-		t.Errorf("Expected initial weight %f, got %f", initialWeight, synapse.GetWeight())
+	// Check that the initial weight was recorded by the activity monitor
+	activityInfo := synapse.GetActivityInfo()
+	if activityInfo.TotalPlasticityEvents == 0 {
+		t.Error("Expected initial weight to be recorded as a plasticity event, but none found")
 	}
-
-	// VERIFICATION 3: Test that transmission delay is correctly set
-	// This ensures realistic timing behavior in signal propagation
-	if synapse.GetDelay() != delay {
-		t.Errorf("Expected delay %v, got %v", delay, synapse.GetDelay())
-	}
-
-	// VERIFICATION 4: Test that new synapses are not immediately marked for pruning
-	// New synapses should have a grace period before being eligible for elimination
-	// This prevents premature removal of potentially useful connections
-	if synapse.ShouldPrune() {
-		t.Error("New synapse should not be marked for pruning immediately after creation")
-	}
-
-	// BIOLOGICAL SIGNIFICANCE:
-	// This test validates that synapses start in a biologically plausible state:
-	// - Moderate strength (not too weak or strong)
-	// - Realistic transmission timing
-	// - Protected from immediate elimination
-	// - Properly configured for learning and adaptation
 }
 
 // =================================================================================
 // SIGNAL TRANSMISSION TESTS
 // =================================================================================
 
-// TestSynapseTransmission tests basic signal transmission through synapses.
-// This test verifies the core functionality of synaptic communication:
-// signal scaling by synaptic weight, proper message formatting, and
-// successful delivery to post-synaptic targets.
-//
-// BIOLOGICAL PROCESS TESTED:
-// 1. Pre-synaptic neuron fires (simulated by calling Transmit)
-// 2. Signal is scaled by synaptic weight (efficacy modulation)
-// 3. Message is formatted with timing and identification metadata
-// 4. Signal is delivered to post-synaptic neuron (via Receive method)
-//
-// TEST COVERAGE:
-// - Signal strength scaling (weight multiplication)
-// - Message metadata (source, synapse, timing information)
-// - Successful delivery to target neuron
-// - Goroutine-based transmission (asynchronous delivery)
-func TestSynapseTransmission(t *testing.T) {
-	// Create mock neurons for controlled testing environment
-	preNeuron := NewMockNeuron("pre_neuron")
-	postNeuron := NewMockNeuron("post_neuron")
+// TestSuccessfulTransmission verifies the complete, successful transmission pathway.
+func TestSuccessfulTransmission(t *testing.T) {
+	synapse, config, callbacks := setupTestSynapse(t)
 
-	// Use default configurations for standard synapse behavior
-	// These provide reasonable defaults without requiring manual configuration
-	stdpConfig := CreateDefaultSTDPConfig()
-	pruningConfig := CreateDefaultPruningConfig()
-
-	// Create synapse with no delay for easier testing
-	// Zero delay eliminates timing complications in verification
-	synapseWeight := 0.5             // 50% signal scaling
-	synapseDelay := time.Duration(0) // No transmission delay
-	synapse := NewBasicSynapse("test_synapse", preNeuron, postNeuron,
-		stdpConfig, pruningConfig, synapseWeight, synapseDelay)
-
-	// Transmit a test signal through the synapse
-	inputSignal := 1.0 // Full-strength input signal
-	synapse.Transmit(inputSignal)
-
-	// Allow time for asynchronous message delivery
-	// Even with zero delay, goroutine scheduling may introduce small latencies
-	time.Sleep(10 * time.Millisecond)
-
-	// VERIFICATION 1: Check that exactly one message was received
-	// This ensures the synapse transmitted the signal without duplication or loss
-	messages := postNeuron.GetReceivedMessages()
-	if len(messages) != 1 {
-		t.Fatalf("Expected 1 message, got %d", len(messages))
+	inputSignal := 1.0
+	err := synapse.Transmit(inputSignal)
+	if err != nil {
+		t.Fatalf("Transmit failed unexpectedly: %v", err)
 	}
 
-	// Extract the received message for detailed verification
-	receivedMsg := messages[0]
+	// VERIFICATION 1: Check that the message was delivered via the callback
+	if len(callbacks.deliveredMessages) != 1 {
+		t.Fatalf("Expected 1 message to be delivered, got %d", len(callbacks.deliveredMessages))
+	}
+	msg := callbacks.deliveredMessages[0]
 
-	// VERIFICATION 2: Check signal strength scaling
-	// The output should be input signal multiplied by synaptic weight
-	expectedValue := inputSignal * synapseWeight // 1.0 * 0.5 = 0.5
-	if receivedMsg.Value != expectedValue {
-		t.Errorf("Expected message value %f, got %f", expectedValue, receivedMsg.Value)
+	// VERIFICATION 2: Check signal scaling
+	expectedValue := inputSignal * config.InitialWeight
+	if msg.Value != expectedValue {
+		t.Errorf("Expected message value %.2f, got %.2f", expectedValue, msg.Value)
 	}
 
-	// VERIFICATION 3: Check source identification
-	// The message should correctly identify the pre-synaptic neuron
-	if receivedMsg.SourceID != preNeuron.ID() {
-		t.Errorf("Expected source ID '%s', got '%s'", preNeuron.ID(), receivedMsg.SourceID)
+	// VERIFICATION 3: Check that the delay was applied via the callback
+	if msg.TransmissionDelay != callbacks.getTransmissionDelay() {
+		t.Errorf("Expected transmission delay %v, got %v", callbacks.getTransmissionDelay(), msg.TransmissionDelay)
 	}
 
-	// VERIFICATION 4: Check synapse identification
-	// The message should correctly identify which synapse transmitted it
-	if receivedMsg.SynapseID != synapse.ID() {
-		t.Errorf("Expected synapse ID '%s', got '%s'", synapse.ID(), receivedMsg.SynapseID)
+	// VERIFICATION 4: Check activity monitor for a successful event
+	activityInfo := synapse.GetActivityInfo()
+	if activityInfo.TotalTransmissions != 1 || activityInfo.SuccessfulTransmissions != 1 {
+		t.Errorf("Expected 1 successful transmission to be logged, got %d total and %d successful",
+			activityInfo.TotalTransmissions, activityInfo.SuccessfulTransmissions)
+	}
+}
+
+// TestTransmissionFailureOnVesicleDepletion verifies that transmission fails
+// when the vesicle pool is depleted.
+func TestTransmissionFailureOnVesicleDepletion(t *testing.T) {
+	synapse, config, callbacks := setupTestSynapse(t)
+
+	// Deplete the ready releasable pool of vesicles
+	readyPoolSize := config.VesicleConfig.ReadyPoolSize
+	for i := 0; i < readyPoolSize; i++ {
+		err := synapse.Transmit(1.0)
+		if err != nil {
+			t.Fatalf("Transmission failed prematurely on attempt %d: %v", i+1, err)
+		}
 	}
 
-	// VERIFICATION 5: Check timing information
-	// The timestamp should be recent (within the last second)
-	// This validates that timing information is properly captured
-	now := time.Now()
-	timeSinceMessage := now.Sub(receivedMsg.Timestamp)
-	if timeSinceMessage > time.Second {
-		t.Errorf("Message timestamp too old: %v ago", timeSinceMessage)
+	// The next transmission attempt should fail
+	err := synapse.Transmit(1.0)
+	if err == nil {
+		t.Fatal("Expected transmission to fail due to vesicle depletion, but it succeeded")
 	}
 
-	// BIOLOGICAL SIGNIFICANCE:
-	// This test validates the fundamental synaptic transmission process:
-	// - Signal modulation by synaptic efficacy (weight)
-	// - Proper identification for learning algorithms (STDP)
-	// - Timing information for temporal processing
-	// - Successful communication between neural elements
+	if err != ErrVesicleDepleted {
+		t.Errorf("Expected error ErrVesicleDepleted, got %v", err)
+	}
+
+	// Verify no new message was delivered on the failed attempt
+	if len(callbacks.deliveredMessages) != readyPoolSize {
+		t.Errorf("Expected %d delivered messages, but got %d after depletion",
+			readyPoolSize, len(callbacks.deliveredMessages))
+	}
+
+	// Verify the activity monitor logged the failure
+	info := synapse.GetActivityInfo()
+	expectedTotal := int64(readyPoolSize + 1)
+	expectedSuccess := int64(readyPoolSize)
+	if info.TotalTransmissions != expectedTotal || info.SuccessfulTransmissions != expectedSuccess {
+		t.Errorf("Activity monitor log is incorrect. Expected %d total and %d successful, got %d and %d.",
+			expectedTotal, expectedSuccess, info.TotalTransmissions, info.SuccessfulTransmissions)
+	}
 }
 
 // =================================================================================
-// WEIGHT MANAGEMENT TESTS
+// PLASTICITY AND WEIGHT MANAGEMENT TESTS
 // =================================================================================
 
-// TestSynapseWeightModification tests synaptic weight management functionality.
-// This test verifies that synaptic weights can be properly read, modified,
-// and that biological bounds are enforced to maintain network stability.
-//
-// BIOLOGICAL CONTEXT:
-// Synaptic weights represent the efficacy of synaptic transmission and are
-// the primary substrate for learning and memory in neural networks. They must:
-// - Be modifiable for learning and adaptation
-// - Respect biological bounds to prevent network instability
-// - Maintain consistency under concurrent access
-//
-// TEST COVERAGE:
-// - Initial weight retrieval
-// - Weight modification (both manual and bounds-enforced)
-// - Upper bound enforcement (prevents runaway strengthening)
-// - Lower bound enforcement (prevents elimination)
-// - Thread-safe access patterns
-func TestSynapseWeightModification(t *testing.T) {
-	// Create mock neurons for testing environment
-	preNeuron := NewMockNeuron("pre_neuron")
-	postNeuron := NewMockNeuron("post_neuron")
+// TestPlasticityApplication verifies that STDP correctly modifies the synapse weight.
+func TestPlasticityApplication(t *testing.T) {
+	synapse, _, _ := setupTestSynapse(t)
+	initialWeight := synapse.GetWeight()
 
-	// Create configurations with specific bounds for testing
-	stdpConfig := CreateDefaultSTDPConfig()
-	pruningConfig := CreateDefaultPruningConfig()
-
-	// Create synapse with known initial weight
-	initialWeight := 0.5
-	synapse := NewBasicSynapse("test_synapse", preNeuron, postNeuron,
-		stdpConfig, pruningConfig, initialWeight, 0)
-
-	// VERIFICATION 1: Test initial weight retrieval
-	// Ensure the synapse correctly stores and returns its initial weight
-	if synapse.GetWeight() != initialWeight {
-		t.Errorf("Expected initial weight %f, got %f", initialWeight, synapse.GetWeight())
+	// 1. Test LTP (causal: pre-before-post)
+	ltpAdjustment := PlasticityAdjustment{DeltaT: -15 * time.Millisecond}
+	err := synapse.ApplyPlasticity(ltpAdjustment)
+	if err != nil {
+		t.Fatalf("ApplyPlasticity failed for LTP: %v", err)
 	}
 
-	// VERIFICATION 2: Test normal weight modification
-	// Verify that weights can be changed within normal operating ranges
-	newWeight := 0.8
-	synapse.SetWeight(newWeight)
-	if synapse.GetWeight() != newWeight {
-		t.Errorf("Expected weight %f after setting, got %f", newWeight, synapse.GetWeight())
+	weightAfterLTP := synapse.GetWeight()
+	if weightAfterLTP <= initialWeight {
+		t.Errorf("Expected weight to increase for LTP. Initial: %.4f, After LTP: %.4f", initialWeight, weightAfterLTP)
 	}
 
-	// VERIFICATION 3: Test upper bound enforcement
-	// Weights above the maximum should be clamped to prevent runaway strengthening
-	excessiveWeight := 10.0 // Much higher than max weight (2.0 from default config)
-	synapse.SetWeight(excessiveWeight)
-	expectedMaxWeight := stdpConfig.MaxWeight
-	if synapse.GetWeight() != expectedMaxWeight {
-		t.Errorf("Expected weight to be clamped to max %f, got %f",
-			expectedMaxWeight, synapse.GetWeight())
+	// 2. Test LTD (anti-causal: post-before-pre)
+	ltdAdjustment := PlasticityAdjustment{DeltaT: 15 * time.Millisecond}
+	err = synapse.ApplyPlasticity(ltdAdjustment)
+	if err != nil {
+		t.Fatalf("ApplyPlasticity failed for LTD: %v", err)
 	}
 
-	// VERIFICATION 4: Test lower bound enforcement
-	// Weights below the minimum should be clamped to prevent elimination
-	negativeWeight := -1.0 // Lower than min weight (0.001 from default config)
-	synapse.SetWeight(negativeWeight)
-	expectedMinWeight := stdpConfig.MinWeight
-	if synapse.GetWeight() != expectedMinWeight {
-		t.Errorf("Expected weight to be clamped to min %f, got %f",
-			expectedMinWeight, synapse.GetWeight())
+	weightAfterLTD := synapse.GetWeight()
+	if weightAfterLTD >= weightAfterLTP {
+		t.Errorf("Expected weight to decrease for LTD. After LTP: %.4f, After LTD: %.4f", weightAfterLTP, weightAfterLTD)
+	}
+}
+
+// TestWeightBounds verifies that weights are clamped to the min/max values from the config.
+func TestWeightBounds(t *testing.T) {
+	synapse, config, _ := setupTestSynapse(t)
+
+	// Test upper bound
+	synapse.SetWeight(config.STDPConfig.MaxWeight + 10.0)
+	if synapse.GetWeight() != config.STDPConfig.MaxWeight {
+		t.Errorf("Expected weight to be clamped to max %.4f, got %.4f",
+			config.STDPConfig.MaxWeight, synapse.GetWeight())
 	}
 
-	// BIOLOGICAL SIGNIFICANCE:
-	// This test validates critical safety mechanisms:
-	// - Upper bounds prevent synapses from becoming pathologically strong
-	// - Lower bounds maintain minimal connectivity (important for network function)
-	// - Bounds enforcement protects network stability during learning
-	// - Weight accessibility enables monitoring and experimental manipulation
-
-	// NETWORK STABILITY IMPORTANCE:
-	// Without proper bounds enforcement, learning algorithms could:
-	// - Create runaway positive feedback loops (weights → ∞)
-	// - Eliminate all connections (weights → 0)
-	// - Destabilize the entire network through extreme values
-	// This test ensures these failure modes are prevented.
+	// Test lower bound
+	synapse.SetWeight(config.STDPConfig.MinWeight - 10.0)
+	if synapse.GetWeight() != config.STDPConfig.MinWeight {
+		t.Errorf("Expected weight to be clamped to min %.4f, got %.4f",
+			config.STDPConfig.MinWeight, synapse.GetWeight())
+	}
 }
 
 // =================================================================================
-// CONFIGURATION VALIDATION TESTS
+// STRUCTURAL PLASTICITY (PRUNING) TESTS
 // =================================================================================
 
-// TestConfigHelpers tests the configuration helper functions that provide
-// default parameters for STDP learning and synaptic pruning. These functions
-// are critical for ensuring that synapses start with biologically realistic
-// and computationally stable parameters.
-//
-// BIOLOGICAL IMPORTANCE:
-// Configuration parameters control fundamental aspects of synaptic behavior:
-// - STDP parameters determine learning dynamics and plasticity characteristics
-// - Pruning parameters control structural plasticity and network optimization
-// - Default values must be based on experimental neuroscience data
-//
-// TEST COVERAGE:
-// - Default STDP configuration validation
-// - Default pruning configuration validation
-// - Conservative pruning configuration validation
-// - Parameter relationships and biological realism
-// - Configuration consistency across helper functions
-func TestConfigHelpers(t *testing.T) {
-	// SECTION 1: Test default STDP configuration
-	// This configuration should provide reasonable defaults for most applications
-	stdpConfig := CreateDefaultSTDPConfig()
+// TestPruningLogic verifies the "use it or lose it" rule.
+func TestPruningLogic(t *testing.T) {
+	config := CreateExcitatoryGlutamatergicConfig("syn-prune", "pre", "post")
+	// Make pruning easy to trigger for the test
+	config.PruningConfig.Enabled = true
+	config.PruningConfig.WeightThreshold = 0.1
+	config.PruningConfig.InactivityThreshold = 10 * time.Millisecond
+	config.PruningConfig.ProtectionPeriod = 1 * time.Millisecond
 
-	// VERIFICATION 1.1: STDP should be enabled by default
-	// Most synapses in biological networks exhibit plasticity
-	if !stdpConfig.Enabled {
-		t.Error("Default STDP config should be enabled for realistic neural behavior")
+	// Create the synapse
+	processor, _ := CreateSynapse(config.SynapseID, config, SynapseCallbacks{})
+	synapse := processor.(*EnhancedSynapse)
+	time.Sleep(2 * time.Millisecond) // Wait for protection period to pass
+
+	// Condition 1: Synapse is active and strong, should NOT be pruned
+	synapse.SetWeight(0.5)
+	_ = synapse.Transmit(1.0)
+	if synapse.ShouldPrune() {
+		t.Error("Strong, active synapse should not be pruned.")
 	}
 
-	// VERIFICATION 1.2: Learning rate should be positive and reasonable
-	// Learning rate controls the speed of synaptic adaptation
-	if stdpConfig.LearningRate <= 0 {
-		t.Error("Default STDP config should have positive learning rate")
-	}
-	if stdpConfig.LearningRate > 0.1 {
-		t.Error("Default STDP learning rate seems too high (biological range: 0.001-0.1)")
+	// Condition 2: Synapse becomes weak but is still active, should NOT be pruned yet.
+	synapse.SetWeight(config.PruningConfig.WeightThreshold / 2)
+	_ = synapse.Transmit(1.0)
+	if synapse.ShouldPrune() {
+		t.Error("Weak but active synapse should not be pruned immediately.")
 	}
 
-	// VERIFICATION 1.3: Time constant should be biologically realistic
-	// Time constant controls the width of the STDP learning window
-	if stdpConfig.TimeConstant <= 0 {
-		t.Error("Default STDP config should have positive time constant")
+	// Condition 3: Synapse is weak AND becomes inactive, should BE pruned.
+	time.Sleep(config.PruningConfig.InactivityThreshold * 2) // Wait for inactivity
+	if !synapse.ShouldPrune() {
+		t.Error("Weak and inactive synapse should be marked for pruning.")
 	}
-	if stdpConfig.TimeConstant < 5*time.Millisecond || stdpConfig.TimeConstant > 100*time.Millisecond {
-		t.Error("Default STDP time constant outside biological range (5-100ms)")
-	}
-
-	// VERIFICATION 1.4: Window size should encompass biologically relevant timing
-	// Window size determines the maximum timing difference for STDP effects
-	if stdpConfig.WindowSize <= stdpConfig.TimeConstant {
-		t.Error("STDP window size should be larger than time constant")
-	}
-
-	// VERIFICATION 1.5: Weight bounds should prevent pathological values
-	if stdpConfig.MinWeight < 0 {
-		t.Error("Minimum weight should be non-negative")
-	}
-	if stdpConfig.MaxWeight <= stdpConfig.MinWeight {
-		t.Error("Maximum weight should be greater than minimum weight")
-	}
-
-	// SECTION 2: Test default pruning configuration
-	// This configuration should enable structural plasticity with safe parameters
-	pruningConfig := CreateDefaultPruningConfig()
-
-	// VERIFICATION 2.1: Pruning should be enabled by default
-	// Structural plasticity is essential for network optimization
-	if !pruningConfig.Enabled {
-		t.Error("Default pruning config should be enabled for structural plasticity")
-	}
-
-	// VERIFICATION 2.2: Weight threshold should be reasonable
-	// Threshold determines when synapses are considered weak
-	if pruningConfig.WeightThreshold <= 0 {
-		t.Error("Default pruning config should have positive weight threshold")
-	}
-	if pruningConfig.WeightThreshold >= stdpConfig.MaxWeight {
-		t.Error("Pruning weight threshold should be less than maximum STDP weight")
-	}
-
-	// VERIFICATION 2.3: Inactivity threshold should provide grace period
-	// Synapses need time to demonstrate their usefulness before pruning
-	if pruningConfig.InactivityThreshold <= 0 {
-		t.Error("Default pruning config should have positive inactivity threshold")
-	}
-	if pruningConfig.InactivityThreshold < time.Minute {
-		t.Error("Inactivity threshold seems too short for biological realism")
-	}
-
-	// SECTION 3: Test conservative pruning configuration
-	// This configuration should be more protective of existing connections
-	conservativeConfig := CreateConservativePruningConfig()
-
-	// VERIFICATION 3.1: Conservative config should have lower weight threshold
-	// Lower threshold means synapses need to be weaker to be pruned
-	if conservativeConfig.WeightThreshold >= pruningConfig.WeightThreshold {
-		t.Error("Conservative config should have lower weight threshold than default")
-	}
-
-	// VERIFICATION 3.2: Conservative config should have longer inactivity threshold
-	// Longer threshold gives synapses more time to prove their usefulness
-	if conservativeConfig.InactivityThreshold <= pruningConfig.InactivityThreshold {
-		t.Error("Conservative config should have longer inactivity threshold than default")
-	}
-
-	// BIOLOGICAL SIGNIFICANCE:
-	// These configuration validations ensure:
-	// - Synapses behave within biologically realistic parameters
-	// - Learning dynamics are stable and convergent
-	// - Structural plasticity operates safely without over-pruning
-	// - Default values provide good starting points for most applications
-	// - Conservative options are available when network stability is critical
-
-	// RESEARCH IMPLICATIONS:
-	// Proper default configurations enable:
-	// - Reproducible experiments across different studies
-	// - Reasonable baseline behavior for comparative analyses
-	// - Reduced need for extensive parameter tuning
-	// - Biological realism in computational neuroscience models
 }
