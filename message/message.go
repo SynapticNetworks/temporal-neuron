@@ -13,45 +13,31 @@ import (
 // membrane potential (a postsynaptic potential, PSP). This SynapseMessage struct models
 // this PSP, carrying information about the signal's strength, origin, and timing.
 type SynapseMessage struct {
-	Value float64 // The numerical strength or amplitude of the signal.
-	// In biological terms, this relates to the magnitude of the postsynaptic potential (PSP).
-	// Positive values typically represent excitatory signals (EPSPs), negative for inhibitory (IPSPs).
+	// === SIGNAL PROPERTIES ===
+	Value           float64 `json:"value"`            // Processed signal strength (post-weight scaling)
+	OriginalValue   float64 `json:"original_value"`   // Original input signal strength
+	EffectiveWeight float64 `json:"effective_weight"` // Weight applied during transmission
 
-	OriginalValue float64 // The original, unmodified signal value from the presynaptic neuron.
-	// Useful for debugging and understanding the transformation across the synapse.
+	// === TIMING INFORMATION ===
+	Timestamp         time.Time     `json:"timestamp"`          // When signal was generated
+	TransmissionDelay time.Duration `json:"transmission_delay"` // Total delay applied
+	SynapticDelay     time.Duration `json:"synaptic_delay"`     // Synaptic processing component
+	SpatialDelay      time.Duration `json:"spatial_delay"`      // Spatial propagation component
 
-	EffectiveWeight float64 // The weight of the synapse that transmitted this message.
-	// This is the synaptic efficacy (strength) applied to the original signal.
+	// === IDENTIFICATION ===
+	SourceID  string `json:"source_id"`  // Pre-synaptic neuron ID
+	TargetID  string `json:"target_id"`  // Post-synaptic neuron ID
+	SynapseID string `json:"synapse_id"` // Transmitting synapse ID
 
-	Timestamp time.Time // The precise time at which the signal arrived at the postsynaptic neuron.
-	// Critical for spike-timing dependent plasticity (STDP) and temporal summation.
+	// === BIOLOGICAL METADATA ===
+	NeurotransmitterType LigandType `json:"neurotransmitter_type"` // Type of neurotransmitter released
+	VesicleReleased      bool       `json:"vesicle_released"`      // Whether vesicle release occurred
+	CalciumLevel         float64    `json:"calcium_level"`         // Calcium level during transmission
 
-	TransmissionDelay time.Duration // The total time taken for the signal to travel from presynaptic axon hillock to postsynaptic dendrite.
-	// This includes both the intrinsic synaptic delay and any spatial propagation delay across the extracellular matrix.
-
-	SynapticDelay time.Duration // The intrinsic delay within the synapse itself (e.g., neurotransmitter diffusion, receptor binding).
-	// This is part of the total TransmissionDelay.
-
-	SpatialDelay time.Duration // The delay caused by the physical distance and propagation speed in the extracellular matrix.
-	// This is the other part of the total TransmissionDelay.
-
-	SourceID string // The unique identifier of the presynaptic neuron that sent this message.
-	// Important for tracking input sources for activity-dependent plasticity and scaling.
-
-	TargetID string // The unique identifier of the postsynaptic neuron intended to receive this message.
-	// Ensures messages are routed to the correct destination.
-
-	SynapseID string // The unique identifier of the synapse through which this message was transmitted.
-	// Enables synapse-specific tracking and plasticity updates.
-
-	NeurotransmitterType LigandType // The type of neurotransmitter released (e.g., Glutamate, GABA).
-	// Influences how the postsynaptic neuron responds (excitatory vs. inhibitory).
-
-	VesicleReleased bool // Indicates if a vesicle was successfully released to transmit this message.
-	// Relevant for vesicle pool dynamics and probabilistic release models.
-
-	CalciumLevel float64 // The presynaptic calcium level at the time of transmission.
-	// Important for calcium-dependent plasticity rules.
+	// === PLASTICITY CONTEXT ===
+	PreSynapticSpike bool   `json:"presynaptic_spike"` // Whether this represents a pre-synaptic spike
+	PlasticityWindow bool   `json:"plasticity_window"` // Whether this is within STDP window
+	LearningContext  string `json:"learning_context"`  // Context for learning ("reward", "punishment", etc.)
 }
 
 // LigandType represents different types of neurotransmitters or ligands that can exist in the extracellular space.
