@@ -44,64 +44,79 @@ type SynapseMessage struct {
 // It uses an integer type for efficient storage and comparison.
 type LigandType int
 
-// Pre-defined constants for common neurotransmitter types.
 const (
-	LigandNone          LigandType = iota // Default/unspecified ligand type.
-	LigandGlutamate                       // Excitatory neurotransmitter.
-	LigandGABA                            // Inhibitory neurotransmitter.
-	LigandDopamine                        // Modulatory neurotransmitter.
-	LigandSerotonin                       // Modulatory neurotransmitter.
-	LigandAcetylcholine                   // Excitatory or inhibitory, depending on receptor.
+	// Fast synaptic neurotransmitters
+	LigandGlutamate LigandType = iota // Primary excitatory neurotransmitter
+	LigandGABA                        // Primary inhibitory neurotransmitter
+	LigandGlycine                     // Inhibitory neurotransmitter (spinal cord, brainstem)
+
+	// Slow neuromodulators
+	LigandDopamine       // Reward, motivation, motor control
+	LigandSerotonin      // Mood, arousal, behavioral state
+	LigandNorepinephrine // Attention, arousal, stress response
+	LigandAcetylcholine  // Attention, learning, autonomic function
+
+	// Neuropeptides and others
+	LigandEndorphin   // Pain modulation, reward
+	LigandOxytocin    // Social bonding, trust
+	LigandVasopressin // Social behavior, memory
 )
 
-// String returns the string representation of a LigandType.
-// This is useful for logging, debugging, and displaying information.
+// String returns human-readable name for ligand type
 func (lt LigandType) String() string {
 	switch lt {
 	case LigandGlutamate:
 		return "Glutamate"
 	case LigandGABA:
 		return "GABA"
+	case LigandGlycine:
+		return "Glycine"
 	case LigandDopamine:
 		return "Dopamine"
 	case LigandSerotonin:
 		return "Serotonin"
+	case LigandNorepinephrine:
+		return "Norepinephrine"
 	case LigandAcetylcholine:
 		return "Acetylcholine"
-	case LigandNone:
-		return "None"
+	case LigandEndorphin:
+		return "Endorphin"
+	case LigandOxytocin:
+		return "Oxytocin"
+	case LigandVasopressin:
+		return "Vasopressin"
 	default:
 		return "Unknown"
 	}
 }
 
-// SignalType represents different types of signals or events that can be propagated within the matrix.
-// This allows for a flexible communication system beyond just neurotransmitter release.
-type SignalType int
-
-// Pre-defined constants for common signal types.
-const (
-	SignalNone             SignalType = iota // Default/unspecified signal type.
-	SignalFired                              // Indicates a neuron has fired an action potential.
-	SignalPlasticityEvent                    // Indicates a synaptic plasticity event has occurred (e.g., STDP, scaling).
-	SignalChemicalGradient                   // Represents a change in a chemical gradient in the extracellular space.
-	SignalStructuralChange                   // Indicates a structural change (e.g., synapse growth/pruning, neuron death).
-)
-
-// String returns the string representation of a SignalType.
-func (st SignalType) String() string {
-	switch st {
-	case SignalFired:
-		return "Fired"
-	case SignalPlasticityEvent:
-		return "PlasticityEvent"
-	case SignalChemicalGradient:
-		return "ChemicalGradient"
-	case SignalStructuralChange:
-		return "StructuralChange"
-	case SignalNone:
-		return "None"
+// IsExcitatory returns true for excitatory neurotransmitters
+func (lt LigandType) IsExcitatory() bool {
+	switch lt {
+	case LigandGlutamate, LigandAcetylcholine:
+		return true
 	default:
-		return "Unknown"
+		return false
+	}
+}
+
+// IsInhibitory returns true for inhibitory neurotransmitters
+func (lt LigandType) IsInhibitory() bool {
+	switch lt {
+	case LigandGABA, LigandGlycine:
+		return true
+	default:
+		return false
+	}
+}
+
+// IsModulatory returns true for neuromodulators
+func (lt LigandType) IsModulatory() bool {
+	switch lt {
+	case LigandDopamine, LigandSerotonin, LigandNorepinephrine,
+		LigandEndorphin, LigandOxytocin, LigandVasopressin:
+		return true
+	default:
+		return false
 	}
 }
