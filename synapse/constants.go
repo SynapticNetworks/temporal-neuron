@@ -247,6 +247,22 @@ const (
 	// Functional significance: Ensures plasticity only for correlated inputs
 	COOPERATIVITY_THRESHOLD = 3
 
+	// === COOPERATIVITY ENHANCEMENT PARAMETERS ===
+	// These constants define how plasticity magnitude scales with increasing cooperative inputs.
+	// References: Sjöström et al. (2001)
+
+	// BIOLOGY_HIGH_COOPERATIVITY_ENHANCEMENT_FACTOR represents the maximum fold enhancement
+	// of plasticity due to high cooperative input levels, relative to threshold cooperativity.
+	// Biological basis: Enhanced NMDA receptor activation and calcium signaling with strong coincident input.
+	// Experimental range: 1.5-5x, depending on synapse type and preparation.
+	BIOLOGY_HIGH_COOPERATIVITY_ENHANCEMENT_FACTOR = 3.0
+
+	// BIOLOGY_COOPERATIVITY_HALF_SATURATION determines the cooperativity level at which
+	// half of the maximum enhancement is achieved.
+	// Biological basis: Sigmoidal or saturating response of plasticity mechanisms to input cooperativity.
+	// Functional significance: Introduces a non-linear gain for stronger coincident activity.
+	BIOLOGY_COOPERATIVITY_HALF_SATURATION = 7.0 // Inputs beyond threshold
+
 	// FREQUENCY_DEPENDENCE_THRESHOLD represents transition frequency
 	// Frequency above which plasticity rules change (LTD → LTP)
 	// Biological basis: Calcium concentration and signaling pathway switch
@@ -534,4 +550,47 @@ const (
 	// === PLASTICITY VALIDATION ===
 	BIOLOGICAL_MIN_LEARNING_RATE = 0.0001 // Detectable learning
 	BIOLOGICAL_MAX_LEARNING_RATE = 0.1    // Maximum stable learning rate
+)
+
+// =================================================================================
+// EXPERIMENTAL DATA CONSTANTS
+// =================================================================================
+
+// STDP timing window constants from Bi & Poo (1998)
+const (
+	// Timing window boundaries (milliseconds)
+	BIOLOGY_STDP_WINDOW_MS = 100.0 // ±100ms effective window
+
+	// Peak plasticity timing
+	BIOLOGY_LTP_PEAK_MS = 10.0 // Peak LTP at ~10ms pre-before-post
+	BIOLOGY_LTD_PEAK_MS = 10.0 // Peak LTD at ~10ms post-before-pre
+
+	// Magnitude ratios from experiments
+	BIOLOGY_LTP_LTD_RATIO     = 1.5 // LTP typically 1.5x stronger than LTD
+	BIOLOGY_MAX_WEIGHT_CHANGE = 0.6 // Max 60% weight change per pairing
+
+	// Time constants from experimental fits
+	BIOLOGY_LTP_TAU_MS = 16.8 // LTP decay time constant
+	BIOLOGY_LTD_TAU_MS = 33.7 // LTD decay time constant (slower)
+)
+
+// Cooperativity thresholds from Sjöström et al. (2001)
+const (
+	BIOLOGY_COOPERATIVITY_THRESHOLD  = 3  // Minimum 3 inputs for plasticity
+	BIOLOGY_HIGH_COOPERATIVITY       = 10 // Strong cooperativity effect
+	BIOLOGY_COOPERATIVITY_SATURATION = 20 // Saturation point
+)
+
+// Neuromodulator effects from literature
+const (
+	BIOLOGY_DOPAMINE_ENHANCEMENT = 2.5 // 2.5x plasticity enhancement
+	BIOLOGY_ACH_ATTENTION_GATE   = 1.8 // 1.8x with attention
+	BIOLOGY_STRESS_OPTIMAL_LEVEL = 1.3 // Optimal norepinephrine level
+)
+
+// Frequency dependence from Bear & Malenka (1988)
+const (
+	BIOLOGY_LTD_FREQUENCY_HZ   = 1.0   // 1Hz typically induces LTD
+	BIOLOGY_LTP_FREQUENCY_HZ   = 100.0 // 100Hz typically induces LTP
+	BIOLOGY_THETA_FREQUENCY_HZ = 5.0   // 5Hz theta rhythm
 )

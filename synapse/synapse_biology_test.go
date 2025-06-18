@@ -5,7 +5,7 @@ BIOLOGICAL SYNAPSE TESTS - REFACTORED
 
 OVERVIEW:
 This file contains tests that validate the biological realism of the refactored
-`EnhancedSynapse`. These tests ensure that the synaptic behavior matches what is
+`Synapse`. These tests ensure that the synaptic behavior matches what is
 observed in real biological neural networks.
 
 EXPERIMENTAL VALIDATION:
@@ -26,7 +26,7 @@ import (
 
 // setupBiologyTestSynapse is a helper for creating synapses with custom configs for biology tests.
 // IT NOW RETURNS THE MOCK NEURON so tests can inspect it.
-func setupBiologyTestSynapse(t *testing.T, stdpConfig STDPConfig, pruningConfig PruningConfig, initialWeight float64, delay time.Duration) (*EnhancedSynapse, *MockNeuron) {
+func setupBiologyTestSynapse(t *testing.T, stdpConfig STDPConfig, pruningConfig PruningConfig, initialWeight float64, delay time.Duration) (*Synapse, *MockNeuron) {
 	if delay < BIOLOGICAL_MIN_DELAY {
 		delay = BIOLOGICAL_MIN_DELAY
 	}
@@ -55,9 +55,9 @@ func setupBiologyTestSynapse(t *testing.T, stdpConfig STDPConfig, pruningConfig 
 		t.Fatalf("setupBiologyTestSynapse failed: %v", err)
 	}
 
-	synapse, ok := processor.(*EnhancedSynapse)
+	synapse, ok := processor.(*Synapse)
 	if !ok {
-		t.Fatalf("Created processor is not of type *EnhancedSynapse")
+		t.Fatalf("Created processor is not of type *Synapse")
 	}
 	// Return the synapse and the mock neuron.
 	return synapse, postNeuron
@@ -202,6 +202,8 @@ func TestTransmissionDelayAccuracy(t *testing.T) {
 	config := SynapseConfig{
 		SynapseID:         "delay-test",
 		SynapseType:       "excitatory_glutamatergic",
+		PresynapticID:     "neuron-pre",  // FIXED: Added required presynaptic ID
+		PostsynapticID:    "neuron-post", // FIXED: Added required postsynaptic ID
 		InitialWeight:     1.0,
 		BaseSynapticDelay: delay,
 		STDPConfig:        stdpConfig,
@@ -220,7 +222,7 @@ func TestTransmissionDelayAccuracy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateSynapse failed unexpectedly: %v", err)
 	}
-	synapse := processor.(*EnhancedSynapse)
+	synapse := processor.(*Synapse)
 
 	startTime := time.Now()
 	synapse.Transmit(1.0)

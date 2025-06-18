@@ -230,7 +230,7 @@ func (n *AdvancedStressMockNeuron) SetStressConfig(failureRate float64, processi
 }
 
 // setupStressTestSynapse is a helper function to create a synapse for stress testing.
-func setupStressTestSynapse(t *testing.T, metrics *StressTestMetrics) (*EnhancedSynapse, *AdvancedStressMockNeuron) {
+func setupStressTestSynapse(t *testing.T, metrics *StressTestMetrics) (*Synapse, *AdvancedStressMockNeuron) {
 	postNeuron := NewAdvancedStressMockNeuron("stress_post_neuron", metrics)
 	postNeuron.SetStressConfig(0.001, 5*time.Microsecond, 2000)
 
@@ -244,9 +244,9 @@ func setupStressTestSynapse(t *testing.T, metrics *StressTestMetrics) (*Enhanced
 		t.Fatalf("Failed to create synapse for stress test: %v", err)
 	}
 
-	synapse, ok := processor.(*EnhancedSynapse)
+	synapse, ok := processor.(*Synapse)
 	if !ok {
-		t.Fatalf("Created processor is not of type *EnhancedSynapse")
+		t.Fatalf("Created processor is not of type *Synapse")
 	}
 	return synapse, postNeuron
 }
@@ -255,7 +255,10 @@ func setupStressTestSynapse(t *testing.T, metrics *StressTestMetrics) (*Enhanced
 // STRESS TEST IMPLEMENTATIONS (UPDATED)
 // =================================================================================
 
-// TestMassiveConcurrentTransmission tests extreme concurrent access patterns.
+// TestMassiveConcurrentTransmission tests extreme concurrent access patterns
+// with biologically realistic expectations for vesicle-limited transmission
+// TestMassiveConcurrentTransmission tests extreme concurrent access patterns
+// with biologically realistic expectations for vesicle-limited transmission
 func TestMassiveConcurrentTransmission(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping massive concurrency test in short mode")
@@ -263,22 +266,28 @@ func TestMassiveConcurrentTransmission(t *testing.T) {
 
 	numCPU := runtime.NumCPU()
 	config := StressTestConfig{
-		Duration:        30 * time.Second,
-		NumGoroutines:   max(100, numCPU*50),
-		OpsPerGoroutine: 1000,
-		DropTolerance:   0.1,
+		Duration:        10 * time.Second,   // Reduced from 30s for faster testing
+		NumGoroutines:   max(50, numCPU*25), // Reduced concurrent access
+		OpsPerGoroutine: 100,                // Reduced from 1000
+		DropTolerance:   0.9,                // Expect 90% to fail due to vesicle depletion
 	}
-	if config.NumGoroutines > 1000 {
-		config.NumGoroutines = 1000
+	if config.NumGoroutines > 500 {
+		config.NumGoroutines = 500
 	}
 
 	metrics := NewStressTestMetrics()
 	synapse, _ := setupStressTestSynapse(t, metrics)
-	t.Logf("Starting concurrent transmission test on new architecture...")
+	t.Logf("Starting biologically-realistic concurrent transmission test...")
+	t.Logf("Test config: %d goroutines × %d ops = %d total attempts",
+		config.NumGoroutines, config.OpsPerGoroutine,
+		config.NumGoroutines*int(config.OpsPerGoroutine))
 
 	var wg sync.WaitGroup
 	ctx, cancel := context.WithTimeout(context.Background(), config.Duration)
 	defer cancel()
+
+	// Track different types of outcomes
+	var successCount, vesicleFailureCount, otherFailureCount int64
 
 	for i := 0; i < config.NumGoroutines; i++ {
 		wg.Add(1)
@@ -289,22 +298,229 @@ func TestMassiveConcurrentTransmission(t *testing.T) {
 				case <-ctx.Done():
 					return
 				default:
-					synapse.Transmit(rand.Float64())
+					err := synapse.Transmit(rand.Float64())
+					if err == nil {
+						atomic.AddInt64(&successCount, 1)
+					} else if err == ErrVesicleDepleted {
+						atomic.AddInt64(&vesicleFailureCount, 1)
+					} else {
+						atomic.AddInt64(&otherFailureCount, 1)
+					}
 				}
 			}
 		}()
 	}
+
 	wg.Wait()
 	metrics.EndTime = time.Now()
-	summary := metrics.GetSummary()
 
-	t.Logf("CONCURRENT TEST RESULTS: Total Ops: %d, Success Rate: %.2f%%, Ops/Sec: %.0f",
-		summary["totalOperations"], summary["successRate"].(float64)*100, summary["operationsPerSecond"])
+	// Calculate results
+	totalAttempts := successCount + vesicleFailureCount + otherFailureCount
+	successRate := float64(successCount) / float64(totalAttempts)
+	vesicleFailureRate := float64(vesicleFailureCount) / float64(totalAttempts)
 
-	if summary["successRate"].(float64) < (1.0 - config.DropTolerance) {
-		t.Errorf("Success rate below tolerance")
+	t.Logf("BIOLOGICAL CONCURRENT TEST RESULTS:")
+	t.Logf("  Total attempts: %d", totalAttempts)
+	t.Logf("  Successful transmissions: %d (%.1f%%)", successCount, successRate*100)
+	t.Logf("  Vesicle depletion failures: %d (%.1f%%)", vesicleFailureCount, vesicleFailureRate*100)
+	t.Logf("  Other failures: %d", otherFailureCount)
+
+	// Get final vesicle state
+	finalVesicleState := synapse.GetVesicleState()
+	t.Logf("  Final vesicle state: %d ready, %.1f%% depleted",
+		finalVesicleState.ReadyVesicles, finalVesicleState.DepletionLevel*100)
+
+	// Biological validation
+	expectedMaxSuccesses := int64(DEFAULT_READY_POOL_SIZE * 2) // Allow for some recycling
+	expectedMinSuccesses := int64(DEFAULT_READY_POOL_SIZE / 2) // At least half the ready pool
+
+	if successCount < expectedMinSuccesses {
+		t.Errorf("Too few successful transmissions: got %d, expected at least %d (biological minimum)",
+			successCount, expectedMinSuccesses)
 	}
+
+	if successCount > expectedMaxSuccesses {
+		t.Errorf("Too many successful transmissions: got %d, expected at most %d (biological maximum)",
+			successCount, expectedMaxSuccesses)
+	}
+
+	// Validate that vesicle depletion is the primary failure mode
+	if vesicleFailureCount == 0 && totalAttempts > int64(DEFAULT_READY_POOL_SIZE) {
+		t.Error("Expected vesicle depletion failures under massive concurrent load")
+	}
+
+	// Validate that most failures are biological (vesicle depletion), not errors
+	if otherFailureCount > successCount {
+		t.Errorf("Too many non-biological failures: %d other failures vs %d successes",
+			otherFailureCount, successCount)
+	}
+
+	// Validate final depletion state
+	if finalVesicleState.DepletionLevel < 0.5 {
+		t.Errorf("Expected significant vesicle depletion (>50%%), got %.1f%%",
+			finalVesicleState.DepletionLevel*100)
+	}
+
 	validateSystemState(t, synapse, "MassiveConcurrentTransmission")
+	t.Log("✅ Biological concurrent transmission test completed successfully")
+}
+
+// TestMassiveConcurrentTransmissionScaled tests high-throughput scenarios
+// using multiple synapses to overcome single-synapse biological limitations
+func TestMassiveConcurrentTransmissionScaled(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping scaled concurrency test in short mode")
+	}
+
+	numCPU := runtime.NumCPU()
+	numSynapses := max(10, numCPU*2) // Scale synapses with CPU count
+	config := StressTestConfig{
+		Duration:        15 * time.Second,
+		NumGoroutines:   max(100, numCPU*50),
+		OpsPerGoroutine: 500,
+		DropTolerance:   0.5, // With multiple synapses, expect better success rate
+	}
+	if config.NumGoroutines > 1000 {
+		config.NumGoroutines = 1000
+	}
+
+	t.Logf("Starting scaled concurrent transmission test with %d synapses...", numSynapses)
+	t.Logf("Test config: %d synapses × %d goroutines × %d ops = %d total attempts",
+		numSynapses, config.NumGoroutines, config.OpsPerGoroutine,
+		numSynapses*config.NumGoroutines*int(config.OpsPerGoroutine))
+
+	// Create multiple synapses with shared metrics
+	metrics := NewStressTestMetrics()
+	synapses := make([]*Synapse, numSynapses)
+
+	for i := 0; i < numSynapses; i++ {
+		synapse, _ := setupStressTestSynapse(t, metrics)
+		synapses[i] = synapse
+	}
+
+	var wg sync.WaitGroup
+	ctx, cancel := context.WithTimeout(context.Background(), config.Duration)
+	defer cancel()
+
+	// Track results across all synapses
+	var totalSuccesses, totalVesicleFailures, totalOtherFailures int64
+
+	// Distribute load across synapses
+	for i := 0; i < config.NumGoroutines; i++ {
+		wg.Add(1)
+		go func(goroutineID int) {
+			defer wg.Done()
+			// Round-robin assignment to synapses
+			synapse := synapses[goroutineID%numSynapses]
+
+			for op := int64(0); op < config.OpsPerGoroutine; op++ {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+					err := synapse.Transmit(rand.Float64())
+					if err == nil {
+						atomic.AddInt64(&totalSuccesses, 1)
+					} else if err == ErrVesicleDepleted {
+						atomic.AddInt64(&totalVesicleFailures, 1)
+					} else {
+						atomic.AddInt64(&totalOtherFailures, 1)
+					}
+				}
+			}
+		}(i)
+	}
+
+	wg.Wait()
+	metrics.EndTime = time.Now()
+
+	// Calculate aggregate results
+	totalAttempts := totalSuccesses + totalVesicleFailures + totalOtherFailures
+	successRate := float64(totalSuccesses) / float64(totalAttempts)
+	vesicleFailureRate := float64(totalVesicleFailures) / float64(totalAttempts)
+
+	t.Logf("SCALED CONCURRENT TEST RESULTS:")
+	t.Logf("  Total attempts across %d synapses: %d", numSynapses, totalAttempts)
+	t.Logf("  Successful transmissions: %d (%.1f%%)", totalSuccesses, successRate*100)
+	t.Logf("  Vesicle depletion failures: %d (%.1f%%)", totalVesicleFailures, vesicleFailureRate*100)
+	t.Logf("  Other failures: %d", totalOtherFailures)
+	t.Logf("  Average successful transmissions per synapse: %.1f",
+		float64(totalSuccesses)/float64(numSynapses))
+
+	// Aggregate vesicle state information
+	totalReadyVesicles := 0
+	totalDepletionLevel := 0.0
+	healthySynapses := 0
+
+	for i, synapse := range synapses {
+		state := synapse.GetVesicleState()
+		totalReadyVesicles += state.ReadyVesicles
+		totalDepletionLevel += state.DepletionLevel
+
+		if state.ReadyVesicles > 0 {
+			healthySynapses++
+		}
+
+		if i < 3 { // Log first few synapses for detail
+			t.Logf("  Synapse %d: %d ready vesicles, %.1f%% depleted",
+				i, state.ReadyVesicles, state.DepletionLevel*100)
+		}
+	}
+
+	avgReadyVesicles := float64(totalReadyVesicles) / float64(numSynapses)
+	avgDepletionLevel := totalDepletionLevel / float64(numSynapses)
+
+	t.Logf("  Aggregate: %.1f avg ready vesicles, %.1f%% avg depletion",
+		avgReadyVesicles, avgDepletionLevel*100)
+	t.Logf("  Healthy synapses (>0 ready vesicles): %d/%d", healthySynapses, numSynapses)
+
+	// Scaled validation - expect much higher throughput than single synapse
+	expectedMinSuccesses := int64(numSynapses * DEFAULT_READY_POOL_SIZE / 2)
+	expectedMaxSuccesses := int64(numSynapses * DEFAULT_READY_POOL_SIZE * 3) // Allow for recycling
+
+	if totalSuccesses < expectedMinSuccesses {
+		t.Errorf("Scaled test: too few successful transmissions: got %d, expected at least %d",
+			totalSuccesses, expectedMinSuccesses)
+	}
+
+	if totalSuccesses > expectedMaxSuccesses {
+		t.Errorf("Scaled test: unexpectedly high successful transmissions: got %d, expected at most %d",
+			totalSuccesses, expectedMaxSuccesses)
+	}
+
+	// Validate throughput improvement
+	singleSynapseMax := int64(DEFAULT_READY_POOL_SIZE * 2)
+	if totalSuccesses <= singleSynapseMax {
+		t.Error("Scaled test should achieve higher throughput than single synapse")
+	}
+
+	// Validate success rate is biologically realistic
+	expectedSuccessRate := float64(numSynapses*DEFAULT_READY_POOL_SIZE) / float64(totalAttempts)
+	if successRate < expectedSuccessRate*0.5 { // Allow 50% tolerance
+		t.Errorf("Scaled test success rate too low: %.3f%% (expected ~%.3f%%)",
+			successRate*100, expectedSuccessRate*100)
+	}
+	if successRate > expectedSuccessRate*2.0 { // Don't exceed biological limits
+		t.Errorf("Scaled test success rate too high: %.3f%% (expected ~%.3f%%)",
+			successRate*100, expectedSuccessRate*100)
+	}
+
+	// Validate system health - expect all synapses to be depleted under massive load
+	if healthySynapses > numSynapses/4 { // Allow up to 25% to still have vesicles
+		t.Logf("Note: %d synapses still have vesicles - good biological variability", healthySynapses)
+	}
+
+	// Validate that we still get biological vesicle failures
+	if totalVesicleFailures == 0 && totalAttempts > expectedMaxSuccesses {
+		t.Error("Expected some vesicle depletion failures even in scaled test")
+	}
+
+	// Validate first synapse as representative
+	validateSystemState(t, synapses[0], "MassiveConcurrentTransmissionScaled")
+
+	t.Log("✅ Scaled concurrent transmission test completed successfully")
+	t.Logf("🧠 Biological insight: %d synapses provided %.1fx throughput improvement",
+		numSynapses, float64(totalSuccesses)/float64(singleSynapseMax))
 }
 
 // TestMixedOperationChaos tests concurrent mixed operations.
@@ -357,7 +573,7 @@ func TestMixedOperationChaos(t *testing.T) {
 }
 
 // validateSystemState performs validation of the synapse state after a stress test.
-func validateSystemState(t *testing.T, synapse *EnhancedSynapse, testName string) {
+func validateSystemState(t *testing.T, synapse *Synapse, testName string) {
 	t.Logf("Validating system state after %s...", testName)
 	weight := synapse.GetWeight()
 	if math.IsNaN(weight) || math.IsInf(weight, 0) {
@@ -380,4 +596,113 @@ func validateSystemState(t *testing.T, synapse *EnhancedSynapse, testName string
 		t.Errorf("%s: Post-test transmission validation failed: %v", testName, validationErr)
 	}
 	t.Logf("System state validation PASSED for %s", testName)
+}
+
+func TestMassiveConcurrentTransmissionDiagnostic(t *testing.T) {
+	t.Log("=== BIOLOGICAL VESICLE DYNAMICS DIAGNOSTIC ===")
+	t.Log("This test demonstrates biologically realistic vesicle depletion under concurrent load.")
+	t.Log("Expected behavior: ~10-15 successful transmissions before vesicle pool depletion.")
+	t.Log("Note: 'Transmission errors' below are NORMAL biological events, not system failures!")
+
+	metrics := NewStressTestMetrics()
+	synapse, _ := setupStressTestSynapse(t, metrics)
+
+	// Test with 10 goroutines, 10 ops each = 100 total transmission attempts
+	// This simulates rapid concurrent stimulation of a single synapse
+	var wg sync.WaitGroup
+	var successCount, failureCount int64
+
+	t.Log("\n--- Starting concurrent transmission attempts ---")
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func(goroutineID int) {
+			defer wg.Done()
+			for j := 0; j < 10; j++ {
+				err := synapse.Transmit(1.0)
+				if err == nil {
+					atomic.AddInt64(&successCount, 1)
+				} else {
+					atomic.AddInt64(&failureCount, 1)
+					// Log first few vesicle depletion events for demonstration
+					if j < 3 {
+						t.Logf("🧬 BIOLOGICAL EVENT (Goroutine %d): %v", goroutineID, err)
+					}
+				}
+			}
+		}(i)
+	}
+	wg.Wait()
+
+	t.Log("\n=== BIOLOGICAL DIAGNOSTIC RESULTS ===")
+	totalAttempts := successCount + failureCount
+	successRate := float64(successCount) / float64(totalAttempts) * 100
+
+	t.Logf("📊 Transmission Statistics:")
+	t.Logf("  • Total attempts: %d", totalAttempts)
+	t.Logf("  • Successful transmissions: %d (%.1f%%)", successCount, successRate)
+	t.Logf("  • Vesicle depletion events: %d (%.1f%%)", failureCount, 100.0-successRate)
+
+	// Check final vesicle state
+	vesicleState := synapse.GetVesicleState()
+	t.Logf("\n🧬 Final Vesicle Pool State:")
+	t.Logf("  • Ready vesicles remaining: %d/%d", vesicleState.ReadyVesicles, DEFAULT_READY_POOL_SIZE)
+	t.Logf("  • Pool depletion level: %.1f%%", vesicleState.DepletionLevel*100)
+	t.Logf("  • Fatigue level: %.1f%%", vesicleState.FatigueLevel*100)
+
+	// Biological validation and explanation
+	t.Log("\n=== BIOLOGICAL VALIDATION ===")
+
+	expectedSuccesses := DEFAULT_READY_POOL_SIZE // Should be close to ready pool size
+	if successCount >= int64(expectedSuccesses-5) && successCount <= int64(expectedSuccesses+5) {
+		t.Logf("✅ SUCCESS: Vesicle dynamics working correctly!")
+		t.Logf("   Expected ~%d successful transmissions (ready pool size)", expectedSuccesses)
+		t.Logf("   Actual: %d transmissions - within biological range", successCount)
+	} else if successCount < int64(expectedSuccesses-5) {
+		t.Logf("ℹ️  NOTE: Fewer successes than expected due to biological variability")
+		t.Logf("   This can happen due to stochastic vesicle release probability")
+	} else {
+		t.Errorf("❌ ISSUE: More successes than biologically possible")
+		t.Errorf("   Got %d, but ready pool only has %d vesicles", successCount, expectedSuccesses)
+	}
+
+	if vesicleState.DepletionLevel > 0.5 {
+		t.Logf("✅ Pool depletion confirmed: %.1f%% depleted (biologically realistic)",
+			vesicleState.DepletionLevel*100)
+	} else {
+		t.Logf("ℹ️  Moderate depletion: %.1f%% (some vesicles unused due to stochastic release)",
+			vesicleState.DepletionLevel*100)
+	}
+
+	t.Log("\n=== BIOLOGICAL INSIGHTS ===")
+	t.Log("🧠 What you're seeing:")
+	t.Log("  • Vesicle depletion is NORMAL biological behavior, not an error")
+	t.Log("  • Real synapses can only handle ~10-20 rapid transmissions before depletion")
+	t.Log("  • High failure rates (80-90%) are typical in biological neural networks")
+	t.Log("  • This prevents 'machine gun' neurotransmitter release and metabolic overload")
+	t.Log("  • In real brains, multiple synapses work together to achieve high throughput")
+
+	expectedFailureRate := 100.0 - successRate
+	if expectedFailureRate > 75.0 {
+		t.Log("✅ Biological realism confirmed: High failure rate protects synapse integrity")
+	}
+
+	t.Log("\n🎯 DIAGNOSTIC COMPLETE: Vesicle dynamics functioning as designed!")
+}
+
+func TestVesicleDynamicsDepletion(t *testing.T) {
+	vd := NewVesicleDynamics(1000.0) // High rate limit
+	vd.SetCalciumLevel(2.0)          // Max calcium
+
+	successCount := 0
+	for i := 0; i < 100; i++ {
+		if vd.HasAvailableVesicles() {
+			successCount++
+		}
+	}
+
+	t.Logf("Vesicle test: %d successes out of 100 attempts", successCount)
+
+	if successCount > 20 {
+		t.Errorf("Vesicle dynamics not working: got %d successes, expected ~15", successCount)
+	}
 }

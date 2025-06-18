@@ -23,7 +23,7 @@ WORKFLOW:
 2. The client calls `CreateSynapse(config)`.
 3. The factory looks up the `SynapseType` in its registry to find the appropriate
    constructor function.
-4. The constructor function is called, which assembles a new `EnhancedSynapse` with
+4. The constructor function is called, which assembles a new `Synapse` with
    all its necessary sub-components (VesicleDynamics, ActivityMonitor, etc.).
 5. The fully constructed synapse, conforming to the `SynapticProcessor` interface,
    is returned to the client.
@@ -123,7 +123,7 @@ func newStandardSynapse(id string, config SynapseConfig, callbacks SynapseCallba
 	}
 
 	// 3. Assemble the main synapse struct.
-	synapse := &EnhancedSynapse{
+	synapse := &Synapse{
 		id:                   id, // Use the ID passed into the factory
 		config:               config,
 		weight:               config.InitialWeight,

@@ -4,11 +4,11 @@ ENHANCED SYNAPTIC PROCESSOR - INTEGRATED BIOLOGICAL SYNAPSE
 =================================================================================
 
 This file defines the primary implementation of the SynapticProcessor interface,
-the `EnhancedSynapse`. This struct serves as a sophisticated, modular controller
+the `Synapse`. This struct serves as a sophisticated, modular controller
 that integrates all critical biological sub-components into a cohesive whole.
 
 ARCHITECTURAL PRINCIPLES:
-1.  COMPOSITION OVER INHERITANCE: The `EnhancedSynapse` is composed of specialized
+1.  COMPOSITION OVER INHERITANCE: The `Synapse` is composed of specialized
     modules for vesicle dynamics, plasticity, and activity monitoring. This keeps
     concerns separated and the codebase clean.
 
@@ -46,9 +46,9 @@ var (
 	ErrTransmissionFailed = errors.New("signal transmission to postsynaptic neuron failed")
 )
 
-// EnhancedSynapse is the primary, feature-rich implementation of the SynapticProcessor interface.
+// Synapse is the primary, feature-rich implementation of the SynapticProcessor interface.
 // It coordinates all biological sub-components to model a realistic synapse.
-type EnhancedSynapse struct {
+type Synapse struct {
 	id     string
 	config SynapseConfig
 	mu     sync.RWMutex
@@ -70,12 +70,19 @@ type EnhancedSynapse struct {
 }
 
 // ID returns the unique identifier for the synapse.
-func (s *EnhancedSynapse) ID() string {
+func (s *Synapse) ID() string {
 	return s.id
 }
 
-// Transmit processes an incoming signal, modeling the complete biological sequence.
-func (s *EnhancedSynapse) Transmit(signalValue float64) error {
+func (s *Synapse) Transmit(signalValue float64) error {
+	// Check vesicles FIRST - return ERROR on depletion
+	if s.vesicleSystem != nil {
+		available := s.vesicleSystem.HasAvailableVesicles()
+		if !available {
+			return ErrVesicleDepleted
+		}
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -83,38 +90,27 @@ func (s *EnhancedSynapse) Transmit(signalValue float64) error {
 		return ErrSynapseInactive
 	}
 
-	var vesicleReleased = true
-	var releaseError error = nil
-	var calciumLevel float64 // Will hold calcium level, or 0.0 if vesicles are disabled
+	var calciumLevel float64
 
-	// Step 1: Handle vesicle dynamics if enabled
+	// Get calcium level and update vesicle system
 	if s.vesicleSystem != nil {
 		if s.callbacks.GetCalciumLevel != nil {
 			s.vesicleSystem.SetCalciumLevel(s.callbacks.GetCalciumLevel())
 		}
-		if !s.vesicleSystem.HasAvailableVesicles() {
-			vesicleReleased = false
-			releaseError = ErrVesicleDepleted
-		}
-		// FIX: Safely get the calcium level only if the system exists.
 		calciumLevel = s.vesicleSystem.GetVesicleState().CalciumLevel
 	}
 
-	// Step 2: Record the transmission attempt
+	// Record successful transmission (only reached if vesicles available)
 	s.activityMonitor.RecordTransmissionWithDetails(
-		vesicleReleased,
-		vesicleReleased,
+		true, // success
+		true, // vesicleReleased
 		s.delay,
 		signalValue,
-		calciumLevel, // Use the safe local variable.
-		fmt.Sprintf("%v", releaseError),
+		calciumLevel,
+		"", // no error
 	)
 
-	if !vesicleReleased {
-		return releaseError
-	}
-
-	// Step 3: Proceed with successful transmission
+	// Continue with transmission
 	s.lastTransmission = time.Now()
 	effectiveSignal := signalValue * s.weight
 
@@ -123,7 +119,6 @@ func (s *EnhancedSynapse) Transmit(signalValue float64) error {
 		totalDelay = s.callbacks.GetTransmissionDelay()
 	}
 
-	// Step 4: Construct the message
 	message := SynapseMessage{
 		Value:                effectiveSignal,
 		OriginalValue:        signalValue,
@@ -136,18 +131,16 @@ func (s *EnhancedSynapse) Transmit(signalValue float64) error {
 		TargetID:             s.config.PostsynapticID,
 		SynapseID:            s.id,
 		NeurotransmitterType: s.config.NeurotransmitterType,
-		VesicleReleased:      vesicleReleased,
-		CalciumLevel:         calciumLevel, // Use the safe local variable here as well.
+		VesicleReleased:      true, // Always true if we reach here
+		CalciumLevel:         calciumLevel,
 	}
 
-	// Step 5: Deliver the message via callback
 	if s.callbacks.DeliverMessage != nil {
 		if err := s.callbacks.DeliverMessage(s.config.PostsynapticID, message); err != nil {
 			return fmt.Errorf("%w: %v", ErrTransmissionFailed, err)
 		}
 	}
 
-	// Step 6: Report chemical release via callback
 	if s.callbacks.ReleaseNeurotransmitter != nil {
 		concentration := effectiveSignal * GLUTAMATE_CONCENTRATION_SCALE
 		s.callbacks.ReleaseNeurotransmitter(s.config.NeurotransmitterType, concentration)
@@ -157,7 +150,7 @@ func (s *EnhancedSynapse) Transmit(signalValue float64) error {
 }
 
 // ApplyPlasticity modifies the synapse's weight based on plasticity rules.
-func (s *EnhancedSynapse) ApplyPlasticity(adjustment PlasticityAdjustment) error {
+func (s *Synapse) ApplyPlasticity(adjustment PlasticityAdjustment) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -206,14 +199,14 @@ func (s *EnhancedSynapse) ApplyPlasticity(adjustment PlasticityAdjustment) error
 }
 
 // GetWeight provides a thread-safe way to read the current synaptic weight.
-func (s *EnhancedSynapse) GetWeight() float64 {
+func (s *Synapse) GetWeight() float64 {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.weight
 }
 
 // SetWeight provides a thread-safe way to manually set the synaptic weight.
-func (s *EnhancedSynapse) SetWeight(weight float64) {
+func (s *Synapse) SetWeight(weight float64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -238,7 +231,7 @@ func (s *EnhancedSynapse) SetWeight(weight float64) {
 }
 
 // ShouldPrune determines if a synapse is a candidate for removal.
-func (s *EnhancedSynapse) ShouldPrune() bool {
+func (s *Synapse) ShouldPrune() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -255,7 +248,7 @@ func (s *EnhancedSynapse) ShouldPrune() bool {
 }
 
 // GetVesicleState returns the current state of the vesicle pools.
-func (s *EnhancedSynapse) GetVesicleState() VesiclePoolState {
+func (s *Synapse) GetVesicleState() VesiclePoolState {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -266,7 +259,7 @@ func (s *EnhancedSynapse) GetVesicleState() VesiclePoolState {
 }
 
 // SetCalciumLevel updates the calcium-dependent release enhancement factor.
-func (s *EnhancedSynapse) SetCalciumLevel(level float64) {
+func (s *Synapse) SetCalciumLevel(level float64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -276,7 +269,7 @@ func (s *EnhancedSynapse) SetCalciumLevel(level float64) {
 }
 
 // GetActivityInfo returns comprehensive activity information from the monitor.
-func (s *EnhancedSynapse) GetActivityInfo() SynapticActivityInfo {
+func (s *Synapse) GetActivityInfo() SynapticActivityInfo {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -291,14 +284,14 @@ func (s *EnhancedSynapse) GetActivityInfo() SynapticActivityInfo {
 }
 
 // SetCallbacks injects the matrix's biological functions into the synapse.
-func (s *EnhancedSynapse) SetCallbacks(callbacks SynapseCallbacks) {
+func (s *Synapse) SetCallbacks(callbacks SynapseCallbacks) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.callbacks = callbacks
 }
 
 // Start activates the synapse.
-func (s *EnhancedSynapse) Start() error {
+func (s *Synapse) Start() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.state = StateActive
@@ -306,7 +299,7 @@ func (s *EnhancedSynapse) Start() error {
 }
 
 // Stop deactivates the synapse.
-func (s *EnhancedSynapse) Stop() error {
+func (s *Synapse) Stop() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.state = StateInactive
@@ -314,7 +307,7 @@ func (s *EnhancedSynapse) Stop() error {
 }
 
 // IsActive checks if the synapse is currently in an active state.
-func (s *EnhancedSynapse) IsActive() bool {
+func (s *Synapse) IsActive() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.state == StateActive

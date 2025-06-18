@@ -284,59 +284,132 @@ func (pc *PlasticityCalculator) CalculateSTDPWeightChange(deltaT time.Duration, 
 		return 0.0
 	}
 
-	// Convert timing to milliseconds for calculation
+	// === ROBUST INPUT VALIDATION ===
+
+	// Validate and sanitize currentWeight
+	currentWeight = validateFloat64(currentWeight, 0.5) // Default to mid-range weight
+	currentWeight = clampFloat64(currentWeight, pc.config.MinWeight, pc.config.MaxWeight)
+
+	// Validate cooperativeInputs
+	cooperativeInputs = validateCooperativity(cooperativeInputs)
+
+	// Validate deltaT - convert to milliseconds and check for extreme values
 	deltaTMs := deltaT.Seconds() * 1000.0
+	if math.IsNaN(deltaTMs) || math.IsInf(deltaTMs, 0) {
+		return 0.0 // Invalid timing difference
+	}
+
+	// Clamp deltaT to reasonable biological bounds (±10 seconds max)
+	const maxDeltaTMs = 10000.0 // 10 seconds in milliseconds
+	if math.Abs(deltaTMs) > maxDeltaTMs {
+		return 0.0 // Timing difference too large to be biologically relevant
+	}
+
 	windowMs := pc.config.WindowSize.Seconds() * 1000.0
+	if math.IsNaN(windowMs) || math.IsInf(windowMs, 0) || windowMs <= 0 {
+		return 0.0 // Invalid window size
+	}
 
 	// Check if timing is within plasticity window
 	if math.Abs(deltaTMs) >= windowMs {
 		return 0.0 // No plasticity outside window
 	}
 
-	// Check cooperativity requirement
-	if cooperativeInputs < COOPERATIVITY_THRESHOLD {
+	// Check cooperativity requirement with validated input
+	cooperativityThreshold := pc.config.CooperativityThreshold
+	if cooperativityThreshold < 0 {
+		cooperativityThreshold = 1 // Fallback to minimum requirement
+	}
+	if cooperativeInputs < cooperativityThreshold {
 		return 0.0 // Insufficient cooperative inputs
 	}
 
-	// Get time constant in milliseconds
+	// Validate time constant
 	tauMs := pc.config.TimeConstant.Seconds() * 1000.0
-	if tauMs <= 0 {
-		return 0.0 // Invalid time constant
+	if math.IsNaN(tauMs) || math.IsInf(tauMs, 0) || tauMs <= 0 {
+		tauMs = 20.0 // Fallback to 20ms time constant
 	}
 
-	// Calculate base STDP change
+	// === CALCULATE BASE STDP CHANGE WITH VALIDATION ===
+
 	var baseChange float64
 
-	if math.Abs(deltaTMs) < STDP_SIMULTANEOUS_THRESHOLD.Seconds()*1000.0 {
+	// Validate learning rate
+	learningRate := validateFloat64(pc.config.LearningRate, 0.01) // Default 1% learning rate
+	learningRate = clampFloat64(learningRate, 0.0001, 0.1)        // Reasonable biological bounds
+
+	if math.Abs(deltaTMs) < 1.0 { // Within 1ms = simultaneous
 		// Simultaneous spikes - small LTP
-		baseChange = pc.config.LearningRate * 0.1
+		baseChange = learningRate * 0.1
 
 	} else if deltaTMs < 0 {
 		// CAUSAL: Pre before post → LTP (strengthening)
-		baseChange = pc.config.LearningRate * math.Exp(deltaTMs/tauMs)
+		expArg := deltaTMs / tauMs
+		if expArg < -10.0 { // Prevent underflow
+			baseChange = 0.0
+		} else {
+			baseChange = learningRate * math.Exp(expArg)
+		}
 
 	} else {
 		// ANTI-CAUSAL: Pre after post → LTD (weakening)
-		baseChange = -pc.config.LearningRate * pc.config.AsymmetryRatio * math.Exp(-deltaTMs/tauMs)
+		asymmetryRatio := validateFloat64(pc.config.AsymmetryRatio, 1.2)
+		asymmetryRatio = clampFloat64(asymmetryRatio, 0.1, 10.0) // Reasonable bounds
+
+		expArg := -deltaTMs / tauMs
+		if expArg < -10.0 { // Prevent underflow
+			baseChange = 0.0
+		} else {
+			baseChange = -learningRate * asymmetryRatio * math.Exp(expArg)
+		}
 	}
 
-	// Apply weight-dependent scaling (weak synapses change more)
-	weightFactor := pc.calculateWeightDependence(currentWeight)
+	// Validate base change
+	baseChange = validateFloat64(baseChange, 0.0)
+
+	// === APPLY COOPERATIVITY-DEPENDENT SCALING ===
+	// Plasticity strength can increase with higher numbers of cooperative inputs
+	// beyond the minimum threshold, up to a saturation point.
+	cooperativityScaling := 1.0
+	if pc.config.CooperativityThreshold > 0 && cooperativeInputs > pc.config.CooperativityThreshold {
+		// Calculate the effective number of cooperative inputs above threshold
+		effectiveCoopInputs := float64(cooperativeInputs - pc.config.CooperativityThreshold)
+
+		// Apply a saturating non-linearity (e.g., Hill-like function) for enhancement
+		// This models how additional inputs provide diminishing returns for plasticity enhancement.
+		saturationFactor := effectiveCoopInputs / (effectiveCoopInputs + BIOLOGY_COOPERATIVITY_HALF_SATURATION)
+
+		// Scale the enhancement based on the configured maximum factor
+		cooperativityScaling = 1.0 + saturationFactor*(BIOLOGY_HIGH_COOPERATIVITY_ENHANCEMENT_FACTOR-1.0)
+	}
+	baseChange *= cooperativityScaling
+
+	// === APPLY MODULATION FACTORS WITH VALIDATION ===
+
+	// Apply weight-dependent scaling with validation
+	weightFactor := pc.calculateWeightDependenceRobust(currentWeight)
 	baseChange *= weightFactor
 
-	// Apply neuromodulator influences
-	neuromodulatorFactor := pc.calculateNeuromodulatorInfluence()
+	// Apply neuromodulator influences with validation
+	neuromodulatorFactor := pc.calculateNeuromodulatorInfluenceRobust()
 	baseChange *= neuromodulatorFactor
 
-	// Apply developmental factors
-	developmentalFactor := pc.calculateDevelopmentalFactor()
+	// Apply developmental factors with validation
+	developmentalFactor := pc.calculateDevelopmentalFactorRobust()
 	baseChange *= developmentalFactor
 
-	// Apply metaplasticity (sliding threshold)
-	metaplasticityFactor := pc.calculateMetaplasticityFactor(currentWeight)
+	// Apply metaplasticity with validation
+	metaplasticityFactor := pc.calculateMetaplasticityFactorRobust(currentWeight)
 	baseChange *= metaplasticityFactor
 
-	// Update statistics
+	// Final validation and bounds checking
+	baseChange = validateFloat64(baseChange, 0.0)
+
+	// Ensure change doesn't exceed reasonable biological bounds
+	maxChange := learningRate * 2.0 // Maximum 2x learning rate
+	baseChange = clampFloat64(baseChange, -maxChange, maxChange)
+
+	// Update statistics with validated change
 	pc.updatePlasticityStatistics(baseChange)
 
 	return baseChange
@@ -908,4 +981,285 @@ func ValidateSTDPParameters(config STDPConfig) []string {
 	}
 
 	return warnings
+}
+
+// =================================================================================
+// ROBUST HELPER CALCULATION METHODS
+// =================================================================================
+
+// calculateWeightDependenceRobust implements weight-dependent plasticity scaling with validation
+func (pc *PlasticityCalculator) calculateWeightDependenceRobust(currentWeight float64) float64 {
+	// Validate weight bounds
+	minWeight := validateFloat64(pc.config.MinWeight, 0.0)
+	maxWeight := validateFloat64(pc.config.MaxWeight, 2.0)
+
+	// Ensure min < max
+	if minWeight >= maxWeight {
+		minWeight = 0.0
+		maxWeight = 2.0
+	}
+
+	// Validate current weight
+	currentWeight = clampFloat64(currentWeight, minWeight, maxWeight)
+
+	// Normalize weight to [0,1] range
+	weightRange := maxWeight - minWeight
+	if weightRange <= 0 {
+		return 1.0 // Fallback if invalid range
+	}
+
+	normalizedWeight := (currentWeight - minWeight) / weightRange
+	normalizedWeight = clampFloat64(normalizedWeight, 0.0, 1.0)
+
+	// Weak synapses (low weight) have higher plasticity
+	// Strong synapses (high weight) have lower plasticity
+	weightFactor := 2.0 - normalizedWeight // Range: [1.0, 2.0]
+
+	return validateFloat64(weightFactor, 1.0)
+}
+
+// calculateNeuromodulatorInfluenceRobust combines effects of multiple neuromodulators with validation
+func (pc *PlasticityCalculator) calculateNeuromodulatorInfluenceRobust() float64 {
+	influence := 1.0 // Baseline (no modulation)
+
+	// Validate and clamp neuromodulator levels
+	dopamine := clampFloat64(pc.dopamineLevel, 0.0, 5.0)
+	acetylcholine := clampFloat64(pc.acetylcholineLevel, 0.0, 3.0)
+	norepinephrine := clampFloat64(pc.norepinephrineLevel, 0.0, 3.0)
+
+	// Dopamine enhances learning (especially LTP)
+	if dopamine > 1.0 {
+		dopamineMultiplier := clampFloat64(DOPAMINE_LEARNING_MULTIPLIER, 1.0, 5.0)
+		dopamineEffect := 1.0 + (dopamine-1.0)*(dopamineMultiplier-1.0)
+		dopamineEffect = clampFloat64(dopamineEffect, 0.5, 5.0)
+		influence *= dopamineEffect
+	}
+
+	// Acetylcholine enhances attention-gated learning
+	if acetylcholine > 1.0 {
+		acetylfecholineMultiplier := clampFloat64(ACETYLCHOLINE_ATTENTION_MULTIPLIER, 1.0, 3.0)
+		acetylfecholineEffect := 1.0 + (acetylcholine-1.0)*(acetylfecholineMultiplier-1.0)
+		acetylfecholineEffect = clampFloat64(acetylfecholineEffect, 0.5, 3.0)
+		influence *= acetylfecholineEffect
+	}
+
+	// Norepinephrine has complex effects (inverted U-curve)
+	if norepinephrine != 1.0 {
+		// Optimal at moderate levels, reduced at very high or low levels
+		optimal := 1.5 // Optimal norepinephrine level
+		deviation := math.Abs(norepinephrine-optimal) / optimal
+
+		norepinephrineMultiplier := clampFloat64(NOREPINEPHRINE_STRESS_MULTIPLIER, 0.5, 3.0)
+		norepinephrineEffect := norepinephrineMultiplier * (1.0 - 0.5*deviation)
+		norepinephrineEffect = clampFloat64(norepinephrineEffect, 0.2, 3.0)
+		influence *= norepinephrineEffect
+	}
+
+	return validateFloat64(influence, 1.0)
+}
+
+// calculateDevelopmentalFactorRobust adjusts plasticity based on age/development with validation
+func (pc *PlasticityCalculator) calculateDevelopmentalFactorRobust() float64 {
+	stage := clampFloat64(pc.developmentalStage, 0.0, 10.0) // Reasonable age range
+
+	if stage < 0.5 {
+		// Juvenile: Enhanced plasticity
+		multiplier := clampFloat64(CRITICAL_PERIOD_MULTIPLIER, 1.0, 5.0)
+		return multiplier
+	} else if stage <= 1.0 {
+		// Adult: Normal plasticity
+		return 1.0
+	} else {
+		// Aged: Reduced plasticity
+		reduction := clampFloat64(AGING_PLASTICITY_REDUCTION, 0.1, 1.0)
+		agingFactor := clampFloat64(1.0/stage, 0.1, 1.0)
+		factor := reduction * agingFactor
+		return clampFloat64(factor, 0.1, 1.0)
+	}
+}
+
+// calculateMetaplasticityFactorRobust implements sliding threshold metaplasticity with validation
+func (pc *PlasticityCalculator) calculateMetaplasticityFactorRobust(currentWeight float64) float64 {
+	// Validate activity history
+	if len(pc.activityHistory) < 10 {
+		return 1.0 // Not enough history for metaplasticity
+	}
+
+	// Calculate average recent activity with validation
+	var recentActivity float64
+	validCount := 0
+	for _, activity := range pc.activityHistory {
+		if !math.IsNaN(activity) && !math.IsInf(activity, 0) {
+			recentActivity += clampFloat64(activity, 0.0, 10.0) // Clamp activity for robustness
+			validCount++
+		}
+	}
+
+	if validCount == 0 {
+		return 1.0 // No valid activity data
+	}
+
+	recentActivity /= float64(validCount)
+
+	// Validate metaplasticity rate
+	metaplasticityRate := clampFloat64(pc.config.MetaplasticityRate, 0.0, 1.0) // Clamp rate for robustness
+
+	// Threshold slides with activity (BCM rule)
+	// If recentActivity > 1.0, thresholdShift is positive, threshold increases.
+	// If recentActivity < 1.0, thresholdShift is negative, threshold decreases.
+	thresholdShift := (recentActivity - 1.0) * metaplasticityRate //
+	adjustedThreshold := pc.plasticityThreshold + thresholdShift  //
+	adjustedThreshold = clampFloat64(adjustedThreshold, 0.1, 3.0) // Clamp threshold for robustness
+
+	// Determine metaplasticity factor based on adjustedThreshold relative to a baseline (e.g., 1.0)
+	// Higher adjustedThreshold (due to high activity) should reduce plasticity.
+	// Lower adjustedThreshold (due to low activity) should enhance plasticity.
+	// This factor will directly scale the magnitude of plasticity.
+
+	// Example: A simple linear scaling based on how far the threshold has moved from 1.0
+	// If adjustedThreshold is 0.8 (low activity), (1.0/0.8) = 1.25 -> enhances plasticity.
+	// If adjustedThreshold is 1.2 (high activity), (1.0/1.2) = 0.83 -> reduces plasticity.
+	// This directly affects the magnitude of *all* plasticity, which is more aligned with the metaplasticity test setup.
+
+	var factor float64
+	if adjustedThreshold > 0 { // Avoid division by zero
+		factor = pc.plasticityThreshold / adjustedThreshold // Use the current plasticityThreshold from the object as baseline for ratio
+		// Note: Using pc.plasticityThreshold as the numerator ensures that the factor is relative to where the threshold *started*
+		// However, it's better to use a fixed baseline like 1.0 (the default initial threshold) for consistent scaling.
+
+		// Let's use a simpler, direct mapping based on the shifted threshold
+		// We want factor > 1 if adjustedThreshold < 1 (enhancement)
+		// We want factor < 1 if adjustedThreshold > 1 (reduction)
+		// A simple inverse relationship or clamped linear scaling around 1.0
+
+		// If threshold < 1.0, plasticity is enhanced. Max enhancement at min threshold.
+		// If threshold > 1.0, plasticity is reduced. Min factor at max threshold.
+
+		// A simpler way:
+		// If target threshold is 'high' (e.g., 1.11), we want factor < 1.0
+		// If target threshold is 'low' (e.g., 0.89), we want factor > 1.0
+		// Let's use a linear scaling from 0.5 to 1.5, mapped from threshold 0.5 to 1.5
+
+		// Map threshold (0.1 to 3.0) to factor (0.5 to 1.5)
+		// Assuming 1.0 threshold gives 1.0 factor
+		// Example: Threshold = 0.5 -> Factor = 1.5 (enhancement)
+		// Example: Threshold = 1.5 -> Factor = 0.5 (reduction)
+
+		// The relationship can be: factor = 1.0 + K * (1.0 - adjustedThreshold)
+		// If adjustedThreshold = 0.89, factor = 1.0 + K * 0.11 (enhancement)
+		// If adjustedThreshold = 1.11, factor = 1.0 + K * -0.11 (reduction)
+
+		const sensitivity = 0.8                            // How strongly the factor changes with threshold shift
+		factor = 1.0 + sensitivity*(1.0-adjustedThreshold) // 1.0 is the baseline threshold
+
+		// Clamp the final factor to reasonable bounds
+		factor = clampFloat64(factor, 0.5, 1.5) // Example bounds for metaplasticity factor
+	} else {
+		factor = 1.0 // Fallback if adjustedThreshold is somehow non-positive
+	}
+
+	return clampFloat64(factor, 0.1, 3.0) // Clamp overall factor for robustness
+}
+
+// =================================================================================
+// ROBUST NEUROMODULATOR MANAGEMENT
+// =================================================================================
+
+// SetNeuromodulatorLevelsRobust updates neuromodulator concentrations with validation
+func (pc *PlasticityCalculator) SetNeuromodulatorLevelsRobust(dopamine, acetylcholine, norepinephrine float64) {
+	// Validate and clamp to reasonable biological ranges
+	pc.dopamineLevel = clampFloat64(dopamine, 0.0, 5.0)
+	pc.acetylcholineLevel = clampFloat64(acetylcholine, 0.0, 3.0)
+	pc.norepinephrineLevel = clampFloat64(norepinephrine, 0.0, 3.0)
+}
+
+// SetDevelopmentalStageRobust sets the developmental stage with validation
+func (pc *PlasticityCalculator) SetDevelopmentalStageRobust(stage float64) {
+	// Validate and clamp to reasonable range
+	pc.developmentalStage = clampFloat64(stage, 0.0, 10.0)
+}
+
+// UpdateActivityHistoryRobust adds recent activity level with validation
+func (pc *PlasticityCalculator) UpdateActivityHistoryRobust(activityLevel float64) {
+	// Validate activity level
+	activityLevel = clampFloat64(activityLevel, 0.0, 10.0)
+
+	pc.activityHistory = append(pc.activityHistory, activityLevel)
+
+	// Keep only recent history for metaplasticity calculation
+	maxHistory := 100 // Last 100 activity measurements
+	if len(pc.activityHistory) > maxHistory {
+		pc.activityHistory = pc.activityHistory[len(pc.activityHistory)-maxHistory:]
+	}
+
+	// Update metaplasticity threshold based on activity history
+	pc.updateMetaplasticityThresholdRobust()
+}
+
+// updateMetaplasticityThresholdRobust adjusts the plasticity threshold with validation
+func (pc *PlasticityCalculator) updateMetaplasticityThresholdRobust() {
+	if len(pc.activityHistory) < 5 {
+		return
+	}
+
+	// Calculate trend in recent activity with validation
+	recent := pc.activityHistory[len(pc.activityHistory)-5:]
+	var trend float64
+	validTrendCount := 0
+
+	for i := 1; i < len(recent); i++ {
+		diff := recent[i] - recent[i-1]
+		if !math.IsNaN(diff) && !math.IsInf(diff, 0) {
+			trend += diff
+			validTrendCount++
+		}
+	}
+
+	if validTrendCount > 0 {
+		trend /= float64(validTrendCount)
+
+		// Validate metaplasticity rate
+		metaplasticityRate := clampFloat64(METAPLASTICITY_RATE, 0.0, 1.0)
+
+		// Adjust threshold based on activity trend
+		// Removed the extra 0.1 scaling to make the threshold shift more pronounced.
+		thresholdChange := trend * metaplasticityRate
+		thresholdChange = clampFloat64(thresholdChange, -0.5, 0.5) // Limit change magnitude
+
+		pc.plasticityThreshold += thresholdChange
+		pc.plasticityThreshold = clampFloat64(pc.plasticityThreshold, 0.1, 5.0)
+	}
+}
+
+// =================================================================================
+// ADDITIONAL ROBUST METHODS
+// =================================================================================
+
+// ResetRobust clears all plasticity history and resets to validated initial state
+func (pc *PlasticityCalculator) ResetRobust() {
+	pc.preSpikes = make([]time.Time, 0)
+	pc.postSpikes = make([]time.Time, 0)
+	pc.activityHistory = make([]float64, 0)
+	pc.plasticityThreshold = 1.0
+	pc.totalEvents = 0
+	pc.averageChange = 0.0
+	pc.lastUpdate = time.Now()
+
+	// Reset neuromodulator levels to baseline
+	pc.dopamineLevel = 1.0
+	pc.acetylcholineLevel = 1.0
+	pc.norepinephrineLevel = 1.0
+	pc.developmentalStage = 1.0
+}
+
+// GetStatisticsRobust returns current plasticity calculator statistics with validation
+func (pc *PlasticityCalculator) GetStatisticsRobust() PlasticityStats {
+	return PlasticityStats{
+		TotalEvents:    pc.totalEvents,
+		AverageChange:  validateFloat64(pc.averageChange, 0.0),
+		LastUpdate:     pc.lastUpdate,
+		PreSpikeCount:  len(pc.preSpikes),
+		PostSpikeCount: len(pc.postSpikes),
+		ThresholdValue: validateFloat64(pc.plasticityThreshold, 1.0),
+	}
 }
