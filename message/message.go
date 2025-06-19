@@ -4,7 +4,12 @@ import (
 	"time"
 )
 
-// === NEUROTRANSMITTER TYPES ===
+// ============================================================================
+// NEUROTRANSMITTER AND CHEMICAL SIGNALING TYPES
+// ============================================================================
+
+// LigandType represents different types of neurotransmitters and signaling molecules
+// These are the actual chemical messengers that carry information between neurons
 type LigandType int
 
 const (
@@ -87,7 +92,12 @@ func (lt LigandType) GetPolarityEffect() float64 {
 	}
 }
 
-// === ELECTRICAL SIGNAL TYPES ===
+// ============================================================================
+// ELECTRICAL SIGNAL TYPES
+// ============================================================================
+
+// SignalType represents different types of electrical or coordination signals
+// These are for gap junction communication and network-wide coordination
 type SignalType int
 
 const (
@@ -139,199 +149,39 @@ func (st SignalType) String() string {
 	}
 }
 
-// === PLASTICITY TYPES ===
-type PlasticityType string
+// ============================================================================
+// CORE NEURAL SIGNAL TYPE - PURE SIGNAL CONTENT
+// ============================================================================
 
-const (
-	PlasticitySTDP        PlasticityType = "stdp"        // Spike-timing dependent plasticity
-	PlasticityBCM         PlasticityType = "bcm"         // Bienenstock-Cooper-Munro rule
-	PlasticityOja         PlasticityType = "oja"         // Oja's learning rule
-	PlasticityHomeostatic PlasticityType = "homeostatic" // Homeostatic scaling
-	PlasticityHebian      PlasticityType = "hebbian"     // Classic Hebbian learning
-	PlasticityStatic      PlasticityType = "static"      // No plasticity
-	PlasticityMetaplastic PlasticityType = "metaplastic" // Plasticity of plasticity
-)
-
-// === COMPONENT STATES ===
-type ComponentState int
-
-const (
-	StateActive       ComponentState = iota // Normal operational state
-	StateInactive                           // Temporarily disabled
-	StateShuttingDown                       // Graceful shutdown in progress
-	StateDeveloping                         // Growing/maturing (developmental)
-	StateDying                              // Programmed cell death/apoptosis
-	StateDamaged                            // Damaged but potentially recoverable
-	StateMaintenance                        // Undergoing maintenance/repair
-	StateHibernating                        // Low-activity conservation state
-)
-
-func (cs ComponentState) String() string {
-	switch cs {
-	case StateActive:
-		return "Active"
-	case StateInactive:
-		return "Inactive"
-	case StateShuttingDown:
-		return "ShuttingDown"
-	case StateDeveloping:
-		return "Developing"
-	case StateDying:
-		return "Dying"
-	case StateDamaged:
-		return "Damaged"
-	case StateMaintenance:
-		return "Maintenance"
-	case StateHibernating:
-		return "Hibernating"
-	default:
-		return "Unknown"
-	}
-}
-
-// === COMPONENT TYPES ===
-type ComponentType int
-
-const (
-	ComponentNeuron        ComponentType = iota // Excitable neural cell
-	ComponentSynapse                            // Synaptic connection
-	ComponentGlialCell                          // Support cell (astrocyte, oligodendrocyte, etc.)
-	ComponentBloodVessel                        // Vascular component
-	ComponentMicrogliaCell                      // Immune cell of the brain
-	ComponentEpendymalCell                      // CSF-brain barrier cell
-	ComponentAxon                               // Axonal projection
-	ComponentDendrite                           // Dendritic branch
-)
-
-func (ct ComponentType) String() string {
-	switch ct {
-	case ComponentNeuron:
-		return "Neuron"
-	case ComponentSynapse:
-		return "Synapse"
-	case ComponentGlialCell:
-		return "GlialCell"
-	case ComponentBloodVessel:
-		return "BloodVessel"
-	case ComponentMicrogliaCell:
-		return "MicrogliaCell"
-	case ComponentEpendymalCell:
-		return "EpendymalCell"
-	case ComponentAxon:
-		return "Axon"
-	case ComponentDendrite:
-		return "Dendrite"
-	default:
-		return "Unknown"
-	}
-}
-
-// === TRANSMISSION MODES ===
-type TransmissionMode int
-
-const (
-	TransmissionChemical   TransmissionMode = iota // Chemical synaptic transmission
-	TransmissionElectrical                         // Electrical/gap junction transmission
-	TransmissionVolumetric                         // Volume transmission (diffusion)
-	TransmissionRetrograde                         // Retrograde signaling
-	TransmissionAntidromic                         // Antidromic propagation
-	TransmissionEphaptic                           // Ephaptic coupling
-)
-
-func (tm TransmissionMode) String() string {
-	switch tm {
-	case TransmissionChemical:
-		return "Chemical"
-	case TransmissionElectrical:
-		return "Electrical"
-	case TransmissionVolumetric:
-		return "Volumetric"
-	case TransmissionRetrograde:
-		return "Retrograde"
-	case TransmissionAntidromic:
-		return "Antidromic"
-	case TransmissionEphaptic:
-		return "Ephaptic"
-	default:
-		return "Unknown"
-	}
-}
-
-// === SIGNAL RELIABILITY ===
-type SignalReliability int
-
-const (
-	ReliabilityHigh    SignalReliability = iota // >95% transmission success
-	ReliabilityMedium                           // 70-95% transmission success
-	ReliabilityLow                              // 30-70% transmission success
-	ReliabilityFailing                          // <30% transmission success
-)
-
-func (sr SignalReliability) String() string {
-	switch sr {
-	case ReliabilityHigh:
-		return "High"
-	case ReliabilityMedium:
-		return "Medium"
-	case ReliabilityLow:
-		return "Low"
-	case ReliabilityFailing:
-		return "Failing"
-	default:
-		return "Unknown"
-	}
-}
-
-// === CORE MESSAGE TYPE ===
-// NeuralSignal represents comprehensive neural communication between components
-// This is the fundamental unit of neural communication in the simulation
+// NeuralSignal represents the content of neural communication between components
+// This contains ONLY the signal data, timing, and biological properties
+// NO architectural or configuration information
 type NeuralSignal struct {
 	// === CORE SIGNAL PROPERTIES ===
-	Value         float64 `json:"value"`          // Final weighted signal value reaching postsynaptic neuron
-	OriginalValue float64 `json:"original_value"` // Pre-synaptic signal strength (before synaptic weighting)
-
-	// === SYNAPTIC TRANSMISSION PROPERTIES ===
-	EffectiveWeight   float64       `json:"effective_weight"`   // Synaptic weight applied to signal
-	SynapticDelay     time.Duration `json:"synaptic_delay"`     // Base synaptic processing delay
-	TransmissionDelay time.Duration `json:"transmission_delay"` // Total delay including spatial
-	SpatialDelay      time.Duration `json:"spatial_delay"`      // Axonal conduction + diffusion delay
+	Value         float64 `json:"value"`          // Final signal strength reaching target
+	OriginalValue float64 `json:"original_value"` // Pre-processing signal strength
 
 	// === TIMING INFORMATION ===
-	Timestamp            time.Time `json:"timestamp"`              // When signal was initiated
-	PropagationStartTime time.Time `json:"propagation_start_time"` // When signal began propagating
-	ArrivalTime          time.Time `json:"arrival_time"`           // Expected arrival time at target
+	Timestamp     time.Time     `json:"timestamp"`      // When signal was initiated
+	SynapticDelay time.Duration `json:"synaptic_delay"` // Synaptic processing delay
+	SpatialDelay  time.Duration `json:"spatial_delay"`  // Axonal conduction delay
+	TotalDelay    time.Duration `json:"total_delay"`    // Combined transmission delay
 
-	// === COMPONENT IDENTIFICATION ===
-	SourceID  string `json:"source_id"`  // Originating neuron ID
-	TargetID  string `json:"target_id"`  // Destination neuron ID
-	SynapseID string `json:"synapse_id"` // Processing synapse ID
+	// === ROUTING INFORMATION ===
+	SourceID  string `json:"source_id"`  // Originating component ID
+	TargetID  string `json:"target_id"`  // Destination component ID
+	SynapseID string `json:"synapse_id"` // Processing synapse ID (if applicable)
 
-	// === CHEMICAL TRANSMISSION PROPERTIES ===
-	NeurotransmitterType LigandType `json:"neurotransmitter_type"` // Released chemical messenger
+	// === CHEMICAL SIGNAL CONTENT ===
+	NeurotransmitterType LigandType `json:"neurotransmitter_type"` // Chemical messenger type
 	VesicleReleased      bool       `json:"vesicle_released"`      // Whether vesicle was consumed
-	ReleaseQuantum       float64    `json:"release_quantum"`       // Number of vesicles released
-	ReceptorType         string     `json:"receptor_type"`         // Target receptor subtype
+	CalciumLevel         float64    `json:"calcium_level"`         // Presynaptic calcium level
 
-	// === BIOLOGICAL STATE INFORMATION ===
-	CalciumLevel          float64 `json:"calcium_level"`          // Presynaptic calcium concentration
-	PostsynapticPotential float64 `json:"postsynaptic_potential"` // Expected PSP amplitude
+	// === SIGNAL QUALITY AND RELIABILITY ===
+	TransmissionSuccess bool    `json:"transmission_success"` // Whether transmission succeeded
+	FailureReason       string  `json:"failure_reason"`       // Reason for failure (if any)
+	NoiseLevel          float64 `json:"noise_level"`          // Background noise amplitude
 
-	// === TRANSMISSION CHARACTERISTICS ===
-	TransmissionMode   TransmissionMode  `json:"transmission_mode"`     // How signal is transmitted
-	SignalReliability  SignalReliability `json:"signal_reliability"`    // Expected transmission reliability
-	NoiseLevel         float64           `json:"noise_level"`           // Background noise amplitude
-	SignalToNoiseRatio float64           `json:"signal_to_noise_ratio"` // Signal quality metric
-
-	// === PLASTICITY AND LEARNING CONTEXT ===
-	PlasticityContext map[string]interface{} `json:"plasticity_context"` // Context for learning rules
-	LearningPhase     string                 `json:"learning_phase"`     // Current learning state
-
-	// === FAILURE AND ERROR HANDLING ===
-	TransmissionSuccess bool   `json:"transmission_success"` // Whether transmission succeeded
-	FailureReason       string `json:"failure_reason"`       // Reason for failure (if any)
-	RetryCount          int    `json:"retry_count"`          // Number of retry attempts
-
-	// === METADATA AND EXTENSIONS ===
-	Metadata map[string]interface{} `json:"metadata"` // Additional custom data
-	Tags     []string               `json:"tags"`     // Classification tags
+	// === METADATA ===
+	Metadata map[string]interface{} `json:"metadata"` // Additional signal-specific data
 }
