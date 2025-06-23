@@ -1,6 +1,11 @@
 package synapse
 
-import "time"
+import (
+	"time"
+
+	"github.com/SynapticNetworks/temporal-neuron/component" // NEW: Import component package
+	"github.com/SynapticNetworks/temporal-neuron/message"   // NEW: Import message package
+)
 
 // =================================================================================
 // MOCK NEURON IMPLEMENTATION FOR TESTING
@@ -27,8 +32,8 @@ type MockNeuron struct {
 
 	// === MESSAGE STORAGE ===
 	// These fields store received messages for test verification
-	receivedMsgs []SynapseMessage    // All messages received (for verification)
-	msgChannel   chan SynapseMessage // Buffered channel for message reception
+	receivedMsgs []message.NeuralSignal    // CHANGED: From SynapseMessage to message.NeuralSignal
+	msgChannel   chan message.NeuralSignal // CHANGED: From SynapseMessage to message.NeuralSignal
 
 	// Note: In a real neuron, received messages would trigger complex
 	// membrane dynamics, homeostatic adjustments, and potential firing.
@@ -53,9 +58,9 @@ type MockNeuron struct {
 // - Post-synaptic mock: Represents the target neuron receiving signals
 func NewMockNeuron(id string) *MockNeuron {
 	return &MockNeuron{
-		id:           id,                            // Store identification
-		receivedMsgs: make([]SynapseMessage, 0),     // Initialize empty message log
-		msgChannel:   make(chan SynapseMessage, 10), // Buffer for concurrent messages
+		id:           id,
+		receivedMsgs: make([]message.NeuralSignal, 0),     // CHANGED: From SynapseMessage
+		msgChannel:   make(chan message.NeuralSignal, 10), // CHANGED: From SynapseMessage
 	}
 }
 
@@ -74,13 +79,19 @@ func (m *MockNeuron) ID() string {
 	return m.id
 }
 
-// Receive accepts a synapse message and stores it for test verification.
+// Type returns the categorical type of the component.
+// This method implements the SynapseCompatibleNeuron.Type() requirement.
+func (m *MockNeuron) Type() component.ComponentType {
+	return component.TypeNeuron // Mocks a neuron type
+}
+
+// Receive accepts a neural signal and stores it for test verification.
 // This method implements the SynapseCompatibleNeuron interface requirement
 // and provides the essential functionality needed for synapse testing.
 //
 // Parameters:
 //
-//	msg: The SynapseMessage delivered by a synapse after transmission
+//	msg: The message.NeuralSignal delivered by a synapse after transmission
 //
 // BIOLOGICAL SIMULATION:
 // In a real neuron, this method would:
@@ -97,7 +108,7 @@ func (m *MockNeuron) ID() string {
 //
 // This simplified approach allows focused testing of synapse transmission
 // behavior without the complexity of full neural dynamics.
-func (m *MockNeuron) Receive(msg SynapseMessage) {
+func (m *MockNeuron) Receive(msg message.NeuralSignal) { // CHANGED: msg type
 	// Store the message in our log for test verification
 	// This allows tests to examine exactly what signals were received
 	m.receivedMsgs = append(m.receivedMsgs, msg)
@@ -119,7 +130,7 @@ func (m *MockNeuron) Receive(msg SynapseMessage) {
 //
 // Returns:
 //
-//	Slice of all SynapseMessage objects received by this neuron
+//	Slice of all message.NeuralSignal objects received by this neuron
 //
 // TESTING UTILITY:
 // This method enables tests to:
@@ -133,11 +144,15 @@ func (m *MockNeuron) Receive(msg SynapseMessage) {
 // This method returns a reference to the internal slice. In production code,
 // this would typically return a copy for safety, but for testing purposes,
 // direct access simplifies verification logic.
-func (m *MockNeuron) GetReceivedMessages() []SynapseMessage {
+func (m *MockNeuron) GetReceivedMessages() []message.NeuralSignal { // CHANGED: return type
 	return m.receivedMsgs
 }
 
-func (m *MockNeuron) ScheduleDelayedDelivery(message SynapseMessage, target SynapseCompatibleNeuron, delay time.Duration) {
+// ScheduleDelayedDelivery implements SynapseCompatibleNeuron.ScheduleDelayedDelivery.
+// For the mock, it performs immediate delivery to simplify testing of the synapse's
+// Transmit logic without requiring a complex asynchronous delivery system within the mock.
+func (m *MockNeuron) ScheduleDelayedDelivery(msg message.NeuralSignal, target SynapseCompatibleNeuron, delay time.Duration) { // CHANGED: msg type
 	// Mock implementation - just do immediate delivery for tests
-	target.Receive(message)
+	// In a real neuron, this would queue the message for later processing by the axon.
+	target.Receive(msg) // The target is the post-synaptic neuron, which then receives the message.
 }

@@ -56,7 +56,7 @@ func TestBaseComponentLifecycle(t *testing.T) {
 		t.Errorf("Expected state %v after Start(), got %v", StateActive, comp.State())
 	}
 
-	// Test Stop
+	// Test Stop - UPDATED: Now expects StateStopped instead of StateInactive
 	err = comp.Stop()
 	if err != nil {
 		t.Errorf("Stop() returned error: %v", err)
@@ -66,19 +66,20 @@ func TestBaseComponentLifecycle(t *testing.T) {
 		t.Error("Component should be inactive after Stop()")
 	}
 
-	if comp.State() != StateInactive {
-		t.Errorf("Expected state %v after Stop(), got %v", StateInactive, comp.State())
+	if comp.State() != StateStopped {
+		t.Errorf("Expected state %v after Stop(), got %v", StateStopped, comp.State())
 	}
 }
 
 func TestBaseComponentStateManagement(t *testing.T) {
 	comp := NewBaseComponent("test", TypeNeuron, Position3D{})
 
-	// Test state changes
+	// Test state changes - UPDATED to include StateStopped
 	states := []ComponentState{
 		StateDeveloping,
 		StateActive,
 		StateShuttingDown,
+		StateStopped, // NEW: Added StateStopped
 		StateDying,
 		StateInactive,
 		StateDamaged,
@@ -227,6 +228,7 @@ func TestComponentStateString(t *testing.T) {
 		{StateActive, "Active"},
 		{StateInactive, "Inactive"},
 		{StateShuttingDown, "ShuttingDown"},
+		{StateStopped, "Stopped"}, // NEW: Added StateStopped
 		{StateDeveloping, "Developing"},
 		{StateDying, "Dying"},
 		{StateDamaged, "Damaged"},
@@ -397,12 +399,6 @@ func TestCreateComponentInfo(t *testing.T) {
 	}
 }
 
-func TestComponentDistance(t *testing.T) {
-	// This test is removed because distance calculation is now handled by the matrix
-	// Components only store position data, they don't calculate distances
-	t.Skip("Distance calculation is handled by the matrix, not by components")
-}
-
 func TestFilterComponentsByType(t *testing.T) {
 	components := []Component{
 		NewBaseComponent("neuron1", TypeNeuron, Position3D{}),
@@ -501,9 +497,12 @@ func TestConcurrentAccess(t *testing.T) {
 func TestConcurrentStateChanges(t *testing.T) {
 	comp := NewBaseComponent("state-test", TypeNeuron, Position3D{})
 
+	// UPDATED: Added StateStopped to concurrent state testing
 	states := []ComponentState{
 		StateActive,
 		StateInactive,
+		StateShuttingDown,
+		StateStopped, // NEW: Added StateStopped
 		StateDeveloping,
 		StateDying,
 	}
@@ -537,6 +536,269 @@ func TestConcurrentStateChanges(t *testing.T) {
 
 	if !validState {
 		t.Errorf("Final state %v is not one of the expected states", finalState)
+	}
+}
+
+func TestBaseComponentStopLifecycle(t *testing.T) {
+	comp := NewBaseComponent("test", TypeNeuron, Position3D{})
+
+	// Verify initial state
+	if comp.State() != StateActive {
+		t.Errorf("Expected initial state %v, got %v", StateActive, comp.State())
+	}
+
+	if !comp.IsActive() {
+		t.Error("Component should be active initially")
+	}
+
+	// Test Stop with proper state transition
+	err := comp.Stop()
+	if err != nil {
+		t.Errorf("Stop() returned error: %v", err)
+	}
+
+	// After stop, component should be in StateStopped (not StateInactive)
+	if comp.State() != StateStopped {
+		t.Errorf("Expected state %v after Stop(), got %v", StateStopped, comp.State())
+	}
+
+	if comp.IsActive() {
+		t.Error("Component should not be active after Stop()")
+	}
+}
+
+func TestBaseComponentCanRestart(t *testing.T) {
+	comp := NewBaseComponent("test", TypeNeuron, Position3D{})
+
+	// Test states that can be restarted
+	restartableStates := []ComponentState{
+		StateInactive,
+		StateStopped,
+		StateMaintenance,
+		StateHibernating,
+	}
+
+	for _, state := range restartableStates {
+		comp.SetState(state)
+		comp.isActive = false // Simulate stopped state
+
+		if !comp.CanRestart() {
+			t.Errorf("Component in state %v should be able to restart", state)
+		}
+	}
+
+	// Test states that cannot be restarted
+	nonRestartableStates := []ComponentState{
+		StateActive,
+		StateShuttingDown,
+		StateDeveloping,
+		StateDying,
+		StateDamaged,
+	}
+
+	for _, state := range nonRestartableStates {
+		comp.SetState(state)
+
+		if comp.CanRestart() {
+			t.Errorf("Component in state %v should not be able to restart", state)
+		}
+	}
+}
+
+func TestBaseComponentRestart(t *testing.T) {
+	comp := NewBaseComponent("test", TypeNeuron, Position3D{})
+
+	// Stop the component first
+	comp.Stop()
+	if comp.State() != StateStopped {
+		t.Errorf("Expected state %v after Stop(), got %v", StateStopped, comp.State())
+	}
+
+	// Test successful restart
+	err := comp.Restart()
+	if err != nil {
+		t.Errorf("Restart() returned error: %v", err)
+	}
+
+	if comp.State() != StateActive {
+		t.Errorf("Expected state %v after Restart(), got %v", StateActive, comp.State())
+	}
+
+	if !comp.IsActive() {
+		t.Error("Component should be active after Restart()")
+	}
+
+	// Test restart from invalid state
+	comp.SetState(StateDying)
+	err = comp.Restart()
+	if err == nil {
+		t.Error("Restart() should return error when called from StateDying")
+	}
+
+	if comp.State() == StateActive {
+		t.Error("Component should not become active after failed restart")
+	}
+}
+
+func TestBaseComponentFullLifecycle(t *testing.T) {
+	comp := NewBaseComponent("lifecycle-test", TypeNeuron, Position3D{})
+
+	// Test complete lifecycle: Start -> Stop -> Restart -> Stop
+
+	// Initial state should be active
+	if !comp.IsActive() || comp.State() != StateActive {
+		t.Error("Component should start in active state")
+	}
+
+	// Start should work even if already active
+	err := comp.Start()
+	if err != nil {
+		t.Errorf("Start() on active component returned error: %v", err)
+	}
+
+	// Stop the component
+	err = comp.Stop()
+	if err != nil {
+		t.Errorf("Stop() returned error: %v", err)
+	}
+
+	if comp.IsActive() || comp.State() != StateStopped {
+		t.Error("Component should be stopped after Stop()")
+	}
+
+	// Restart the component
+	err = comp.Restart()
+	if err != nil {
+		t.Errorf("Restart() returned error: %v", err)
+	}
+
+	if !comp.IsActive() || comp.State() != StateActive {
+		t.Error("Component should be active after Restart()")
+	}
+
+	// Stop again
+	err = comp.Stop()
+	if err != nil {
+		t.Errorf("Second Stop() returned error: %v", err)
+	}
+
+	if comp.IsActive() || comp.State() != StateStopped {
+		t.Error("Component should be stopped after second Stop()")
+	}
+}
+
+func TestFilterComponentsByStopped(t *testing.T) {
+	components := []Component{
+		NewBaseComponent("comp1", TypeNeuron, Position3D{}),
+		NewBaseComponent("comp2", TypeNeuron, Position3D{}),
+		NewBaseComponent("comp3", TypeNeuron, Position3D{}),
+		NewBaseComponent("comp4", TypeNeuron, Position3D{}),
+	}
+
+	// Set different states including StateStopped
+	components[0].SetState(StateActive)
+	components[1].SetState(StateStopped)
+	components[2].SetState(StateInactive)
+	components[3].SetState(StateStopped)
+
+	// Test filtering by StateStopped
+	stoppedComponents := FilterComponentsByState(components, StateStopped)
+	if len(stoppedComponents) != 2 {
+		t.Errorf("Expected 2 stopped components, got %d", len(stoppedComponents))
+	}
+
+	// Verify the correct components are returned
+	stoppedIDs := make(map[string]bool)
+	for _, comp := range stoppedComponents {
+		stoppedIDs[comp.ID()] = true
+	}
+
+	if !stoppedIDs["comp2"] || !stoppedIDs["comp4"] {
+		t.Error("FilterComponentsByState should return comp2 and comp4 for StateStopped")
+	}
+}
+
+func TestStatePersistenceAfterRestart(t *testing.T) {
+	comp := NewBaseComponent("persistence-test", TypeNeuron, Position3D{})
+
+	// Add some metadata
+	comp.UpdateMetadata("test-key", "test-value")
+	originalMetadata := comp.GetMetadata()
+
+	// Stop and restart
+	comp.Stop()
+	comp.Restart()
+
+	// Verify metadata is preserved
+	newMetadata := comp.GetMetadata()
+	if len(newMetadata) != len(originalMetadata) {
+		t.Error("Metadata should be preserved after restart")
+	}
+
+	if newMetadata["test-key"] != "test-value" {
+		t.Error("Specific metadata values should be preserved after restart")
+	}
+
+	// Verify position is preserved
+	originalPos := Position3D{X: 10, Y: 20, Z: 30}
+	comp.SetPosition(originalPos)
+	comp.Stop()
+	comp.Restart()
+
+	newPos := comp.Position()
+	if newPos != originalPos {
+		t.Errorf("Position should be preserved after restart: expected %v, got %v", originalPos, newPos)
+	}
+}
+
+func TestConcurrentStopRestart(t *testing.T) {
+	comp := NewBaseComponent("concurrent-lifecycle", TypeNeuron, Position3D{})
+
+	done := make(chan bool, 2)
+
+	// Goroutine 1: Stop and restart repeatedly
+	go func() {
+		for i := 0; i < 50; i++ {
+			comp.Stop()
+			if comp.CanRestart() {
+				comp.Restart()
+			}
+		}
+		done <- true
+	}()
+
+	// Goroutine 2: Check state and try operations
+	go func() {
+		for i := 0; i < 50; i++ {
+			state := comp.State()
+			isActive := comp.IsActive()
+			canRestart := comp.CanRestart()
+
+			// Just verify these calls don't panic
+			_ = state
+			_ = isActive
+			_ = canRestart
+		}
+		done <- true
+	}()
+
+	// Wait for both goroutines
+	<-done
+	<-done
+
+	// Final state should be valid
+	finalState := comp.State()
+	validStates := []ComponentState{StateActive, StateStopped}
+	validFinalState := false
+	for _, state := range validStates {
+		if finalState == state {
+			validFinalState = true
+			break
+		}
+	}
+
+	if !validFinalState {
+		t.Errorf("Final state after concurrent operations should be valid, got %v", finalState)
 	}
 }
 

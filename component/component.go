@@ -1,25 +1,29 @@
 package component
 
 import (
+	"fmt"
 	"sync"
 	"time"
 )
 
 // ============================================================================
-// COMPONENT ARCHITECTURE TYPES
+// COMPONENT ARCHITECTURE: TYPES AND ENUMERATIONS
 // ============================================================================
 
-// ComponentType represents different types of neural components
+// ComponentType represents the distinct categories of neural components within the simulation.
+// This allows for clear classification and differential handling of various elements
+// like neurons, synapses, and different types of glial cells.
 type ComponentType int
 
 const (
-	TypeNeuron        ComponentType = iota // Excitable neural cell
-	TypeSynapse                            // Synaptic connection
-	TypeGlialCell                          // Support cell (astrocyte, oligodendrocyte, etc.)
-	TypeMicrogliaCell                      // Immune cell of the brain
-	TypeEpendymalCell                      // CSF-brain barrier cell
+	TypeNeuron        ComponentType = iota // An excitable neural cell responsible for processing and transmitting signals.
+	TypeSynapse                            // A specialized junction that allows a neuron to pass an electrical or chemical signal to another neuron or to an effector cell.
+	TypeGlialCell                          // A non-neuronal cell in the central nervous system and the peripheral nervous system that does not produce electrical impulses. Examples include astrocytes, oligodendrocytes, and Schwann cells.
+	TypeMicrogliaCell                      // Resident immune cells of the brain and spinal cord, acting as the first and main form of active immune defense in the central nervous system (CNS).
+	TypeEpendymalCell                      // Cells that line the ventricles of the brain and the central canal of the spinal cord, forming the blood-cerebrospinal fluid (CSF) barrier.
 )
 
+// String provides a human-readable representation for ComponentType.
 func (ct ComponentType) String() string {
 	switch ct {
 	case TypeNeuron:
@@ -37,20 +41,24 @@ func (ct ComponentType) String() string {
 	}
 }
 
-// ComponentState represents the operational state of neural components
+// ComponentState represents the various operational states a neural component can be in.
+// This is crucial for managing the lifecycle, behavior, and resource allocation
+// for different components during simulation runtime.
 type ComponentState int
 
 const (
-	StateActive       ComponentState = iota // Normal operational state
-	StateInactive                           // Temporarily disabled
-	StateShuttingDown                       // Graceful shutdown in progress
-	StateDeveloping                         // Growing/maturing (developmental)
-	StateDying                              // Programmed cell death/apoptosis
-	StateDamaged                            // Damaged but potentially recoverable
-	StateMaintenance                        // Undergoing maintenance/repair
-	StateHibernating                        // Low-activity conservation state
+	StateActive       ComponentState = iota // The component is fully operational and participating in the simulation.
+	StateInactive                           // The component is temporarily disabled or paused, but can be reactivated.
+	StateShuttingDown                       // The component is in the process of gracefully terminating its operations.
+	StateStopped                            // The component has fully ceased operations and is no longer active.
+	StateDeveloping                         // The component is undergoing a developmental or maturation phase.
+	StateDying                              // The component is in a process of decay or programmed cell death (apoptosis).
+	StateDamaged                            // The component has incurred damage and may be impaired or non-functional.
+	StateMaintenance                        // The component is undergoing internal maintenance or repair.
+	StateHibernating                        // The component is in a low-activity state to conserve resources.
 )
 
+// String provides a human-readable representation for ComponentState.
 func (cs ComponentState) String() string {
 	switch cs {
 	case StateActive:
@@ -59,6 +67,8 @@ func (cs ComponentState) String() string {
 		return "Inactive"
 	case StateShuttingDown:
 		return "ShuttingDown"
+	case StateStopped:
+		return "Stopped"
 	case StateDeveloping:
 		return "Developing"
 	case StateDying:
@@ -75,64 +85,91 @@ func (cs ComponentState) String() string {
 }
 
 // ============================================================================
-// 3D SPATIAL POSITIONING
+// SPATIAL REPRESENTATION
 // ============================================================================
 
-// Position3D represents spatial coordinates in 3D space
+// Position3D defines the spatial coordinates for a component in a 3-dimensional space.
+// This is essential for simulations that require spatial relationships,
+// such as neural networks with specific anatomical layouts or distance-dependent
+// effects (e.g., signal propagation delays, diffusion).
 type Position3D struct {
 	X, Y, Z float64
 }
 
 // ============================================================================
-// COMPONENT METADATA AND INFORMATION
+// METADATA AND MONITORING STRUCTURES
 // ============================================================================
 
-// ComponentInfo contains complete information about a registered component
+// ComponentInfo encapsulates comprehensive information about a registered component.
+// This structure is used for introspection, debugging, and overall system monitoring.
 type ComponentInfo struct {
-	ID           string                 `json:"id"`
-	Type         ComponentType          `json:"type"`
-	Position     Position3D             `json:"position"`
-	State        ComponentState         `json:"state"`
-	RegisteredAt time.Time              `json:"registered_at"`
-	Metadata     map[string]interface{} `json:"metadata"`
+	ID           string                 `json:"id"`            // Unique identifier for the component.
+	Type         ComponentType          `json:"type"`          // The categorical type of the component (e.g., Neuron, Synapse).
+	Position     Position3D             `json:"position"`      // The 3D spatial coordinates of the component.
+	State        ComponentState         `json:"state"`         // The current operational state of the component.
+	RegisteredAt time.Time              `json:"registered_at"` // Timestamp when the component was first registered or created.
+	Metadata     map[string]interface{} `json:"metadata"`      // A flexible map for storing additional, component-specific attributes.
 }
 
-// HealthMetrics represents health and performance monitoring data
+// HealthMetrics provides a snapshot of a component's health, performance, and activity.
+// This structure is vital for monitoring the dynamic behavior and well-being of
+// individual components within a large-scale simulation.
 type HealthMetrics struct {
-	ActivityLevel   float64   `json:"activity_level"`
-	ConnectionCount int       `json:"connection_count"`
-	ProcessingLoad  float64   `json:"processing_load"`
-	LastHealthCheck time.Time `json:"last_health_check"`
-	HealthScore     float64   `json:"health_score"`
-	Issues          []string  `json:"issues"`
+	ActivityLevel   float64   `json:"activity_level"`    // A normalized value indicating the recent activity intensity (e.g., firing rate for neurons).
+	ConnectionCount int       `json:"connection_count"`  // The number of active connections (e.g., synapses for a neuron).
+	ProcessingLoad  float64   `json:"processing_load"`   // An estimate of the computational resources being consumed by the component.
+	LastHealthCheck time.Time `json:"last_health_check"` // Timestamp of the most recent health evaluation.
+	HealthScore     float64   `json:"health_score"`      // An aggregate score representing the overall health (e.g., 0.0-1.0).
+	Issues          []string  `json:"issues"`            // A list of any identified issues or warnings.
 }
 
 // ============================================================================
-// CORE COMPONENT INTERFACE
+// CORE COMPONENT INTERFACE DEFINITION
 // ============================================================================
 
-// Component is the base interface that all neural components must implement
+// Component is the fundamental interface that all active elements in the neural
+// simulation must implement. It defines the contract for basic identification,
+// lifecycle management, and metadata access, ensuring a consistent API across
+// diverse component types (e.g., neurons, synapses, glial cells).
 type Component interface {
-	// Core identification
+	// ID returns the globally unique identifier for this component.
 	ID() string
+	// Type returns the categorical type of the component (e.g., TypeNeuron, TypeSynapse).
 	Type() ComponentType
+	// Position returns the 3D spatial coordinates of the component.
 	Position() Position3D
+	// State returns the current operational state of the component.
 	State() ComponentState
 
-	// Lifecycle management
+	// IsActive checks if the component is currently in an active and operational state.
 	IsActive() bool
+	// Start initiates the component's operation. Returns an error if the component
+	// cannot be started.
 	Start() error
+	// Stop gracefully ceases the component's operation and transitions it to a stopped state.
+	// Returns an error if the shutdown process encounters issues.
 	Stop() error
+	// CanRestart determines if the component can transition back to an active state
+	// from its current state (e.g., from Inactive or Stopped).
+	CanRestart() bool
+	// Restart attempts to reactivate a component that is in a restartable state.
+	// Returns an error if the component cannot be restarted.
+	Restart() error
 
-	// Metadata and monitoring
+	// GetMetadata retrieves a copy of the component's dynamic metadata.
 	GetMetadata() map[string]interface{}
+	// UpdateMetadata sets or updates a specific key-value pair in the component's metadata.
 	UpdateMetadata(key string, value interface{})
 
-	// State management
+	// SetPosition updates the component's 3D spatial coordinates.
+	SetPosition(position Position3D)
+	// SetState manually sets the component's operational state.
 	SetState(state ComponentState)
 
-	// Activity monitoring
+	// GetActivityLevel returns a normalized measure of the component's recent activity.
+	// The interpretation of 'activity' is component-specific (e.g., firing rate for neurons).
 	GetActivityLevel() float64
+	// GetLastActivity returns the timestamp of the component's most recent significant activity or state change.
 	GetLastActivity() time.Time
 }
 
@@ -140,119 +177,127 @@ type Component interface {
 // BASE COMPONENT IMPLEMENTATION
 // ============================================================================
 
-// BaseComponent provides default implementation of the Component interface
-// All neural components should embed this to get core functionality
+// BaseComponent provides a concrete, default implementation of the `Component` interface.
+// It is designed to be embedded within more specific neural component structs (e.g., `Neuron`, `Synapse`)
+// to provide common functionalities such as ID management, state transitions, position tracking,
+// and thread-safe metadata handling. This promotes code reuse and consistency across the simulation.
 type BaseComponent struct {
-	id            string
-	componentType ComponentType
-	position      Position3D
-	state         ComponentState
-	metadata      map[string]interface{}
-	lastActivity  time.Time
-	isActive      bool
-	mu            sync.RWMutex
+	id            string                 // Unique identifier for this instance.
+	componentType ComponentType          // The specific type of this component.
+	position      Position3D             // Current 3D spatial coordinates.
+	state         ComponentState         // Current operational state (e.g., Active, Stopped).
+	metadata      map[string]interface{} // Dynamic, extensible key-value store for component-specific data.
+	lastActivity  time.Time              // Timestamp of the last significant activity or state update.
+	isActive      bool                   // A boolean flag indicating if the component is considered 'active'.
+	mu            sync.RWMutex           // A RWMutex for protecting concurrent access to component state and metadata.
 }
 
-// NewBaseComponent creates a new base component with the specified properties
+// NewBaseComponent is the constructor for BaseComponent. It initializes a new
+// base component with mandatory identification and spatial properties, setting
+// its initial state to `StateActive`.
 func NewBaseComponent(id string, componentType ComponentType, position Position3D) *BaseComponent {
 	return &BaseComponent{
 		id:            id,
 		componentType: componentType,
 		position:      position,
-		state:         StateActive,
-		metadata:      make(map[string]interface{}),
-		lastActivity:  time.Now(),
-		isActive:      true,
+		state:         StateActive,                  // Components start as active by default.
+		metadata:      make(map[string]interface{}), // Initialize metadata map.
+		lastActivity:  time.Now(),                   // Record creation time as initial activity.
+		isActive:      true,                         // Set active flag.
 	}
 }
 
 // ============================================================================
-// CORE COMPONENT INTERFACE IMPLEMENTATION
+// BASE COMPONENT: COMPONENT INTERFACE IMPLEMENTATION
 // ============================================================================
 
+// ID returns the unique identifier of the base component. It is safe for concurrent access.
 func (bc *BaseComponent) ID() string {
 	return bc.id
 }
 
+// Type returns the categorical type of the base component. It is safe for concurrent access.
 func (bc *BaseComponent) Type() ComponentType {
 	return bc.componentType
 }
 
+// Position returns the current 3D position of the base component.
+// It uses a read lock for thread safety.
 func (bc *BaseComponent) Position() Position3D {
 	bc.mu.RLock()
 	defer bc.mu.RUnlock()
 	return bc.position
 }
 
+// SetPosition updates the 3D position of the base component.
+// It uses a write lock for thread safety and updates the last activity timestamp.
 func (bc *BaseComponent) SetPosition(position Position3D) {
 	bc.mu.Lock()
 	defer bc.mu.Unlock()
 	bc.position = position
-	bc.lastActivity = time.Now()
+	bc.lastActivity = time.Now() // Mark activity on position change.
 }
 
+// State returns the current operational state of the base component.
+// It uses a read lock for thread safety.
 func (bc *BaseComponent) State() ComponentState {
 	bc.mu.RLock()
 	defer bc.mu.RUnlock()
 	return bc.state
 }
 
+// SetState updates the operational state of the base component.
+// It uses a write lock for thread safety and updates the last activity timestamp.
 func (bc *BaseComponent) SetState(state ComponentState) {
 	bc.mu.Lock()
 	defer bc.mu.Unlock()
 	bc.state = state
-	bc.lastActivity = time.Now()
+	bc.lastActivity = time.Now() // Mark activity on state change.
 }
 
-func (bc *BaseComponent) IsActive() bool {
+// CanRestart checks if the component's current state allows it to be restarted.
+// It uses a read lock for thread safety.
+func (bc *BaseComponent) CanRestart() bool {
 	bc.mu.RLock()
 	defer bc.mu.RUnlock()
-	return bc.isActive && bc.state == StateActive
+	return bc.canRestartUnsafe()
 }
 
-func (bc *BaseComponent) GetMetadata() map[string]interface{} {
-	bc.mu.RLock()
-	defer bc.mu.RUnlock()
-
-	// Return copy to prevent external modification
-	metadata := make(map[string]interface{}, len(bc.metadata))
-	for k, v := range bc.metadata {
-		metadata[k] = v
+// canRestartUnsafe is an internal helper for CanRestart that assumes the lock
+// is already held. It checks if the component can transition back to an active state.
+func (bc *BaseComponent) canRestartUnsafe() bool {
+	switch bc.state {
+	case StateInactive, StateStopped, StateMaintenance, StateHibernating:
+		return true // These states are typically restartable.
+	case StateDying, StateDamaged:
+		return false // Requires special recovery or is beyond recovery.
+	case StateActive, StateShuttingDown, StateDeveloping:
+		return false // Already active or in an ongoing transition.
+	default:
+		return false // Unknown states are not restartable by default.
 	}
-	return metadata
 }
 
-func (bc *BaseComponent) UpdateMetadata(key string, value interface{}) {
+// Restart attempts to reactivate the component, setting its state to `StateActive`.
+// It uses a write lock for thread safety and validates if restarting is possible.
+func (bc *BaseComponent) Restart() error {
 	bc.mu.Lock()
 	defer bc.mu.Unlock()
-	bc.metadata[key] = value
-	bc.lastActivity = time.Now()
-}
 
-func (bc *BaseComponent) GetLastActivity() time.Time {
-	bc.mu.RLock()
-	defer bc.mu.RUnlock()
-	return bc.lastActivity
-}
-
-func (bc *BaseComponent) GetActivityLevel() float64 {
-	// Default implementation - components can override
-	bc.mu.RLock()
-	defer bc.mu.RUnlock()
-
-	timeSinceActivity := time.Since(bc.lastActivity)
-	if timeSinceActivity < time.Second {
-		return 1.0
-	} else if timeSinceActivity < 10*time.Second {
-		return 0.5
+	// Check restartability using the unsafe version to prevent deadlock.
+	if !bc.canRestartUnsafe() {
+		return fmt.Errorf("component %s cannot be restarted from state %s", bc.id, bc.state)
 	}
-	return 0.0
+
+	bc.isActive = true           // Mark as active.
+	bc.state = StateActive       // Set state to active.
+	bc.lastActivity = time.Now() // Update last activity timestamp.
+
+	return nil
 }
 
-// ============================================================================
-// LIFECYCLE MANAGEMENT
-// ============================================================================
-
+// Start sets the component to an active state. This is typically called on initialization
+// or to bring a stopped/inactive component online. It uses a write lock for thread safety.
 func (bc *BaseComponent) Start() error {
 	bc.mu.Lock()
 	defer bc.mu.Unlock()
@@ -262,32 +307,109 @@ func (bc *BaseComponent) Start() error {
 	return nil
 }
 
+// Stop gracefully shuts down the component, transitioning its state through `StateShuttingDown`
+// to `StateStopped`. This method can be extended to include cleanup operations specific
+// to a component (e.g., closing connections, releasing resources).
+// It uses a write lock for thread safety.
 func (bc *BaseComponent) Stop() error {
 	bc.mu.Lock()
 	defer bc.mu.Unlock()
-	bc.isActive = false
-	bc.state = StateInactive
+
+	// Initiate graceful shutdown.
+	bc.state = StateShuttingDown
 	bc.lastActivity = time.Now()
+
+	// In a more complex simulation, this section would contain:
+	// - Logic to close network connections.
+	// - Code to release system resources (e.g., memory, file handles).
+	// - Mechanisms to notify other dependent components of the shutdown.
+	// For this base implementation, we simulate the state transition.
+
+	// Mark as fully stopped and inactive.
+	bc.isActive = false
+	bc.state = StateStopped
+	bc.lastActivity = time.Now()
+
 	return nil
+}
+
+// IsActive returns true if the component is currently marked as active and its
+// state is `StateActive`. It uses a read lock for thread safety.
+func (bc *BaseComponent) IsActive() bool {
+	bc.mu.RLock()
+	defer bc.mu.RUnlock()
+	return bc.isActive && bc.state == StateActive
+}
+
+// GetMetadata retrieves a copy of the component's internal metadata map.
+// A copy is returned to prevent external modifications from affecting the component's
+// internal state. It uses a read lock for thread safety.
+func (bc *BaseComponent) GetMetadata() map[string]interface{} {
+	bc.mu.RLock()
+	defer bc.mu.RUnlock()
+
+	metadata := make(map[string]interface{}, len(bc.metadata))
+	for k, v := range bc.metadata {
+		metadata[k] = v
+	}
+	return metadata
+}
+
+// UpdateMetadata adds or modifies a key-value pair in the component's metadata.
+// It uses a write lock for thread safety and updates the last activity timestamp.
+func (bc *BaseComponent) UpdateMetadata(key string, value interface{}) {
+	bc.mu.Lock()
+	defer bc.mu.Unlock()
+	bc.metadata[key] = value
+	bc.lastActivity = time.Now() // Mark activity on metadata change.
+}
+
+// GetLastActivity returns the timestamp of the most recent activity or state change
+// recorded for this component. It uses a read lock for thread safety.
+func (bc *BaseComponent) GetLastActivity() time.Time {
+	bc.mu.RLock()
+	defer bc.mu.RUnlock()
+	return bc.lastActivity
+}
+
+// GetActivityLevel provides a basic, default implementation for assessing the component's
+// recent activity. This method can be overridden by more specific component types
+// (e.g., Neuron) to provide more meaningful activity metrics (e.g., firing rate).
+// It returns 1.0 if active within 1 second, 0.5 within 10 seconds, else 0.0.
+// It uses a read lock for thread safety.
+func (bc *BaseComponent) GetActivityLevel() float64 {
+	bc.mu.RLock()
+	defer bc.mu.RUnlock()
+
+	timeSinceActivity := time.Since(bc.lastActivity)
+	if timeSinceActivity < time.Second {
+		return 1.0 // Highly active recently.
+	} else if timeSinceActivity < 10*time.Second {
+		return 0.5 // Moderately active.
+	}
+	return 0.0 // Inactive for a prolonged period.
 }
 
 // ============================================================================
 // UTILITY FUNCTIONS
 // ============================================================================
 
-// CreateComponentInfo creates a ComponentInfo from a Component instance
+// CreateComponentInfo generates a `ComponentInfo` structure from any object
+// that implements the `Component` interface. This is a convenient helper for
+// collecting and exposing component details.
 func CreateComponentInfo(comp Component) ComponentInfo {
 	return ComponentInfo{
 		ID:           comp.ID(),
 		Type:         comp.Type(),
 		Position:     comp.Position(),
 		State:        comp.State(),
-		RegisteredAt: time.Now(),
+		RegisteredAt: time.Now(), // Captures current time as registration time.
 		Metadata:     comp.GetMetadata(),
 	}
 }
 
-// FilterComponentsByType filters components by their type
+// FilterComponentsByType filters a slice of `Component` interfaces, returning
+// a new slice containing only components of the specified `ComponentType`.
 func FilterComponentsByType(components []Component, componentType ComponentType) []Component {
 	var filtered []Component
 	for _, comp := range components {
@@ -298,7 +420,8 @@ func FilterComponentsByType(components []Component, componentType ComponentType)
 	return filtered
 }
 
-// FilterComponentsByState filters components by their state
+// FilterComponentsByState filters a slice of `Component` interfaces, returning
+// a new slice containing only components that are in the specified `ComponentState`.
 func FilterComponentsByState(components []Component, state ComponentState) []Component {
 	var filtered []Component
 	for _, comp := range components {

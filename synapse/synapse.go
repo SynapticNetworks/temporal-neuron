@@ -1,113 +1,17 @@
-/*
-=================================================================================
-SYNAPTIC PROCESSOR - A MODULAR, PLUGGABLE SYNAPSE ARCHITECTURE
-=================================================================================
-
-OVERVIEW:
-This file defines the architecture for synaptic connections, separating the concept
-of a synapse from the neuron. This modular approach is central to building a
-biologically realistic and extensible simulation. It allows different types of
-synapses (e.g., fast, slow, plastic, static) to be developed and "plugged into"
-a neuron without changing the neuron's core logic.
-
-The design is centered around the `SynapticProcessor` interface, which defines a
-standard contract for what any synapse can do. The default, high-performance
-implementation provided here is the `BasicSynapse`, a non-threaded component
-managed by the pre-synaptic neuron's goroutine.
-
-ARCHITECTURAL PRINCIPLES:
-1. INTERFACE-BASED DESIGN: The Neuron interacts with the `SynapticProcessor`
-   interface, not a concrete implementation. This decouples the neuron from the
-   synapse, enabling true modularity and future expansion.
-
-2. ENCAPSULATION: All logic related to a specific connection—its weight, delay,
-   and plasticity rules (including pruning)—is encapsulated within the synapse
-   component. The neuron's role is simplified to managing its portfolio of
-   synaptic connections.
-
-3. PERFORMANCE: The default `BasicSynapse` is designed for high performance
-   in large-scale networks. It avoids the massive overhead of creating one
-   goroutine per synapse by using a non-blocking timer (`time.AfterFunc`) for
-   handling signal transmission delays efficiently.
-
-4. STRUCTURAL PLASTICITY: The synapse itself contains the logic to determine
-   if it has become ineffective. It signals this to the parent neuron via the
-   `ShouldPrune` method, allowing the neuron to implement "use-it-or-lose-it"
-   rules without needing to know the internal details of the synapse.
-
-STANDALONE DESIGN:
-This synapse system is designed to work alongside existing neuron implementations
-without breaking existing functionality. It defines its own Message type and
-communication protocols, allowing for gradual migration from existing systems.
-*/
-
 package synapse
 
 import (
 	"math"
 	"sync"
 	"time"
+
+	"github.com/SynapticNetworks/temporal-neuron/message" // NEW: Import message package
+	// NEW: Import component package (though not directly used by BasicSynapse, it's used by SynapseCompatibleNeuron)
 )
-
-// =================================================================================
-// SYNAPSE MESSAGE SYSTEM
-// Separate from existing neuron Message to avoid conflicts during transition
-// =================================================================================
-
-// SynapseMessage represents a signal transmitted between neurons through synapses
-// This is separate from any existing Message types to ensure no conflicts
-// Models the discrete action potential spikes in biological neural communication
-//
-// Enhanced with timing information for Spike-Timing Dependent Plasticity (STDP):
-// STDP requires precise timing information to determine whether synaptic connections
-// should be strengthened or weakened based on the temporal relationship between
-// pre-synaptic and post-synaptic spikes
-type SynapseMessage struct {
-	Value float64 // Signal strength/intensity (can be positive or negative)
-	// Positive values = excitatory signals (increase firing probability)
-	// Negative values = inhibitory signals (decrease firing probability)
-
-	Timestamp time.Time // Precise timestamp when the spike occurred at the source
-	// Critical for STDP: the relative timing between pre and post-synaptic spikes
-	// determines whether synaptic strength increases (LTP) or decreases (LTD)
-	// Biological timescale: STDP effects occur within ±20-50ms windows
-
-	SourceID string // Identifier of the neuron that generated this spike
-	// Enables post-synaptic neurons to track which specific synapses contributed
-	// to their firing and apply appropriate STDP weight modifications
-	// Essential for learning in networks with multiple inputs per neuron
-
-	SynapseID string // Identifier of the specific synapse that transmitted this signal
-	// Allows precise tracking of which synapse delivered the signal
-	// Useful for debugging, analysis, and synapse-specific feedback
-}
 
 // =================================================================================
 // PLASTICITY AND CONFIGURATION STRUCTURES
 // =================================================================================
-
-// PlasticityAdjustment is a feedback message sent from a post-synaptic neuron
-// back to a pre-synaptic synapse to trigger a plasticity event (e.g., STDP).
-// This models the retrograde signaling mechanisms found in biological systems.
-//
-// In biology, when a post-synaptic neuron fires, it can send feedback signals
-// back to the synapses that contributed to its firing. This feedback contains
-// information about the timing relationship between pre- and post-synaptic
-// activity, which is used to strengthen or weaken the synaptic connection.
-type PlasticityAdjustment struct {
-	// DeltaT is the time difference between the pre-synaptic and post-synaptic spikes.
-	// Its sign and magnitude determine the direction and strength of the synaptic
-	// weight change according to the STDP rule.
-	//
-	// Convention: Δt = t_pre - t_post
-	//   - Δt < 0 (causal): pre-synaptic spike occurred BEFORE post-synaptic spike -> LTP
-	//   - Δt > 0 (anti-causal): pre-synaptic spike occurred AFTER post-synaptic spike -> LTD
-	//
-	// Biological basis: This timing relationship determines whether synapses are
-	// strengthened (if they helped cause the post-synaptic firing) or weakened
-	// (if they fired after the neuron was already committed to firing).
-	DeltaT time.Duration
-}
 
 // STDPConfig represents configuration parameters for Spike-Timing Dependent Plasticity.
 // It encapsulates the complete learning rule for a plastic synapse.
@@ -300,12 +204,17 @@ func (s *BasicSynapse) Transmit(signalValue float64) {
 	s.lastTransmission = time.Now()
 	s.mutex.Unlock()
 
-	// Create the message with precise timing information
-	message := SynapseMessage{
+	// Create the message using message.NeuralSignal
+	// Populate relevant fields for neural communication and plasticity tracking.
+	msg := message.NeuralSignal{
 		Value:     effectiveSignal,
-		Timestamp: time.Now(),               // When the signal was generated
-		SourceID:  s.preSynapticNeuron.ID(), // Which neuron sent the signal
-		SynapseID: s.id,                     // Which synapse transmitted it
+		Timestamp: time.Now(),                // When the signal was generated by the synapse
+		SourceID:  s.preSynapticNeuron.ID(),  // The original sender neuron
+		SynapseID: s.id,                      // This synapse's ID
+		TargetID:  s.postSynapticNeuron.ID(), // The intended recipient neuron
+		// Other fields like NeurotransmitterType, VesicleReleased, CalciumLevel
+		// can be passed into Transmit or derived if the synapse has that context.
+		// For now, we'll keep it minimal as per the previous SynapseMessage structure.
 	}
 
 	// Calculate total delay: synaptic properties + spatial propagation
@@ -325,11 +234,13 @@ func (s *BasicSynapse) Transmit(signalValue float64) {
 	}
 
 	if totalDelay == 0 {
-		// IMMEDIATE DELIVERY
-		s.postSynapticNeuron.Receive(message)
+		// IMMEDIATE DELIVERY: If no delay, deliver directly to post-synaptic neuron
+		s.postSynapticNeuron.Receive(msg)
 	} else {
-		// DELAYED DELIVERY - No fallback needed!
-		s.preSynapticNeuron.ScheduleDelayedDelivery(message, s.postSynapticNeuron, totalDelay)
+		// DELAYED DELIVERY: Ask the pre-synaptic neuron to schedule the delivery
+		// The pre-synaptic neuron (implementing SynapseCompatibleNeuron) is
+		// responsible for managing its axonal queue and ensuring delivery.
+		s.preSynapticNeuron.ScheduleDelayedDelivery(msg, s.postSynapticNeuron, totalDelay)
 	}
 }
 
@@ -377,7 +288,7 @@ func (s *BasicSynapse) ApplyPlasticity(adjustment PlasticityAdjustment) {
 
 // ShouldPrune determines if a synapse is a candidate for removal.
 // This method implements the "use it or lose it" principle found in biological
-// neural networks, where weak or inactive synapses are naturally eliminated.
+// neural networks, where weak or inactive synapses are gradually eliminated.
 //
 // Biological basis:
 // In real brains, synapses that are consistently weak or rarely active are
@@ -623,12 +534,12 @@ func (s *BasicSynapse) SetDelay(delay time.Duration) {
 func CreateDefaultSTDPConfig() STDPConfig {
 	return STDPConfig{
 		Enabled:        true,
-		LearningRate:   0.01,                   // 1% weight change per STDP event
-		TimeConstant:   20 * time.Millisecond,  // Standard cortical time constant
-		WindowSize:     100 * time.Millisecond, // ±100ms learning window
-		MinWeight:      0.001,                  // Prevent complete elimination
-		MaxWeight:      2.0,                    // Prevent runaway strengthening
-		AsymmetryRatio: 1.2,                    // Slight LTD bias (biologically typical)
+		LearningRate:   STDP_DEFAULT_LEARNING_RATE,
+		TimeConstant:   STDP_DEFAULT_TIME_CONSTANT,
+		WindowSize:     STDP_DEFAULT_WINDOW_SIZE,
+		MinWeight:      STDP_DEFAULT_MIN_WEIGHT,
+		MaxWeight:      STDP_DEFAULT_MAX_WEIGHT,
+		AsymmetryRatio: STDP_DEFAULT_ASYMMETRY_RATIO,
 	}
 }
 
@@ -637,8 +548,8 @@ func CreateDefaultSTDPConfig() STDPConfig {
 func CreateDefaultPruningConfig() PruningConfig {
 	return PruningConfig{
 		Enabled:             true,
-		WeightThreshold:     0.01,            // Consider weak if weight < 1% of max
-		InactivityThreshold: 5 * time.Minute, // Must be inactive for 5 minutes
+		WeightThreshold:     PRUNING_DEFAULT_WEIGHT_THRESHOLD,
+		InactivityThreshold: PRUNING_DEFAULT_INACTIVITY_THRESHOLD,
 	}
 }
 
@@ -647,7 +558,7 @@ func CreateDefaultPruningConfig() PruningConfig {
 func CreateConservativePruningConfig() PruningConfig {
 	return PruningConfig{
 		Enabled:             true,
-		WeightThreshold:     0.001,            // Very low threshold
-		InactivityThreshold: 30 * time.Minute, // Much longer grace period
+		WeightThreshold:     PRUNING_CONSERVATIVE_WEIGHT_THRESHOLD,
+		InactivityThreshold: PRUNING_CONSERVATIVE_INACTIVITY_THRESHOLD,
 	}
 }

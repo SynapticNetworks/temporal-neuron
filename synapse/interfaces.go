@@ -1,6 +1,11 @@
 package synapse
 
-import "time"
+import (
+	"time"
+
+	"github.com/SynapticNetworks/temporal-neuron/component" // NEW
+	"github.com/SynapticNetworks/temporal-neuron/message"   // NEW
+)
 
 // SynapticProcessor defines the universal contract for any component that acts
 // as a synapse. It is the key to the pluggable architecture, ensuring that the
@@ -89,15 +94,42 @@ type SynapticProcessor interface {
 type SynapseCompatibleNeuron interface {
 	// ID returns the unique identifier of the neuron
 	ID() string
+	// Type returns the categorical type of the component.
+	Type() component.ComponentType // Added for consistency with component.Component
 
-	// Receive accepts a synapse message and processes it
-	// This method should be added to existing neuron implementations
-	Receive(msg SynapseMessage)
-	ScheduleDelayedDelivery(message SynapseMessage, target SynapseCompatibleNeuron, delay time.Duration)
+	// Receive accepts a neural signal and processes it
+	Receive(msg message.NeuralSignal) // CHANGED: From SynapseMessage to message.NeuralSignal
+
+	// ScheduleDelayedDelivery requests the neuron to schedule a message for later delivery.
+	// The neuron is responsible for its own axonal queue.
+	ScheduleDelayedDelivery(message message.NeuralSignal, target SynapseCompatibleNeuron, delay time.Duration) // CHANGED: From SynapseMessage to message.NeuralSignal
 }
 
 // ExtracellularMatrix interface for spatial delay enhancement
 type ExtracellularMatrix interface {
 	// Enhance existing synaptic delay with spatial factors
 	EnhanceSynapticDelay(preNeuronID, postNeuronID, synapseID string, baseDelay time.Duration) time.Duration
+}
+
+// PlasticityAdjustment is a feedback message sent from a post-synaptic neuron
+// back to a pre-synaptic synapse to trigger a plasticity event (e.g., STDP).
+// This models the retrograde signaling mechanisms found in biological systems.
+//
+// In biology, when a post-synaptic neuron fires, it can send feedback signals
+// back to the synapses that contributed to its firing. This feedback contains
+// information about the timing relationship between pre- and post-synaptic
+// activity, which is used to strengthen or weaken the synaptic connection.
+type PlasticityAdjustment struct {
+	// DeltaT is the time difference between the pre-synaptic and post-synaptic spikes.
+	// Its sign and magnitude determine the direction and strength of the synaptic
+	// weight change according to the STDP rule.
+	//
+	// Convention: Δt = t_pre - t_post
+	//   - Δt < 0 (causal): pre-synaptic spike occurred BEFORE post-synaptic spike -> LTP
+	//   - Δt > 0 (anti-causal): pre-synaptic spike occurred AFTER post-synaptic spike -> LTD
+	//
+	// Biological basis: This timing relationship determines whether synapses are
+	// strengthened (if they helped cause the post-synaptic firing) or weakened
+	// (if they fired after the neuron was already committed to firing).
+	DeltaT time.Duration
 }

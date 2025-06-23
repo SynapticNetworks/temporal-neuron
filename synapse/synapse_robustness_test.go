@@ -72,6 +72,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/SynapticNetworks/temporal-neuron/message"
 )
 
 // =================================================================================
@@ -263,7 +265,7 @@ func NewAdvancedStressMockNeuron(id string, metrics *StressTestMetrics) *Advance
 }
 
 // Receive implements high-performance reception with comprehensive monitoring
-func (n *AdvancedStressMockNeuron) Receive(msg SynapseMessage) {
+func (n *AdvancedStressMockNeuron) Receive(msg message.NeuralSignal) {
 	startTime := time.Now()
 
 	// Track concurrency
