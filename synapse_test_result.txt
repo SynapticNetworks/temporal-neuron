@@ -1,0 +1,187 @@
+=== RUN   TestSTDPClassicTimingWindow
+=== RUN   TestSTDPClassicTimingWindow/StrongLTP
+=== RUN   TestSTDPClassicTimingWindow/WeakLTP
+=== RUN   TestSTDPClassicTimingWindow/WeakLTD
+=== RUN   TestSTDPClassicTimingWindow/StrongLTD
+=== RUN   TestSTDPClassicTimingWindow/NoPlasticity
+--- PASS: TestSTDPClassicTimingWindow (0.00s)
+    --- PASS: TestSTDPClassicTimingWindow/StrongLTP (0.00s)
+    --- PASS: TestSTDPClassicTimingWindow/WeakLTP (0.00s)
+    --- PASS: TestSTDPClassicTimingWindow/WeakLTD (0.00s)
+    --- PASS: TestSTDPClassicTimingWindow/StrongLTD (0.00s)
+    --- PASS: TestSTDPClassicTimingWindow/NoPlasticity (0.00s)
+=== RUN   TestSTDPExponentialDecay
+--- PASS: TestSTDPExponentialDecay (0.00s)
+=== RUN   TestActivityDependentPruning
+=== RUN   TestActivityDependentPruning/ActiveSynapseProtection
+=== RUN   TestActivityDependentPruning/WeakInactiveSynapsePruning
+=== RUN   TestActivityDependentPruning/WeakButActiveSynapseProtection
+--- PASS: TestActivityDependentPruning (0.32s)
+    --- PASS: TestActivityDependentPruning/ActiveSynapseProtection (0.12s)
+    --- PASS: TestActivityDependentPruning/WeakInactiveSynapsePruning (0.12s)
+    --- PASS: TestActivityDependentPruning/WeakButActiveSynapseProtection (0.08s)
+=== RUN   TestPruningTimescales
+=== RUN   TestPruningTimescales/ShortInactivity
+=== RUN   TestPruningTimescales/ModerateInactivity
+=== RUN   TestPruningTimescales/LongInactivity
+--- PASS: TestPruningTimescales (0.17s)
+    --- PASS: TestPruningTimescales/ShortInactivity (0.00s)
+    --- PASS: TestPruningTimescales/ModerateInactivity (0.11s)
+    --- PASS: TestPruningTimescales/LongInactivity (0.06s)
+=== RUN   TestTransmissionDelayAccuracy
+=== RUN   TestTransmissionDelayAccuracy/Fast_local_synapse
+    synapse_biology_test.go:491: No message received for Fast local synapse after 6.5ms
+=== RUN   TestTransmissionDelayAccuracy/Typical_cortical_synapse
+    synapse_biology_test.go:491: No message received for Typical cortical synapse after 11ms
+=== RUN   TestTransmissionDelayAccuracy/Medium-distance_connection
+    synapse_biology_test.go:491: No message received for Medium-distance connection after 23ms
+=== RUN   TestTransmissionDelayAccuracy/Long-distance_projection
+    synapse_biology_test.go:491: No message received for Long-distance projection after 65ms
+--- FAIL: TestTransmissionDelayAccuracy (0.11s)
+    --- FAIL: TestTransmissionDelayAccuracy/Fast_local_synapse (0.01s)
+    --- FAIL: TestTransmissionDelayAccuracy/Typical_cortical_synapse (0.01s)
+    --- FAIL: TestTransmissionDelayAccuracy/Medium-distance_connection (0.03s)
+    --- FAIL: TestTransmissionDelayAccuracy/Long-distance_projection (0.07s)
+=== RUN   TestSynapticWeightScaling
+=== RUN   TestSynapticWeightScaling/Weak_synapse_(10%_efficacy)
+=== RUN   TestSynapticWeightScaling/Moderate_synapse_(50%_efficacy)
+=== RUN   TestSynapticWeightScaling/Strong_synapse_(100%_efficacy)
+=== RUN   TestSynapticWeightScaling/Very_strong_synapse_(150%_efficacy)
+=== RUN   TestSynapticWeightScaling/Moderate_synapse_with_strong_input
+=== RUN   TestSynapticWeightScaling/Strong_synapse_with_weak_input
+--- PASS: TestSynapticWeightScaling (0.07s)
+    --- PASS: TestSynapticWeightScaling/Weak_synapse_(10%_efficacy) (0.01s)
+    --- PASS: TestSynapticWeightScaling/Moderate_synapse_(50%_efficacy) (0.01s)
+    --- PASS: TestSynapticWeightScaling/Strong_synapse_(100%_efficacy) (0.01s)
+    --- PASS: TestSynapticWeightScaling/Very_strong_synapse_(150%_efficacy) (0.01s)
+    --- PASS: TestSynapticWeightScaling/Moderate_synapse_with_strong_input (0.01s)
+    --- PASS: TestSynapticWeightScaling/Strong_synapse_with_weak_input (0.01s)
+=== RUN   TestRealisticSynapticDynamics
+--- PASS: TestRealisticSynapticDynamics (0.06s)
+=== RUN   TestMassiveConcurrentTransmission
+    synapse_robustness_test.go:374: Starting LAPTOP-FRIENDLY concurrent transmission test:
+    synapse_robustness_test.go:375:   - Detected CPUs: 12
+    synapse_robustness_test.go:376:   - Goroutines: 600 (adaptive)
+    synapse_robustness_test.go:377:   - Operations per goroutine: 2000
+    synapse_robustness_test.go:378:   - Expected total operations: 1200000
+    synapse_robustness_test.go:379:   - Test duration: 30s
+    synapse_robustness_test.go:479: 
+        ================================================================================
+    synapse_robustness_test.go:480: LAPTOP-FRIENDLY CONCURRENT TRANSMISSION TEST RESULTS
+    synapse_robustness_test.go:481: ================================================================================
+    synapse_robustness_test.go:482: System: 12 CPUs, 600 goroutines
+    synapse_robustness_test.go:483: Test Duration: 1.764217125s
+    synapse_robustness_test.go:484: Total Operations: 2400000
+    synapse_robustness_test.go:485: Successful Operations: 2398829
+    synapse_robustness_test.go:486: Success Rate: 99.95%
+    synapse_robustness_test.go:487: Operations/Second: 1359756
+    synapse_robustness_test.go:488: Average Latency: 468.16 μs
+    synapse_robustness_test.go:489: Max Latency: 31223.46 μs
+    synapse_robustness_test.go:490: Max Concurrency: 600
+    synapse_robustness_test.go:491: Peak Memory: 0 MB
+    synapse_robustness_test.go:492: Memory Growth: 0 MB
+    synapse_robustness_test.go:508: ✅ Throughput target met: 1359756 ops/sec >= 10000 ops/sec
+    synapse_robustness_test.go:514: ================================================================================
+    synapse_robustness_test.go:515: TEST PASSED: Laptop-friendly concurrent test completed successfully
+    synapse_robustness_test.go:516: ================================================================================
+--- PASS: TestMassiveConcurrentTransmission (1.77s)
+=== RUN   TestSustainedHighFrequencyTransmission
+    synapse_robustness_test.go:553: High-frequency test: 1000 Hz for 30s
+    synapse_robustness_test.go:573: High-frequency test completed
+--- PASS: TestSustainedHighFrequencyTransmission (30.00s)
+=== RUN   TestNumericalStabilityEdgeCases
+=== RUN   TestNumericalStabilityEdgeCases/Zero
+=== RUN   TestNumericalStabilityEdgeCases/Tiny
+=== RUN   TestNumericalStabilityEdgeCases/Large
+=== RUN   TestNumericalStabilityEdgeCases/MaxFloat
+=== RUN   TestNumericalStabilityEdgeCases/Infinity
+=== RUN   TestNumericalStabilityEdgeCases/NaN
+    synapse_robustness_test.go:612: Weight correctly handled extreme value: NaN -> NaN
+--- PASS: TestNumericalStabilityEdgeCases (0.03s)
+    --- PASS: TestNumericalStabilityEdgeCases/Zero (0.01s)
+    --- PASS: TestNumericalStabilityEdgeCases/Tiny (0.01s)
+    --- PASS: TestNumericalStabilityEdgeCases/Large (0.01s)
+    --- PASS: TestNumericalStabilityEdgeCases/MaxFloat (0.01s)
+    --- PASS: TestNumericalStabilityEdgeCases/Infinity (0.01s)
+    --- PASS: TestNumericalStabilityEdgeCases/NaN (0.01s)
+=== RUN   TestResourceExhaustionRecovery
+    synapse_robustness_test.go:637: Testing resource exhaustion recovery...
+    synapse_robustness_test.go:665: Resource exhaustion test completed
+--- PASS: TestResourceExhaustionRecovery (0.02s)
+=== RUN   TestMixedOperationChaos
+    synapse_robustness_test.go:753: Mixed operation chaos test completed successfully
+--- PASS: TestMixedOperationChaos (10.00s)
+=== RUN   TestLongRunningStability
+    synapse_robustness_test.go:782: Long-running stability test for 30s
+    synapse_robustness_test.go:785: For extended testing: go test -v -run TestLongRunningStability -args -long-run=24h
+    synapse_robustness_test.go:824: Long-running stability test completed - synapse weight: 1.000000
+--- PASS: TestLongRunningStability (30.00s)
+=== RUN   TestComprehensiveStressSuite
+    synapse_robustness_test.go:833: Running comprehensive stress test suite...
+=== RUN   TestComprehensiveStressSuite/MassiveConcurrentTransmission
+    synapse_robustness_test.go:374: Starting LAPTOP-FRIENDLY concurrent transmission test:
+    synapse_robustness_test.go:375:   - Detected CPUs: 12
+    synapse_robustness_test.go:376:   - Goroutines: 600 (adaptive)
+    synapse_robustness_test.go:377:   - Operations per goroutine: 2000
+    synapse_robustness_test.go:378:   - Expected total operations: 1200000
+    synapse_robustness_test.go:379:   - Test duration: 30s
+    synapse_robustness_test.go:479: 
+        ================================================================================
+    synapse_robustness_test.go:480: LAPTOP-FRIENDLY CONCURRENT TRANSMISSION TEST RESULTS
+    synapse_robustness_test.go:481: ================================================================================
+    synapse_robustness_test.go:482: System: 12 CPUs, 600 goroutines
+    synapse_robustness_test.go:483: Test Duration: 1.764685708s
+    synapse_robustness_test.go:484: Total Operations: 2400000
+    synapse_robustness_test.go:485: Successful Operations: 2398793
+    synapse_robustness_test.go:486: Success Rate: 99.95%
+    synapse_robustness_test.go:487: Operations/Second: 1358936
+    synapse_robustness_test.go:488: Average Latency: 476.66 μs
+    synapse_robustness_test.go:489: Max Latency: 50948.88 μs
+    synapse_robustness_test.go:490: Max Concurrency: 600
+    synapse_robustness_test.go:491: Peak Memory: 0 MB
+    synapse_robustness_test.go:492: Memory Growth: 0 MB
+    synapse_robustness_test.go:508: ✅ Throughput target met: 1358936 ops/sec >= 10000 ops/sec
+    synapse_robustness_test.go:514: ================================================================================
+    synapse_robustness_test.go:515: TEST PASSED: Laptop-friendly concurrent test completed successfully
+    synapse_robustness_test.go:516: ================================================================================
+=== RUN   TestComprehensiveStressSuite/SustainedHighFrequencyTransmission
+    synapse_robustness_test.go:553: High-frequency test: 1000 Hz for 30s
+    synapse_robustness_test.go:573: High-frequency test completed
+=== RUN   TestComprehensiveStressSuite/NumericalStabilityEdgeCases
+=== RUN   TestComprehensiveStressSuite/NumericalStabilityEdgeCases/Zero
+=== RUN   TestComprehensiveStressSuite/NumericalStabilityEdgeCases/Tiny
+=== RUN   TestComprehensiveStressSuite/NumericalStabilityEdgeCases/Large
+=== RUN   TestComprehensiveStressSuite/NumericalStabilityEdgeCases/MaxFloat
+=== RUN   TestComprehensiveStressSuite/NumericalStabilityEdgeCases/Infinity
+=== RUN   TestComprehensiveStressSuite/NumericalStabilityEdgeCases/NaN
+    synapse_robustness_test.go:612: Weight correctly handled extreme value: NaN -> NaN
+=== RUN   TestComprehensiveStressSuite/ResourceExhaustionRecovery
+    synapse_robustness_test.go:637: Testing resource exhaustion recovery...
+    synapse_robustness_test.go:665: Resource exhaustion test completed
+=== RUN   TestComprehensiveStressSuite/MixedOperationChaos
+    synapse_robustness_test.go:753: Mixed operation chaos test completed successfully
+=== NAME  TestComprehensiveStressSuite
+    synapse_robustness_test.go:855: Stress suite completed: 5/5 tests passed
+--- PASS: TestComprehensiveStressSuite (41.82s)
+    --- PASS: TestComprehensiveStressSuite/MassiveConcurrentTransmission (1.77s)
+    --- PASS: TestComprehensiveStressSuite/SustainedHighFrequencyTransmission (30.00s)
+    --- PASS: TestComprehensiveStressSuite/NumericalStabilityEdgeCases (0.03s)
+        --- PASS: TestComprehensiveStressSuite/NumericalStabilityEdgeCases/Zero (0.01s)
+        --- PASS: TestComprehensiveStressSuite/NumericalStabilityEdgeCases/Tiny (0.01s)
+        --- PASS: TestComprehensiveStressSuite/NumericalStabilityEdgeCases/Large (0.01s)
+        --- PASS: TestComprehensiveStressSuite/NumericalStabilityEdgeCases/MaxFloat (0.01s)
+        --- PASS: TestComprehensiveStressSuite/NumericalStabilityEdgeCases/Infinity (0.01s)
+        --- PASS: TestComprehensiveStressSuite/NumericalStabilityEdgeCases/NaN (0.01s)
+    --- PASS: TestComprehensiveStressSuite/ResourceExhaustionRecovery (0.01s)
+    --- PASS: TestComprehensiveStressSuite/MixedOperationChaos (10.00s)
+=== RUN   TestSynapseCreation
+--- PASS: TestSynapseCreation (0.00s)
+=== RUN   TestSynapseTransmission
+--- PASS: TestSynapseTransmission (0.01s)
+=== RUN   TestSynapseWeightModification
+--- PASS: TestSynapseWeightModification (0.00s)
+=== RUN   TestConfigHelpers
+--- PASS: TestConfigHelpers (0.00s)
+FAIL
+FAIL	github.com/SynapticNetworks/temporal-neuron/synapse	114.597s
+FAIL

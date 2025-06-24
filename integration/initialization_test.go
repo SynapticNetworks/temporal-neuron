@@ -4,6 +4,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/SynapticNetworks/temporal-neuron/component"
+	"github.com/SynapticNetworks/temporal-neuron/extracellular"
 	"github.com/SynapticNetworks/temporal-neuron/message"
 	"github.com/SynapticNetworks/temporal-neuron/neuron"
 	"github.com/SynapticNetworks/temporal-neuron/synapse"
@@ -309,4 +311,128 @@ func TestSynapseInitialization(t *testing.T) {
 	}
 
 	t.Log("✓ Synapse initialization and real neuron integration validated")
+}
+
+// TestMatrixNeuronSynapseIntegration tests neuron and synapse creation via matrix
+// TestMatrixNeuronSynapseIntegration tests neuron and synapse creation via matrix
+func TestMatrixNeuronSynapseIntegration(t *testing.T) {
+	t.Log("=== MATRIX NEURON-SYNAPSE INTEGRATION TEST ===")
+
+	// Create and start the extracellular matrix
+	matrix := extracellular.NewExtracellularMatrix(extracellular.ExtracellularMatrixConfig{
+		ChemicalEnabled: true,
+		SpatialEnabled:  true,
+		UpdateInterval:  10 * time.Millisecond,
+		MaxComponents:   100,
+	})
+
+	err := matrix.Start()
+	if err != nil {
+		t.Fatalf("Failed to start matrix: %v", err)
+	}
+	defer matrix.Stop()
+
+	// Register factory for creating standard neurons via matrix
+	matrix.RegisterNeuronType("standard", func(id string, config extracellular.NeuronConfig, callbacks extracellular.NeuronCallbacks) (extracellular.NeuronInterface, error) {
+		return neuron.NewNeuron(
+			id,
+			config.Threshold,
+			0.95,               // decay rate
+			5*time.Millisecond, // refractory period
+			1.5,                // fire factor
+			10.0,               // target firing rate
+			0.1,                // homeostasis strength
+		), nil
+	})
+
+	// Register factory for creating synapses via matrix
+	matrix.RegisterSynapseType("excitatory", func(id string, config extracellular.SynapseConfig, callbacks extracellular.SynapseCallbacks) (extracellular.SynapseInterface, error) {
+		preNeuron := matrix.GetNeuron(config.PresynapticID)
+		postNeuron := matrix.GetNeuron(config.PostsynapticID)
+
+		return synapse.NewBasicSynapse(
+			id,
+			preNeuron,
+			postNeuron,
+			synapse.CreateDefaultSTDPConfig(),
+			synapse.CreateDefaultPruningConfig(),
+			config.InitialWeight,
+			config.Delay,
+		), nil
+	})
+
+	// Create neurons via matrix
+	preNeuron, err := matrix.CreateNeuron(extracellular.NeuronConfig{
+		NeuronType: "standard",
+		Threshold:  1.0,
+		Position:   component.Position3D{X: 0, Y: 0, Z: 0},
+	})
+	if err != nil {
+		t.Fatalf("Failed to create presynaptic neuron: %v", err)
+	}
+
+	postNeuron, err := matrix.CreateNeuron(extracellular.NeuronConfig{
+		NeuronType: "standard",
+		Threshold:  1.0,
+		Position:   component.Position3D{X: 1, Y: 0, Z: 0},
+	})
+	if err != nil {
+		t.Fatalf("Failed to create postsynaptic neuron: %v", err)
+	}
+
+	// Start neurons
+	err = preNeuron.Start()
+	if err != nil {
+		t.Fatalf("Failed to start presynaptic neuron: %v", err)
+	}
+	defer preNeuron.Stop()
+
+	err = postNeuron.Start()
+	if err != nil {
+		t.Fatalf("Failed to start postsynaptic neuron: %v", err)
+	}
+	defer postNeuron.Stop()
+
+	// Create synapse via matrix
+	syn, err := matrix.CreateSynapse(extracellular.SynapseConfig{
+		SynapseType:    "excitatory",
+		PresynapticID:  preNeuron.ID(),
+		PostsynapticID: postNeuron.ID(),
+		InitialWeight:  0.8,
+		Delay:          2 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create synapse: %v", err)
+	}
+
+	// Test the connection
+	initialPreActivity := preNeuron.GetActivityLevel()
+	initialPostActivity := postNeuron.GetActivityLevel()
+
+	preNeuron.Receive(message.NeuralSignal{
+		Value:     2.0,
+		Timestamp: time.Now(),
+		SourceID:  "test_stimulus",
+		TargetID:  preNeuron.ID(),
+	})
+
+	time.Sleep(50 * time.Millisecond)
+
+	finalPreActivity := preNeuron.GetActivityLevel()
+	finalPostActivity := postNeuron.GetActivityLevel()
+
+	if finalPreActivity <= initialPreActivity {
+		t.Errorf("Presynaptic neuron should show increased activity: before=%f, after=%f",
+			initialPreActivity, finalPreActivity)
+	}
+
+	if finalPostActivity <= initialPostActivity {
+		t.Errorf("Postsynaptic neuron should show increased activity: before=%f, after=%f",
+			initialPostActivity, finalPostActivity)
+	}
+
+	t.Logf("✓ Matrix successfully created and connected neurons via synapse")
+	t.Logf("Pre-neuron activity: %f → %f", initialPreActivity, finalPreActivity)
+	t.Logf("Post-neuron activity: %f → %f", initialPostActivity, finalPostActivity)
+	t.Logf("Synapse ID: %s", syn.ID())
 }

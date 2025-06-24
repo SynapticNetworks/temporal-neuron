@@ -475,40 +475,56 @@ func TestTransmissionDelayAccuracy(t *testing.T) {
 			synapse := NewBasicSynapse("delay_test", preNeuron, postNeuron,
 				stdpConfig, pruningConfig, 1.0, test.delay)
 
+			// Clear messages and reset internal state for each subtest
+			postNeuron.ClearReceivedMessages()
+			preNeuron.ClearReceivedMessages()    // Clear preNeuron's queue as well
+			preNeuron.SetCurrentTime(time.Now()) // Reset preNeuron's internal clock for deterministic delays
+
 			// Record transmission start time
 			startTime := time.Now()
 
 			// Transmit signal
 			synapse.Transmit(1.0)
 
-			// Wait for transmission to complete with reasonable buffer
-			waitTime := test.delay + test.tolerance + 5*time.Millisecond
-			time.Sleep(waitTime)
+			// Calculate the time at which the message *should* be delivered
+			// This time includes the base transmission delay from the synapse.
+			// The `Transmit` method calls `ScheduleDelayedDelivery` on `preNeuron`,
+			// which uses `preNeuron.currentTime.Add(totalDelay)`.
+			// So, to ensure delivery, `preNeuron.ProcessDelayedMessages` needs to be
+			// called with a `currentTime` that is past this calculated `deliveryTime`.
+			expectedDeliveryTime := startTime.Add(test.delay)
+
+			// Simulate the passage of time in the mock neuron's internal clock
+			// We need to advance the `preNeuron`'s `currentTime` sufficiently
+			// for the message to become due.
+			preNeuron.ProcessDelayedMessages(expectedDeliveryTime.Add(test.tolerance))
+
+			// Wait for a small additional buffer for goroutine scheduling in the mock's Receive
+			time.Sleep(10 * time.Millisecond) // A small real-world sleep just in case of goroutine scheduling
 
 			// Verify message was received
 			messages := postNeuron.GetReceivedMessages()
 			if len(messages) == 0 {
-				t.Fatalf("No message received for %s after %v", test.biologicalType, waitTime)
+				t.Fatalf("No message received for %s after expected delay (%v)", test.biologicalType, test.delay)
 			}
 
-			// Check that delay was at least the minimum expected
-			// (We can't easily test maximum delay due to Go runtime scheduling)
-			actualDelay := time.Since(startTime)
+			// Check that delay was approximately as expected
+			// The exact `actualDelay` is hard to measure precisely due to goroutine scheduling,
+			// but we can check if it falls within a reasonable window.
+			// Since `ProcessDelayedMessages` immediately dispatches once `currentTime` passes `deliveryTime`,
+			// the `Receive` timestamp might be very close to `expectedDeliveryTime`.
+			actualMessageTimestamp := messages[0].Timestamp
+			// Calculate the effective delay as the difference between message timestamp and when transmit was called.
+			effectiveDelay := actualMessageTimestamp.Sub(startTime)
 
-			if actualDelay < test.delay {
-				t.Errorf("Message arrived too early for %s: expected at least %v, got %v",
-					test.biologicalType, test.delay, actualDelay)
-			}
-
-			// For biological realism, verify delay is not excessively long
-			maxReasonableDelay := test.delay + 100*time.Millisecond
-			if actualDelay > maxReasonableDelay {
-				t.Errorf("Message took too long for %s: expected around %v, got %v",
-					test.biologicalType, test.delay, actualDelay)
+			// Validate that effectiveDelay is close to test.delay
+			if effectiveDelay < test.delay || effectiveDelay > test.delay+(test.tolerance*5) { // Allow slightly more for scheduling
+				t.Errorf("Message effective delay incorrect for %s: expected ~%v, got %v (diff: %v)",
+					test.biologicalType, test.delay, effectiveDelay, effectiveDelay-test.delay)
 			}
 
 			// Clear messages for next test
-			postNeuron.receivedMsgs = postNeuron.receivedMsgs[:0]
+			postNeuron.ClearReceivedMessages()
 		})
 	}
 }

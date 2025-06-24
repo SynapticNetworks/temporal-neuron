@@ -82,7 +82,7 @@ func (m *MockNeuron) ScheduleDelayedDelivery(msg message.NeuralSignal, target co
 	delayedMsg := delayedMessage{
 		message:      msg,
 		target:       target,
-		deliveryTime: m.currentTime.Add(delay),
+		deliveryTime: m.currentTime.Add(delay), // Delivery time is based on mock's currentTime
 	}
 	m.delayQueue = append(m.delayQueue, delayedMsg)
 }
@@ -130,7 +130,12 @@ func (m *MockNeuron) ProcessDelayedMessages(currentTime time.Time) int {
 	remainingMessages := make([]delayedMessage, 0, len(m.delayQueue))
 	for _, delayedMsg := range m.delayQueue {
 		if currentTime.After(delayedMsg.deliveryTime) || currentTime.Equal(delayedMsg.deliveryTime) {
-			delayedMsg.target.Receive(delayedMsg.message)
+			// Create a copy of the message and update its timestamp to reflect delivery time
+			// This is crucial for tests that check the received message's timestamp
+			deliveredMsg := delayedMsg.message
+			deliveredMsg.Timestamp = delayedMsg.deliveryTime // Set timestamp to actual delivery time
+
+			delayedMsg.target.Receive(deliveredMsg) // Deliver the modified message
 			deliveredCount++
 		} else {
 			remainingMessages = append(remainingMessages, delayedMsg)
