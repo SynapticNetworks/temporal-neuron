@@ -56,6 +56,24 @@ type MessageTransmitter interface {
 	Transmit(signal float64) error
 }
 
+// MessageScheduler defines the contract for components that can schedule
+// messages for delayed delivery to a target MessageReceiver.
+// This interface is implemented by components (like neurons) that manage
+// their own outgoing message queues.
+type MessageScheduler interface {
+	MessageReceiver // A component capable of scheduling messages is also a MessageReceiver
+
+	// ScheduleDelayedDelivery queues a message for delivery after the specified delay.
+	// This method returns immediately (non-blocking) and the message will be
+	// delivered to the target after the delay period.
+	//
+	// Parameters:
+	//   msg: The neural signal to deliver
+	//   target: The receiving component.MessageReceiver (e.g., the postsynaptic neuron)
+	//   delay: Total transmission delay (synaptic + axonal)
+	ScheduleDelayedDelivery(msg message.NeuralSignal, target MessageReceiver, delay time.Duration)
+}
+
 // ============================================================================
 // SPATIAL AWARENESS INTERFACES
 // ============================================================================

@@ -642,7 +642,8 @@ func TestRealisticSynapticDynamics(t *testing.T) {
 
 	// Phase 2: Verify synapse remains functional
 	synapse.Transmit(1.0)
-	time.Sleep(transmissionDelay + 5*time.Millisecond)
+	// Process any delayed messages in the mock
+	preNeuron.ProcessDelayedMessages(time.Now().Add(transmissionDelay + 5*time.Millisecond))
 
 	messages := postNeuron.GetReceivedMessages()
 	if len(messages) == 0 {

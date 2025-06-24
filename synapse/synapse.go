@@ -5,42 +5,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/SynapticNetworks/temporal-neuron/component"
 	"github.com/SynapticNetworks/temporal-neuron/message" // NEW: Import message package
 	// NEW: Import component package (though not directly used by BasicSynapse, it's used by SynapseCompatibleNeuron)
 )
-
-// =================================================================================
-// PLASTICITY AND CONFIGURATION STRUCTURES
-// =================================================================================
-
-// STDPConfig represents configuration parameters for Spike-Timing Dependent Plasticity.
-// It encapsulates the complete learning rule for a plastic synapse.
-//
-// STDP is a fundamental learning mechanism in biological neural networks where
-// the precise timing of spikes determines whether synapses get stronger or weaker.
-// This configuration controls all aspects of this learning process.
-type STDPConfig struct {
-	Enabled        bool          // Master switch for STDP learning. If false, the synapse is static.
-	LearningRate   float64       // The base rate of synaptic weight changes (biologically ~1-5%).
-	TimeConstant   time.Duration // The exponential decay time constant of the STDP window (e.g., 20ms).
-	WindowSize     time.Duration // The maximum timing difference for STDP effects (e.g., 50ms).
-	MinWeight      float64       // The minimum allowed synaptic weight (prevents synapse elimination).
-	MaxWeight      float64       // The maximum allowed synaptic weight (models receptor saturation).
-	AsymmetryRatio float64       // The ratio of LTD to LTP strength (LTD_strength / LTP_strength).
-}
-
-// PruningConfig defines the parameters for determining when a synapse is
-// considered ineffective and should be pruned as part of structural plasticity.
-//
-// In biological neural networks, weak or unused synapses are naturally eliminated
-// through a process called synaptic pruning. This "use it or lose it" mechanism
-// helps optimize neural circuits by removing ineffective connections while
-// preserving important pathways.
-type PruningConfig struct {
-	Enabled             bool          // If true, this synapse is subject to pruning.
-	WeightThreshold     float64       // The weight below which the synapse is a candidate for pruning.
-	InactivityThreshold time.Duration // A weak synapse is only pruned if it has been inactive for this duration.
-}
 
 // =================================================================================
 // DEFAULT SYNAPSE IMPLEMENTATION: BasicSynapse
@@ -66,8 +34,8 @@ type BasicSynapse struct {
 
 	// === NETWORK CONNECTIONS ===
 	// These maintain references to the neurons this synapse connects
-	preSynapticNeuron  SynapseCompatibleNeuron // A pointer back to the source neuron
-	postSynapticNeuron SynapseCompatibleNeuron // A pointer to the target neuron
+	preSynapticNeuron  component.MessageScheduler // A pointer back to the source neuron
+	postSynapticNeuron component.MessageReceiver  // A pointer to the target neuron
 
 	// Optional extracellular matrix for spatial delay enhancement
 	extracellularMatrix ExtracellularMatrix // nil means no spatial enhancement
@@ -101,8 +69,8 @@ type BasicSynapse struct {
 // Parameters:
 //
 //	id: Unique identifier for this synapse
-//	pre: Pre-synaptic neuron (source of signals)
-//	post: Post-synaptic neuron (destination of signals)
+//	pre: Pre-synaptic neuron (any neuron-like implementation)
+//	post: Post-synaptic neuron (any neuron-like implementation)
 //	stdpConfig: Configuration for plasticity learning
 //	pruningConfig: Configuration for structural plasticity
 //	initialWeight: Starting synaptic weight
@@ -114,13 +82,13 @@ type BasicSynapse struct {
 //
 // The constructor performs validation and bounds checking to ensure the
 // synapse starts in a valid state that won't cause network instabilities.
-func NewBasicSynapse(id string, pre SynapseCompatibleNeuron, post SynapseCompatibleNeuron,
+func NewBasicSynapse(id string, pre component.MessageScheduler, post component.MessageReceiver,
 	stdpConfig STDPConfig, pruningConfig PruningConfig, initialWeight float64,
 	delay time.Duration) *BasicSynapse {
 	return NewBasicSynapseWithMatrix(id, pre, post, stdpConfig, pruningConfig, initialWeight, delay, nil)
 }
 
-func NewBasicSynapseWithMatrix(id string, pre SynapseCompatibleNeuron, post SynapseCompatibleNeuron,
+func NewBasicSynapseWithMatrix(id string, pre component.MessageScheduler, post component.MessageReceiver,
 	stdpConfig STDPConfig, pruningConfig PruningConfig, initialWeight float64,
 	delay time.Duration, extracellular ExtracellularMatrix) *BasicSynapse {
 	// Validate and clamp delay to non-negative values
@@ -158,7 +126,6 @@ func NewBasicSynapseWithMatrix(id string, pre SynapseCompatibleNeuron, post Syna
 		lastTransmission:    time.Now(),
 
 		extracellularMatrix: extracellular, // Can be nil for no spatial enhancement
-
 	}
 }
 
@@ -173,75 +140,83 @@ func (s *BasicSynapse) ID() string {
 }
 
 // Transmit sends a signal through the synapse with proper weight scaling and delay.
-// This method models synaptic transmission including both synaptic properties
-// and spatial propagation delays through the extracellular matrix.
+// This method completes synchronously and does NOT spawn goroutines. Instead,
+// it delegates delay management to the pre-synaptic neuron's delivery system.
 //
 // BIOLOGICAL PROCESS MODELED:
 // 1. Pre-synaptic neuron fires (signalValue represents action potential strength)
 // 2. Signal is scaled by synaptic weight (synaptic efficacy)
-// 3. Base synaptic delay applied (neurotransmitter release and receptor kinetics)
-// 4. Spatial delay added via extracellular matrix (axonal propagation distance)
-// 5. Message delivered to post-synaptic neuron after total delay
+// 3. Message is created with proper timing and identification metadata
+// 4. Delay is calculated (synaptic + spatial components)
+// 5. Message is either delivered immediately or scheduled for delayed delivery
 //
-// NEW ARCHITECTURE:
-// This version eliminates goroutine explosion by using the pre-synaptic neuron's
-// dedicated delivery system instead of creating new goroutines per transmission.
-// Spatial delays are calculated via the extracellular matrix, separating synaptic
-// properties from spatial network topology.
+// NEW ARCHITECTURE BENEFITS:
+// - Eliminates goroutine explosion by using neuron's centralized delivery system
+// - Maintains synchronous completion of Transmit() call
+// - Supports both immediate and delayed delivery through unified interface
+// - Allows spatial delays via extracellular matrix without additional complexity
 //
 // Parameters:
 //
 //	signalValue: The strength of the incoming signal from the pre-synaptic neuron
 func (s *BasicSynapse) Transmit(signalValue float64) {
-	// Thread-safe read of current synapse state
+	// === THREAD-SAFE STATE ACCESS ===
+	// Read current synapse state without holding lock during message delivery
 	s.mutex.RLock()
-	effectiveSignal := signalValue * s.weight // Apply synaptic weight
-	baseSynapticDelay := s.delay              // Base synaptic delay
+	effectiveSignal := signalValue * s.weight // Apply synaptic weight scaling
+	baseSynapticDelay := s.delay              // Base synaptic transmission delay
 	s.mutex.RUnlock()
 
-	// Update activity tracking for pruning decisions
+	// === ACTIVITY TRACKING FOR PLASTICITY ===
+	// Update last transmission time for pruning and plasticity decisions
 	s.mutex.Lock()
 	s.lastTransmission = time.Now()
 	s.mutex.Unlock()
 
-	// Create the message using message.NeuralSignal
-	// Populate relevant fields for neural communication and plasticity tracking.
+	// === MESSAGE CREATION ===
+	// Create neural signal with complete metadata for downstream processing
 	msg := message.NeuralSignal{
-		Value:     effectiveSignal,
-		Timestamp: time.Now(),                // When the signal was generated by the synapse
-		SourceID:  s.preSynapticNeuron.ID(),  // The original sender neuron
-		SynapseID: s.id,                      // This synapse's ID
-		TargetID:  s.postSynapticNeuron.ID(), // The intended recipient neuron
-		// Other fields like NeurotransmitterType, VesicleReleased, CalciumLevel
-		// can be passed into Transmit or derived if the synapse has that context.
-		// For now, we'll keep it minimal as per the previous SynapseMessage structure.
+		Value:     effectiveSignal,           // Signal scaled by synaptic weight
+		Timestamp: time.Now(),                // When signal was generated by synapse
+		SourceID:  s.preSynapticNeuron.ID(),  // Original sending neuron
+		SynapseID: s.id,                      // This synapse's identifier
+		TargetID:  s.postSynapticNeuron.ID(), // Intended receiving neuron
+		// Additional fields can be populated based on synapse type:
+		// NeurotransmitterType, VesicleReleased, CalciumLevel, etc.
 	}
 
-	// Calculate total delay: synaptic properties + spatial propagation
+	// === DELAY CALCULATION ===
+	// Combine synaptic properties with spatial propagation delays
 	var totalDelay time.Duration
 	if s.extracellularMatrix != nil {
-		// ENHANCED DELAY: Combine synaptic and spatial delays
-		// Models both neurotransmitter kinetics and axonal propagation
+		// ENHANCED DELAY: Synaptic + spatial components
+		// Models both neurotransmitter kinetics and axonal propagation distance
 		totalDelay = s.extracellularMatrix.EnhanceSynapticDelay(
 			s.preSynapticNeuron.ID(),
 			s.postSynapticNeuron.ID(),
 			s.id,
-			baseSynapticDelay, // Pass base delay for enhancement
+			baseSynapticDelay,
 		)
 	} else {
-		// BASIC DELAY: Only synaptic properties (no spatial enhancement)
+		// BASIC DELAY: Only synaptic properties
 		totalDelay = baseSynapticDelay
 	}
 
-	if totalDelay == 0 {
-		// IMMEDIATE DELIVERY: If no delay, deliver directly to post-synaptic neuron
+	// === MESSAGE DELIVERY STRATEGY ===
+	if totalDelay <= 0 {
+		// IMMEDIATE DELIVERY: Zero delay, deliver directly to post-synaptic neuron
+		// This is the most common case for fast synapses
 		s.postSynapticNeuron.Receive(msg)
 	} else {
-		// DELAYED DELIVERY: Ask the pre-synaptic neuron to schedule the delivery
-		// The pre-synaptic neuron (implementing SynapseCompatibleNeuron) is
-		// responsible for managing its axonal queue and ensuring delivery.
+		// Use neuron's centralized delay management
+		// No goroutines created here - neuron manages its own delivery queue
 		s.preSynapticNeuron.ScheduleDelayedDelivery(msg, s.postSynapticNeuron, totalDelay)
 	}
+
+	// === METHOD COMPLETION ===
+	// Transmit() returns immediately, allowing the pre-synaptic neuron to continue
+	// processing. Delayed messages will be delivered asynchronously by the neuron's
+	// own delivery system without blocking this call.
 }
 
 // ApplyPlasticity modifies the synapse's weight based on STDP rules.

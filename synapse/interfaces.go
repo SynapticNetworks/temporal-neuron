@@ -2,134 +2,72 @@ package synapse
 
 import (
 	"time"
-
-	"github.com/SynapticNetworks/temporal-neuron/component" // NEW
-	"github.com/SynapticNetworks/temporal-neuron/message"   // NEW
 )
+
+// =================================================================================
+// SYNAPSE PROCESSOR INTERFACE
+// =================================================================================
 
 // SynapticProcessor defines the universal contract for any component that acts
 // as a synapse. It is the key to the pluggable architecture, ensuring that the
 // Neuron can work with any synapse type that fulfills these methods.
-//
-// This interface abstracts away the implementation details of different synapse
-// types, allowing for:
-// - Static synapses (fixed weights)
-// - Plastic synapses (learning via STDP)
-// - Inhibitory vs excitatory synapses
-// - Fast vs slow synapses
-// - Complex multi-compartment synapses
-//
-// All synapse types can be used interchangeably by neurons as long as they
-// implement this interface.
 type SynapticProcessor interface {
 	// ID returns the unique identifier for the synapse.
-	// This allows neurons to manage and reference specific synapses by name.
 	ID() string
 
 	// Transmit processes an outgoing signal from the pre-synaptic neuron.
-	// It is responsible for applying the synapse's weight and handling the
-	// axonal transmission delay before delivering the signal to the
-	// post-synaptic neuron.
+	// IMPORTANT: This method completes synchronously - it does NOT block
+	// the calling neuron while waiting for delays. Instead, it schedules
+	// delayed delivery through the neuron's axonal queue system.
 	//
 	// Parameters:
 	//   signalValue: The strength of the signal from the pre-synaptic neuron
-	//
-	// The synapse applies its weight and delay, then sends the modified signal
-	// to the post-synaptic neuron after the appropriate delay period.
 	Transmit(signalValue float64)
 
-	// ApplyPlasticity updates the synapse's internal state (e.g., weight)
-	// based on a feedback signal from the post-synaptic neuron, typically
-	// containing spike timing information (Δt) for STDP.
-	//
-	// Parameters:
-	//   adjustment: Contains timing and other information needed for plasticity
-	//
-	// This method implements the learning aspect of synapses, allowing them
-	// to strengthen or weaken based on their effectiveness in causing
-	// post-synaptic firing.
+	// ApplyPlasticity updates the synapse's internal state based on feedback
 	ApplyPlasticity(adjustment PlasticityAdjustment)
 
-	// ShouldPrune evaluates the synapse's internal state to determine if it
-	// has become ineffective and should be removed by the parent neuron.
-	// This method encapsulates the logic for structural plasticity.
-	//
-	// Returns:
-	//   true if the synapse should be eliminated, false otherwise
-	//
-	// The decision is based on factors like:
-	// - Current synaptic weight (too weak?)
-	// - Recent activity levels (unused?)
-	// - Time since last plasticity event (stagnant?)
+	// ShouldPrune evaluates if the synapse should be removed
 	ShouldPrune() bool
 
-	// GetWeight returns the current effective weight of the synapse. This is
-	// crucial for monitoring, debugging, and validating learning.
-	//
-	// Returns:
-	//   The current synaptic weight/strength
+	// GetWeight returns the current synaptic weight
 	GetWeight() float64
 
-	// SetWeight allows for direct experimental manipulation of the synapse's
-	// strength. This is a thread-safe method.
-	//
-	// Parameters:
-	//   weight: The new weight to set for this synapse
-	//
-	// This method is useful for:
-	// - Experimental manipulation
-	// - Initialization of specific weight patterns
-	// - Testing network behavior with controlled weights
+	// SetWeight allows direct manipulation of synaptic strength
 	SetWeight(weight float64)
 }
 
 // =================================================================================
-// NEURON INTERFACE FOR SYNAPSE COMMUNICATION
-// This defines what methods a neuron must have to work with synapses
+// PLASTICITY AND CONFIGURATION TYPES
 // =================================================================================
 
-// SynapseCompatibleNeuron defines the interface that neurons must implement
-// to work with the synapse system. This allows synapses to communicate with
-// neurons without depending on specific neuron implementations.
-type SynapseCompatibleNeuron interface {
-	// ID returns the unique identifier of the neuron
-	ID() string
-	// Type returns the categorical type of the component.
-	Type() component.ComponentType // Added for consistency with component.Component
+// PlasticityAdjustment contains feedback for synaptic plasticity
+type PlasticityAdjustment struct {
+	DeltaT       time.Duration // Spike timing difference for STDP
+	PostSynaptic bool          // Whether post-synaptic neuron fired
+	PreSynaptic  bool          // Whether pre-synaptic neuron fired recently
+	Timestamp    time.Time     // When this adjustment was generated
+}
 
-	// Receive accepts a neural signal and processes it
-	Receive(msg message.NeuralSignal) // CHANGED: From SynapseMessage to message.NeuralSignal
+// STDPConfig defines spike-timing dependent plasticity parameters
+type STDPConfig struct {
+	Enabled        bool          // Whether STDP is active
+	LearningRate   float64       // Rate of weight changes
+	TimeConstant   time.Duration // STDP time window
+	WindowSize     time.Duration // Maximum timing window for plasticity
+	MinWeight      float64       // Minimum allowed weight
+	MaxWeight      float64       // Maximum allowed weight
+	AsymmetryRatio float64       // LTP/LTD asymmetry factor
+}
 
-	// ScheduleDelayedDelivery requests the neuron to schedule a message for later delivery.
-	// The neuron is responsible for its own axonal queue.
-	ScheduleDelayedDelivery(message message.NeuralSignal, target SynapseCompatibleNeuron, delay time.Duration) // CHANGED: From SynapseMessage to message.NeuralSignal
+// PruningConfig defines structural plasticity parameters
+type PruningConfig struct {
+	Enabled             bool          // Whether pruning is active
+	WeightThreshold     float64       // Minimum weight to avoid pruning
+	InactivityThreshold time.Duration // Maximum inactivity before pruning
 }
 
 // ExtracellularMatrix interface for spatial delay enhancement
 type ExtracellularMatrix interface {
-	// Enhance existing synaptic delay with spatial factors
 	EnhanceSynapticDelay(preNeuronID, postNeuronID, synapseID string, baseDelay time.Duration) time.Duration
-}
-
-// PlasticityAdjustment is a feedback message sent from a post-synaptic neuron
-// back to a pre-synaptic synapse to trigger a plasticity event (e.g., STDP).
-// This models the retrograde signaling mechanisms found in biological systems.
-//
-// In biology, when a post-synaptic neuron fires, it can send feedback signals
-// back to the synapses that contributed to its firing. This feedback contains
-// information about the timing relationship between pre- and post-synaptic
-// activity, which is used to strengthen or weaken the synaptic connection.
-type PlasticityAdjustment struct {
-	// DeltaT is the time difference between the pre-synaptic and post-synaptic spikes.
-	// Its sign and magnitude determine the direction and strength of the synaptic
-	// weight change according to the STDP rule.
-	//
-	// Convention: Δt = t_pre - t_post
-	//   - Δt < 0 (causal): pre-synaptic spike occurred BEFORE post-synaptic spike -> LTP
-	//   - Δt > 0 (anti-causal): pre-synaptic spike occurred AFTER post-synaptic spike -> LTD
-	//
-	// Biological basis: This timing relationship determines whether synapses are
-	// strengthened (if they helped cause the post-synaptic firing) or weakened
-	// (if they fired after the neuron was already committed to firing).
-	DeltaT time.Duration
 }

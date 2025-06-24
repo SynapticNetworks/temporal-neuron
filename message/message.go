@@ -29,10 +29,13 @@ const (
 	LigandSubstanceP                        // Peptide neurotransmitter (pain, inflammation)
 	LigandVasopressin                       // Peptide hormone/neurotransmitter
 	LigandOxytocin                          // Peptide hormone/neurotransmitter (social bonding)
+	LigandCalcium                           // Intracellular calcium signaling (essential for plasticity)
 )
 
 func (lt LigandType) String() string {
 	switch lt {
+	case LigandCalcium:
+		return "Calcium"
 	case LigandGlutamate:
 		return "Glutamate"
 	case LigandGABA:
@@ -73,6 +76,8 @@ func (lt LigandType) String() string {
 // GetPolarityEffect returns the typical effect of this ligand (excitatory: +1, inhibitory: -1, modulatory: 0)
 func (lt LigandType) GetPolarityEffect() float64 {
 	switch lt {
+	case LigandCalcium:
+		return 0.0 // Modulatory signaling cascade
 	case LigandGlutamate:
 		return 1.0 // Excitatory
 	case LigandGABA, LigandGlycine:

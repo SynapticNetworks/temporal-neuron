@@ -15,6 +15,14 @@ type OutputCallback struct {
 	GetTargetID     func() string
 }
 
+// InputCallback allows synapses to schedule delayed delivery back to neurons
+// This avoids circular package dependencies while maintaining clean separation
+// unused.
+type InputCallback struct {
+	ScheduleDelivery func(msg message.NeuralSignal, targetID string, delay time.Duration) error
+	GetNeuronID      func() string
+}
+
 // === ENHANCED MATRIX SERVICE CALLBACKS (INJECTED COORDINATION) ===
 type NeuronCallbacks struct {
 	// ===  NETWORK-WIDE SIGNALING ===

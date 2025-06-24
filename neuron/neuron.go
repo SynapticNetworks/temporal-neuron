@@ -176,6 +176,8 @@ func NewNeuron(id string, threshold float64, decayRate float64, refractoryPeriod
 		cancel: cancel,
 	}
 
+	neuron.SetState(component.StateInactive) // Start inactive, not active
+
 	return neuron
 }
 
@@ -821,6 +823,19 @@ func (n *Neuron) calculateChemicalEffect(ligandType message.LigandType, concentr
 // LIFECYCLE MANAGEMENT
 // ============================================================================
 
+// Override IsActive from BaseComponent to check actual running state
+func (n *Neuron) IsActive() bool {
+	// Only active if Start() was called and Stop() hasn't cancelled the context
+	select {
+	case <-n.ctx.Done():
+		return false // Context cancelled = not running
+	default:
+		// Context is active, but we need to check if Start() was actually called
+		// We could track this with a boolean flag or check base component state
+		return n.BaseComponent.IsActive()
+	}
+}
+
 func (n *Neuron) Start() error {
 	// Validate neuron state before starting
 	if err := n.validateNeuronState(); err != nil {
@@ -926,4 +941,13 @@ func (n *Neuron) SetSynapseWeight(synapseID string, weight float64) error {
 		return fmt.Errorf("SetSynapseWeight callback not available")
 	}
 	return n.matrixCallbacks.SetSynapseWeight(synapseID, weight)
+}
+
+// ScheduleDelayedDelivery implements the SynapseNeuronInterface requirement.
+// This method queues messages for delayed delivery without spawning goroutines.
+// ScheduleDelayedDelivery implements the SynapseNeuronInterface requirement
+func (n *Neuron) ScheduleDelayedDelivery(msg message.NeuralSignal, target component.MessageReceiver, delay time.Duration) {
+
+	// Use your existing axon delivery mechanism
+	ScheduleDelayedDelivery(n.deliveryQueue, msg, target, delay)
 }
