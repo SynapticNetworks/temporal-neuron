@@ -38,3 +38,7 @@ go.work.sum
 
 old/
 test_*.txt
+
+scripts/
+.summary.ignore
+summary.txt
