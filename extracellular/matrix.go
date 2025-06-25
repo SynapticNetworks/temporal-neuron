@@ -310,6 +310,9 @@ func (ecm *ExtracellularMatrix) CreateNeuron(config types.NeuronConfig) (compone
 		return nil, fmt.Errorf("neurogenesis failed: %w", err)
 	}
 
+	// === PHASE 2.5: APPLY MATRIX CONFIGURATION ===
+	neuron.SetPosition(config.Position) // ← ADD THIS LINE
+
 	// === PHASE 3: INTEGRATION AND REGISTRATION (Re-locked) ===
 	ecm.mu.Lock()
 	defer ecm.mu.Unlock()
