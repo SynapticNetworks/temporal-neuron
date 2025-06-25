@@ -7,7 +7,7 @@ OVERVIEW:
 This test suite validates the functionality and biological realism of the various
 `DendriticIntegrationMode` strategies using the new component-based architecture.
 These tests ensure that each integration mode correctly implements its intended
-computational behavior while working with the new message.NeuralSignal types
+computational behavior while working with the new types.NeuralSignal types
 and ion channel processing chains.
 
 BIOLOGICAL CONTEXT:
@@ -28,7 +28,7 @@ KEY MECHANISMS TESTED:
 
 ARCHITECTURE INTEGRATION:
 These tests verify integration with:
-- message.NeuralSignal (replacing old synapse.SynapseMessage)
+- types.NeuralSignal (replacing old synapse.SynapseMessage)
 - Ion channel processing chains
 - Component-based spatial positioning
 - Realistic biophysical parameters
@@ -45,7 +45,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/SynapticNetworks/temporal-neuron/message"
+	"github.com/SynapticNetworks/temporal-neuron/types"
 )
 
 // ============================================================================
@@ -71,12 +71,12 @@ func TestDendrite_PassiveMode(t *testing.T) {
 
 	// Test 1: Excitatory input
 	t.Run("ExcitatoryInput", func(t *testing.T) {
-		msg := message.NeuralSignal{
+		msg := types.NeuralSignal{
 			Value:                DENDRITE_TEST_INPUT_MEDIUM,
 			Timestamp:            time.Now(),
 			SourceID:             "test-source",
 			TargetID:             "test-target",
-			NeurotransmitterType: message.LigandGlutamate,
+			NeurotransmitterType: types.LigandGlutamate,
 		}
 
 		result := mode.Handle(msg)
@@ -96,12 +96,12 @@ func TestDendrite_PassiveMode(t *testing.T) {
 	// Test 2: Inhibitory input
 	t.Run("InhibitoryInput", func(t *testing.T) {
 		expectedValue := -DENDRITE_FACTOR_EFFECT_GABA
-		msg := message.NeuralSignal{
+		msg := types.NeuralSignal{
 			Value:                expectedValue,
 			Timestamp:            time.Now(),
 			SourceID:             "test-inhibitory",
 			TargetID:             "test-target",
-			NeurotransmitterType: message.LigandGABA,
+			NeurotransmitterType: types.LigandGABA,
 		}
 
 		result := mode.Handle(msg)
@@ -157,25 +157,25 @@ func TestDendrite_TemporalSummationMode(t *testing.T) {
 
 	// Test 1: Basic buffering functionality
 	t.Run("BasicBuffering", func(t *testing.T) {
-		msg1 := message.NeuralSignal{
+		msg1 := types.NeuralSignal{
 			Value:                DENDRITE_TEST_INPUT_SMALL * 50, // 0.5 total
 			Timestamp:            time.Now(),
 			SourceID:             "excitatory-1",
-			NeurotransmitterType: message.LigandGlutamate,
+			NeurotransmitterType: types.LigandGlutamate,
 		}
 
-		msg2 := message.NeuralSignal{
+		msg2 := types.NeuralSignal{
 			Value:                DENDRITE_FACTOR_EFFECT_ACETYLCHOLINE * DENDRITE_TEST_INPUT_SMALL * 30, // ~0.21 total
 			Timestamp:            time.Now(),
 			SourceID:             "excitatory-2",
-			NeurotransmitterType: message.LigandAcetylcholine,
+			NeurotransmitterType: types.LigandAcetylcholine,
 		}
 
-		msg3 := message.NeuralSignal{
+		msg3 := types.NeuralSignal{
 			Value:                DENDRITE_FACTOR_EFFECT_GABA * DENDRITE_TEST_INPUT_SMALL * 25, // -0.2 total
 			Timestamp:            time.Now(),
 			SourceID:             "inhibitory-1",
-			NeurotransmitterType: message.LigandGABA,
+			NeurotransmitterType: types.LigandGABA,
 		}
 
 		// All inputs should be buffered
@@ -229,10 +229,10 @@ func TestDendrite_TemporalSummationMode(t *testing.T) {
 			DENDRITE_CONDUCTANCE_SODIUM_DEFAULT, DENDRITE_VOLTAGE_REVERSAL_SODIUM)
 		mode.AddChannel(mockChannel)
 
-		msg := message.NeuralSignal{
+		msg := types.NeuralSignal{
 			Value:                DENDRITE_TEST_INPUT_MEDIUM,
 			Timestamp:            time.Now(),
-			NeurotransmitterType: message.LigandGlutamate,
+			NeurotransmitterType: types.LigandGlutamate,
 		}
 
 		result := mode.Handle(msg)
@@ -251,17 +251,17 @@ func TestDendrite_TemporalSummationMode(t *testing.T) {
 	// Test 4: Neurotransmitter type handling
 	t.Run("NeurotransmitterTypes", func(t *testing.T) {
 		neurotransmitters := []struct {
-			ligand   message.LigandType
+			ligand   types.LigandType
 			expected string
 		}{
-			{message.LigandGlutamate, "Glutamate"},
-			{message.LigandGABA, "GABA"},
-			{message.LigandDopamine, "Dopamine"},
-			{message.LigandSerotonin, "Serotonin"},
+			{types.LigandGlutamate, "Glutamate"},
+			{types.LigandGABA, "GABA"},
+			{types.LigandDopamine, "Dopamine"},
+			{types.LigandSerotonin, "Serotonin"},
 		}
 
 		for _, nt := range neurotransmitters {
-			msg := message.NeuralSignal{
+			msg := types.NeuralSignal{
 				Value:                DENDRITE_TEST_INPUT_SMALL * 10,
 				NeurotransmitterType: nt.ligand,
 			}
@@ -308,11 +308,11 @@ func TestDendrite_BiologicalTemporalSummationMode(t *testing.T) {
 	// Test 1: Exponential temporal decay
 	t.Run("ExponentialDecay", func(t *testing.T) {
 		// Send a signal and immediately process (minimal decay)
-		msg := message.NeuralSignal{
+		msg := types.NeuralSignal{
 			Value:                DENDRITE_TEST_INPUT_MEDIUM,
 			Timestamp:            time.Now(),
 			SourceID:             "proximal", // Use proximal for minimal spatial decay
-			NeurotransmitterType: message.LigandGlutamate,
+			NeurotransmitterType: types.LigandGlutamate,
 		}
 
 		mode.Handle(msg)
@@ -360,11 +360,11 @@ func TestDendrite_BiologicalTemporalSummationMode(t *testing.T) {
 		}
 
 		for _, loc := range locations {
-			msg := message.NeuralSignal{
+			msg := types.NeuralSignal{
 				Value:                DENDRITE_TEST_INPUT_MEDIUM,
 				Timestamp:            time.Now(),
 				SourceID:             loc.source,
-				NeurotransmitterType: message.LigandGlutamate,
+				NeurotransmitterType: types.LigandGlutamate,
 			}
 
 			mode.Handle(msg)
@@ -423,10 +423,10 @@ func TestDendrite_BiologicalTemporalSummationMode(t *testing.T) {
 			DENDRITE_CONDUCTANCE_POTASSIUM_DEFAULT, DENDRITE_VOLTAGE_REVERSAL_POTASSIUM)
 		mode.AddChannel(channel)
 
-		msg := message.NeuralSignal{
+		msg := types.NeuralSignal{
 			Value:                DENDRITE_TEST_INPUT_SMALL * 50,
 			Timestamp:            time.Now(),
-			NeurotransmitterType: message.LigandGlutamate,
+			NeurotransmitterType: types.LigandGlutamate,
 		}
 
 		result := mode.Handle(msg)
@@ -473,11 +473,11 @@ func TestDendrite_ShuntingInhibitionMode(t *testing.T) {
 
 	// Test 1: No inhibition (full excitation)
 	t.Run("NoInhibition", func(t *testing.T) {
-		msg := message.NeuralSignal{
+		msg := types.NeuralSignal{
 			Value:                DENDRITE_TEST_INPUT_MEDIUM * 2, // 2.0
 			Timestamp:            time.Now(),
 			SourceID:             "proximal", // Minimal spatial decay
-			NeurotransmitterType: message.LigandGlutamate,
+			NeurotransmitterType: types.LigandGlutamate,
 		}
 
 		mode.Handle(msg)
@@ -500,16 +500,16 @@ func TestDendrite_ShuntingInhibitionMode(t *testing.T) {
 
 	// Test 2: Moderate shunting inhibition
 	t.Run("ModerateInhibition", func(t *testing.T) {
-		excMsg := message.NeuralSignal{
+		excMsg := types.NeuralSignal{
 			Value:                DENDRITE_TEST_INPUT_MEDIUM * 2, // 2.0
 			SourceID:             "proximal",
-			NeurotransmitterType: message.LigandGlutamate,
+			NeurotransmitterType: types.LigandGlutamate,
 		}
 
-		inhMsg := message.NeuralSignal{
+		inhMsg := types.NeuralSignal{
 			Value:                -DENDRITE_TEST_INPUT_MEDIUM, // -1.0
 			SourceID:             "proximal",
-			NeurotransmitterType: message.LigandGABA,
+			NeurotransmitterType: types.LigandGABA,
 		}
 
 		mode.Handle(excMsg)
@@ -543,17 +543,17 @@ func TestDendrite_ShuntingInhibitionMode(t *testing.T) {
 
 	// Test 3: Maximum shunting (floor effect)
 	t.Run("MaximumShunting", func(t *testing.T) {
-		excMsg := message.NeuralSignal{
+		excMsg := types.NeuralSignal{
 			Value:                DENDRITE_TEST_INPUT_MEDIUM,
 			SourceID:             "proximal",
-			NeurotransmitterType: message.LigandGlutamate,
+			NeurotransmitterType: types.LigandGlutamate,
 		}
 
 		// Very strong inhibition
-		inhMsg := message.NeuralSignal{
+		inhMsg := types.NeuralSignal{
 			Value:                -DENDRITE_TEST_INPUT_LARGE / 2, // -5.0
 			SourceID:             "proximal",
-			NeurotransmitterType: message.LigandGABA,
+			NeurotransmitterType: types.LigandGABA,
 		}
 
 		mode.Handle(excMsg)
@@ -618,10 +618,10 @@ func TestDendrite_ActiveDendriteMode(t *testing.T) {
 	// Test 1: Synaptic saturation without spike
 	t.Run("SynapticSaturation", func(t *testing.T) {
 		// Large input that should be saturated
-		msg := message.NeuralSignal{
+		msg := types.NeuralSignal{
 			Value:                DENDRITE_TEST_INPUT_LARGE / 2, // 5.0 - well above saturation limit
 			SourceID:             "proximal",
-			NeurotransmitterType: message.LigandGlutamate,
+			NeurotransmitterType: types.LigandGlutamate,
 		}
 
 		mode.Handle(msg)
@@ -652,10 +652,10 @@ func TestDendrite_ActiveDendriteMode(t *testing.T) {
 	// Test 2: Dendritic spike generation
 	t.Run("DendriticSpike", func(t *testing.T) {
 		// Input that should trigger dendritic spike
-		msg := message.NeuralSignal{
+		msg := types.NeuralSignal{
 			Value:                DENDRITE_TEST_INPUT_LARGE * 0.6, // 6.0 - above saturation, will be capped to 2.0
 			SourceID:             "proximal",
-			NeurotransmitterType: message.LigandGlutamate,
+			NeurotransmitterType: types.LigandGlutamate,
 		}
 
 		mode.Handle(msg)
@@ -690,22 +690,22 @@ func TestDendrite_ActiveDendriteMode(t *testing.T) {
 	// Test 3: Combined mechanisms
 	t.Run("CombinedMechanisms", func(t *testing.T) {
 		// Multiple inputs with saturation, shunting, and spike
-		excMsg1 := message.NeuralSignal{
+		excMsg1 := types.NeuralSignal{
 			Value:                DENDRITE_TEST_INPUT_LARGE * 0.8, // 8.0 - will be saturated to 2.0
 			SourceID:             "proximal",
-			NeurotransmitterType: message.LigandGlutamate,
+			NeurotransmitterType: types.LigandGlutamate,
 		}
 
-		excMsg2 := message.NeuralSignal{
+		excMsg2 := types.NeuralSignal{
 			Value:                DENDRITE_TEST_INPUT_MEDIUM,
 			SourceID:             "basal", // Spatial weight 0.8
-			NeurotransmitterType: message.LigandGlutamate,
+			NeurotransmitterType: types.LigandGlutamate,
 		}
 
-		inhMsg := message.NeuralSignal{
+		inhMsg := types.NeuralSignal{
 			Value:                -DENDRITE_TEST_INPUT_MEDIUM,
 			SourceID:             "proximal",
-			NeurotransmitterType: message.LigandGABA,
+			NeurotransmitterType: types.LigandGABA,
 		}
 
 		mode.Handle(excMsg1)
@@ -764,10 +764,10 @@ func TestDendrite_ActiveDendriteMode(t *testing.T) {
 	// Test 4: Voltage dependency
 	t.Run("VoltageDependency", func(t *testing.T) {
 		// Same input, different membrane voltages
-		msg := message.NeuralSignal{
+		msg := types.NeuralSignal{
 			Value:                DENDRITE_TEST_INPUT_LARGE * 0.6, // 6.0 - above saturation and spike threshold
 			SourceID:             "proximal",
-			NeurotransmitterType: message.LigandGlutamate,
+			NeurotransmitterType: types.LigandGlutamate,
 		}
 
 		// Test with low membrane voltage (below spike threshold)
@@ -874,11 +874,11 @@ func TestDendrite_ConcurrencyAndEdges(t *testing.T) {
 				go func(goroutineID int) {
 					defer wg.Done()
 					for j := 0; j < inputsPerGoroutine; j++ {
-						msg := message.NeuralSignal{
+						msg := types.NeuralSignal{
 							Value:                DENDRITE_TEST_INPUT_SMALL, // Small predictable value
 							Timestamp:            time.Now(),
 							SourceID:             "concurrent-source",
-							NeurotransmitterType: message.LigandGlutamate,
+							NeurotransmitterType: types.LigandGlutamate,
 						}
 						tm.mode.Handle(msg)
 					}
@@ -921,18 +921,18 @@ func TestDendrite_ConcurrencyAndEdges(t *testing.T) {
 			}
 
 			// Test 2: Zero-value messages
-			zeroMsg := message.NeuralSignal{
+			zeroMsg := types.NeuralSignal{
 				Value:                0.0,
 				Timestamp:            time.Now(),
 				SourceID:             "zero-source",
-				NeurotransmitterType: message.LigandGlutamate,
+				NeurotransmitterType: types.LigandGlutamate,
 			}
 
 			tm.mode.Handle(zeroMsg)
-			tm.mode.Handle(message.NeuralSignal{
+			tm.mode.Handle(types.NeuralSignal{
 				Value:                DENDRITE_TEST_INPUT_MEDIUM,
 				SourceID:             "nonzero-source",
-				NeurotransmitterType: message.LigandGlutamate,
+				NeurotransmitterType: types.LigandGlutamate,
 			})
 
 			zeroResult := tm.mode.Process(MembraneSnapshot{})
@@ -941,10 +941,10 @@ func TestDendrite_ConcurrencyAndEdges(t *testing.T) {
 			}
 
 			// Test 3: Large input values
-			largeMsg := message.NeuralSignal{
+			largeMsg := types.NeuralSignal{
 				Value:                DENDRITE_TEST_INPUT_LARGE * 100, // Very large input
 				SourceID:             "large-source",
-				NeurotransmitterType: message.LigandGlutamate,
+				NeurotransmitterType: types.LigandGlutamate,
 			}
 
 			tm.mode.Handle(largeMsg)
@@ -956,15 +956,15 @@ func TestDendrite_ConcurrencyAndEdges(t *testing.T) {
 			}
 
 			// Test 4: Mixed neurotransmitter types
-			mixedMsgs := []message.NeuralSignal{
+			mixedMsgs := []types.NeuralSignal{
 				{Value: DENDRITE_FACTOR_EFFECT_GLUTAMATE * DENDRITE_TEST_INPUT_SMALL * 50,
-					NeurotransmitterType: message.LigandGlutamate},
+					NeurotransmitterType: types.LigandGlutamate},
 				{Value: DENDRITE_FACTOR_EFFECT_GABA * DENDRITE_TEST_INPUT_SMALL * 30,
-					NeurotransmitterType: message.LigandGABA},
+					NeurotransmitterType: types.LigandGABA},
 				{Value: DENDRITE_FACTOR_EFFECT_DOPAMINE * DENDRITE_TEST_INPUT_SMALL * 20,
-					NeurotransmitterType: message.LigandDopamine},
+					NeurotransmitterType: types.LigandDopamine},
 				{Value: DENDRITE_FACTOR_EFFECT_SEROTONIN * DENDRITE_TEST_INPUT_SMALL * 10,
-					NeurotransmitterType: message.LigandSerotonin},
+					NeurotransmitterType: types.LigandSerotonin},
 			}
 
 			for _, msg := range mixedMsgs {
@@ -1011,10 +1011,10 @@ func TestDendrite_IonChannelIntegration(t *testing.T) {
 			DENDRITE_CONDUCTANCE_SODIUM_DEFAULT, DENDRITE_VOLTAGE_REVERSAL_SODIUM)
 		mode.AddChannel(naChannel)
 
-		msg := message.NeuralSignal{
+		msg := types.NeuralSignal{
 			Value:                DENDRITE_TEST_INPUT_MEDIUM,
 			Timestamp:            time.Now(),
-			NeurotransmitterType: message.LigandGlutamate,
+			NeurotransmitterType: types.LigandGlutamate,
 		}
 
 		result := mode.Handle(msg)
@@ -1058,9 +1058,9 @@ func TestDendrite_IonChannelIntegration(t *testing.T) {
 			mode.AddChannel(channel)
 		}
 
-		msg := message.NeuralSignal{
+		msg := types.NeuralSignal{
 			Value:                DENDRITE_TEST_INPUT_MEDIUM * 2,
-			NeurotransmitterType: message.LigandGlutamate,
+			NeurotransmitterType: types.LigandGlutamate,
 		}
 
 		mode.Handle(msg)
@@ -1147,11 +1147,11 @@ func TestDendrite_SpatialDecayIsolation(t *testing.T) {
 	t.Log("\nTesting full processing chain with identical inputs:")
 	for _, loc := range locations {
 		// Test 2: Full processing chain with immediate processing
-		msg := message.NeuralSignal{
+		msg := types.NeuralSignal{
 			Value:                testInput,
 			Timestamp:            time.Now(),
 			SourceID:             loc.source,
-			NeurotransmitterType: message.LigandGlutamate,
+			NeurotransmitterType: types.LigandGlutamate,
 		}
 
 		mode.Handle(msg)
@@ -1182,11 +1182,11 @@ func TestDendrite_SpatialDecayIsolation(t *testing.T) {
 	for _, loc := range locations {
 		mode := NewBiologicalTemporalSummationMode(bioConfig) // Fresh mode
 
-		msg := message.NeuralSignal{
+		msg := types.NeuralSignal{
 			Value:                testInput,
 			Timestamp:            time.Now().Add(-DENDRITE_TEST_DECAY_WAIT), // Aged input
 			SourceID:             loc.source,
-			NeurotransmitterType: message.LigandGlutamate,
+			NeurotransmitterType: types.LigandGlutamate,
 		}
 
 		mode.Handle(msg)
@@ -1222,10 +1222,10 @@ func TestDendrite_ActiveDendriteMode_Debug(t *testing.T) {
 	t.Run("SaturationOnly", func(t *testing.T) {
 		mode := NewActiveDendriteMode(config, bioConfig)
 
-		msg := message.NeuralSignal{
+		msg := types.NeuralSignal{
 			Value:                DENDRITE_TEST_INPUT_LARGE, // Well above saturation
 			SourceID:             "proximal",                // No spatial decay
-			NeurotransmitterType: message.LigandGlutamate,
+			NeurotransmitterType: types.LigandGlutamate,
 		}
 
 		mode.Handle(msg)
@@ -1257,10 +1257,10 @@ func TestDendrite_ActiveDendriteMode_Debug(t *testing.T) {
 		mode := NewActiveDendriteMode(config, bioConfig)
 
 		// Use exactly the spike threshold to avoid saturation issues
-		msg := message.NeuralSignal{
+		msg := types.NeuralSignal{
 			Value:                config.DendriticSpikeThreshold, // Use exactly 2.0
 			SourceID:             "proximal",
-			NeurotransmitterType: message.LigandGlutamate,
+			NeurotransmitterType: types.LigandGlutamate,
 		}
 
 		mode.Handle(msg)
@@ -1320,10 +1320,10 @@ func TestDendrite_ActiveDendriteMode_Debug(t *testing.T) {
 			t.Run(tc.name, func(t *testing.T) {
 				mode := NewActiveDendriteMode(config, bioConfig)
 
-				msg := message.NeuralSignal{
+				msg := types.NeuralSignal{
 					Value:                tc.current,
 					SourceID:             "proximal",
-					NeurotransmitterType: message.LigandGlutamate,
+					NeurotransmitterType: types.LigandGlutamate,
 				}
 
 				mode.Handle(msg)
@@ -1380,10 +1380,10 @@ func TestDendrite_ActiveDendriteMode_Debug(t *testing.T) {
 
 			rawInput := DENDRITE_TEST_INPUT_LARGE // Large input to ensure saturation
 
-			msg := message.NeuralSignal{
+			msg := types.NeuralSignal{
 				Value:                rawInput,
 				SourceID:             loc.source,
-				NeurotransmitterType: message.LigandGlutamate,
+				NeurotransmitterType: types.LigandGlutamate,
 			}
 
 			mode.Handle(msg)
@@ -1453,11 +1453,11 @@ func BenchmarkDendriteModes(b *testing.B) {
 		{"Active", NewActiveDendriteMode(CreateActiveDendriteConfig(), bioConfig)},
 	}
 
-	msg := message.NeuralSignal{
+	msg := types.NeuralSignal{
 		Value:                DENDRITE_TEST_INPUT_SMALL * 10, // 0.1
 		Timestamp:            time.Now(),
 		SourceID:             "bench-source",
-		NeurotransmitterType: message.LigandGlutamate,
+		NeurotransmitterType: types.LigandGlutamate,
 	}
 
 	state := MembraneSnapshot{
@@ -1484,9 +1484,9 @@ func BenchmarkConcurrentDendriteAccess(b *testing.B) {
 
 	mode := NewBiologicalTemporalSummationMode(bioConfig)
 
-	msg := message.NeuralSignal{
+	msg := types.NeuralSignal{
 		Value:                DENDRITE_TEST_INPUT_SMALL,
-		NeurotransmitterType: message.LigandGlutamate,
+		NeurotransmitterType: types.LigandGlutamate,
 	}
 
 	b.ResetTimer()
@@ -1536,7 +1536,7 @@ TEST SUITE DOCUMENTATION - Component-Based Dendritic Integration with Constants
 
 OVERVIEW:
 This comprehensive test suite validates the dendritic integration modes using
-the new component-based architecture with message.NeuralSignal and ion channel
+the new component-based architecture with types.NeuralSignal and ion channel
 processing. The tests have been refactored to use biological constants from
 constants_dendrite.go for improved maintainability and biological accuracy.
 

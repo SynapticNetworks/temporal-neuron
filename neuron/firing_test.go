@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/SynapticNetworks/temporal-neuron/message"
+	"github.com/SynapticNetworks/temporal-neuron/types"
 )
 
 /*
@@ -219,9 +219,9 @@ func TestNeuronFiring_ChemicalRelease(t *testing.T) {
 	)
 
 	// Set neurotransmitters
-	neuron.SetReleasedLigands([]message.LigandType{
-		message.LigandDopamine,
-		message.LigandGlutamate,
+	neuron.SetReleasedLigands([]types.LigandType{
+		types.LigandDopamine,
+		types.LigandGlutamate,
 	})
 
 	mockMatrix := NewMockMatrix()
@@ -244,7 +244,7 @@ func TestNeuronFiring_ChemicalRelease(t *testing.T) {
 	}
 
 	// Verify all configured ligands were released
-	releasedTypes := make(map[message.LigandType]bool)
+	releasedTypes := make(map[types.LigandType]bool)
 	for _, release := range releases {
 		releasedTypes[release.LigandType] = true
 		if release.Concentration <= 0 {
@@ -253,7 +253,7 @@ func TestNeuronFiring_ChemicalRelease(t *testing.T) {
 		}
 	}
 
-	expectedTypes := []message.LigandType{message.LigandDopamine, message.LigandGlutamate}
+	expectedTypes := []types.LigandType{types.LigandDopamine, types.LigandGlutamate}
 	for _, expectedType := range expectedTypes {
 		if !releasedTypes[expectedType] {
 			t.Errorf("Expected %s to be released", expectedType.String())
@@ -627,7 +627,7 @@ func TestNeuronFiring_SynapticScalingScenario(t *testing.T) {
 	defer neuron.Stop()
 
 	// Create the exact message that triggers the panic
-	msg := message.NeuralSignal{
+	msg := types.NeuralSignal{
 		Value:    2.5, // Same value from failing test
 		SourceID: "test_source",
 	}

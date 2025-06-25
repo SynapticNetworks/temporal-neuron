@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/SynapticNetworks/temporal-neuron/message"
+	"github.com/SynapticNetworks/temporal-neuron/types"
 )
 
 // ============================================================================
@@ -13,8 +13,8 @@ import (
 
 func TestNewBaseComponent(t *testing.T) {
 	id := "test-component-1"
-	componentType := TypeNeuron
-	position := Position3D{X: 10.0, Y: 20.0, Z: 30.0}
+	componentType := types.TypeNeuron
+	position := types.Position3D{X: 10.0, Y: 20.0, Z: 30.0}
 
 	comp := NewBaseComponent(id, componentType, position)
 
@@ -30,8 +30,8 @@ func TestNewBaseComponent(t *testing.T) {
 		t.Errorf("Expected position %v, got %v", position, comp.Position())
 	}
 
-	if comp.State() != StateActive {
-		t.Errorf("Expected state %v, got %v", StateActive, comp.State())
+	if comp.State() != types.StateActive {
+		t.Errorf("Expected state %v, got %v", types.StateActive, comp.State())
 	}
 
 	if !comp.IsActive() {
@@ -40,7 +40,7 @@ func TestNewBaseComponent(t *testing.T) {
 }
 
 func TestBaseComponentLifecycle(t *testing.T) {
-	comp := NewBaseComponent("test", TypeNeuron, Position3D{})
+	comp := NewBaseComponent("test", types.TypeNeuron, types.Position3D{})
 
 	// Test Start
 	err := comp.Start()
@@ -52,11 +52,11 @@ func TestBaseComponentLifecycle(t *testing.T) {
 		t.Error("Component should be active after Start()")
 	}
 
-	if comp.State() != StateActive {
-		t.Errorf("Expected state %v after Start(), got %v", StateActive, comp.State())
+	if comp.State() != types.StateActive {
+		t.Errorf("Expected state %v after Start(), got %v", types.StateActive, comp.State())
 	}
 
-	// Test Stop - UPDATED: Now expects StateStopped instead of StateInactive
+	// Test Stop - UPDATED: Now expects types.StateStopped instead of types.StateInactive
 	err = comp.Stop()
 	if err != nil {
 		t.Errorf("Stop() returned error: %v", err)
@@ -66,25 +66,25 @@ func TestBaseComponentLifecycle(t *testing.T) {
 		t.Error("Component should be inactive after Stop()")
 	}
 
-	if comp.State() != StateStopped {
-		t.Errorf("Expected state %v after Stop(), got %v", StateStopped, comp.State())
+	if comp.State() != types.StateStopped {
+		t.Errorf("Expected state %v after Stop(), got %v", types.StateStopped, comp.State())
 	}
 }
 
 func TestBaseComponentStateManagement(t *testing.T) {
-	comp := NewBaseComponent("test", TypeNeuron, Position3D{})
+	comp := NewBaseComponent("test", types.TypeNeuron, types.Position3D{})
 
-	// Test state changes - UPDATED to include StateStopped
-	states := []ComponentState{
-		StateDeveloping,
-		StateActive,
-		StateShuttingDown,
-		StateStopped, // NEW: Added StateStopped
-		StateDying,
-		StateInactive,
-		StateDamaged,
-		StateMaintenance,
-		StateHibernating,
+	// Test state changes - UPDATED to include types.StateStopped
+	states := []types.ComponentState{
+		types.StateDeveloping,
+		types.StateActive,
+		types.StateShuttingDown,
+		types.StateStopped, // NEW: Added types.types.StateStopped
+		types.StateDying,
+		types.StateInactive,
+		types.StateDamaged,
+		types.StateMaintenance,
+		types.StateHibernating,
 	}
 
 	for _, state := range states {
@@ -93,8 +93,8 @@ func TestBaseComponentStateManagement(t *testing.T) {
 			t.Errorf("Expected state %v, got %v", state, comp.State())
 		}
 
-		// Only StateActive should make IsActive() return true
-		expectedActive := (state == StateActive && comp.isActive)
+		// Only types.StateActive should make IsActive() return true
+		expectedActive := (state == types.StateActive && comp.isActive)
 		if comp.IsActive() != expectedActive {
 			t.Errorf("For state %v, expected IsActive() = %v, got %v", state, expectedActive, comp.IsActive())
 		}
@@ -102,7 +102,7 @@ func TestBaseComponentStateManagement(t *testing.T) {
 }
 
 func TestBaseComponentMetadata(t *testing.T) {
-	comp := NewBaseComponent("test", TypeNeuron, Position3D{})
+	comp := NewBaseComponent("test", types.TypeNeuron, types.Position3D{})
 
 	// Test empty metadata
 	metadata := comp.GetMetadata()
@@ -141,17 +141,17 @@ func TestBaseComponentMetadata(t *testing.T) {
 }
 
 func TestBaseComponentPositioning(t *testing.T) {
-	comp := NewBaseComponent("test", TypeNeuron, Position3D{X: 1, Y: 2, Z: 3})
+	comp := NewBaseComponent("test", types.TypeNeuron, types.Position3D{X: 1, Y: 2, Z: 3})
 
 	// Test initial position
 	pos := comp.Position()
-	expected := Position3D{X: 1, Y: 2, Z: 3}
+	expected := types.Position3D{X: 1, Y: 2, Z: 3}
 	if pos != expected {
 		t.Errorf("Expected position %v, got %v", expected, pos)
 	}
 
 	// Test position update
-	newPos := Position3D{X: 10, Y: 20, Z: 30}
+	newPos := types.Position3D{X: 10, Y: 20, Z: 30}
 	comp.SetPosition(newPos)
 	pos = comp.Position()
 	if pos != newPos {
@@ -160,7 +160,7 @@ func TestBaseComponentPositioning(t *testing.T) {
 }
 
 func TestBaseComponentActivityTracking(t *testing.T) {
-	comp := NewBaseComponent("test", TypeNeuron, Position3D{})
+	comp := NewBaseComponent("test", types.TypeNeuron, types.Position3D{})
 
 	// Test initial activity
 	initialActivity := comp.GetLastActivity()
@@ -201,15 +201,15 @@ func TestBaseComponentActivityTracking(t *testing.T) {
 
 func TestComponentTypeString(t *testing.T) {
 	tests := []struct {
-		componentType ComponentType
+		componentType types.ComponentType
 		expected      string
 	}{
-		{TypeNeuron, "Neuron"},
-		{TypeSynapse, "Synapse"},
-		{TypeGlialCell, "GlialCell"},
-		{TypeMicrogliaCell, "MicrogliaCell"},
-		{TypeEpendymalCell, "EpendymalCell"},
-		{ComponentType(999), "Unknown"},
+		{types.TypeNeuron, "Neuron"},
+		{types.TypeSynapse, "Synapse"},
+		{types.TypeGlialCell, "GlialCell"},
+		{types.TypeMicrogliaCell, "MicrogliaCell"},
+		{types.TypeEpendymalCell, "EpendymalCell"},
+		{types.ComponentType(999), "Unknown"},
 	}
 
 	for _, test := range tests {
@@ -222,19 +222,19 @@ func TestComponentTypeString(t *testing.T) {
 
 func TestComponentStateString(t *testing.T) {
 	tests := []struct {
-		state    ComponentState
+		state    types.ComponentState
 		expected string
 	}{
-		{StateActive, "Active"},
-		{StateInactive, "Inactive"},
-		{StateShuttingDown, "ShuttingDown"},
-		{StateStopped, "Stopped"}, // NEW: Added StateStopped
-		{StateDeveloping, "Developing"},
-		{StateDying, "Dying"},
-		{StateDamaged, "Damaged"},
-		{StateMaintenance, "Maintenance"},
-		{StateHibernating, "Hibernating"},
-		{ComponentState(999), "Unknown"},
+		{types.StateActive, "Active"},
+		{types.StateInactive, "Inactive"},
+		{types.StateShuttingDown, "ShuttingDown"},
+		{types.StateStopped, "Stopped"}, // NEW: Added types.StateStopped
+		{types.StateDeveloping, "Developing"},
+		{types.StateDying, "Dying"},
+		{types.StateDamaged, "Damaged"},
+		{types.StateMaintenance, "Maintenance"},
+		{types.StateHibernating, "Hibernating"},
+		{types.ComponentState(999), "Unknown"},
 	}
 
 	for _, test := range tests {
@@ -250,7 +250,7 @@ func TestComponentStateString(t *testing.T) {
 // ============================================================================
 
 func TestPosition3DBasic(t *testing.T) {
-	pos1 := Position3D{X: 1.0, Y: 2.0, Z: 3.0}
+	pos1 := types.Position3D{X: 1.0, Y: 2.0, Z: 3.0}
 
 	if pos1.X != 1.0 {
 		t.Errorf("Expected X = 1.0, got %f", pos1.X)
@@ -270,9 +270,9 @@ func TestPosition3DBasic(t *testing.T) {
 // ============================================================================
 
 func TestDefaultSpatialComponent(t *testing.T) {
-	position := Position3D{X: 0, Y: 0, Z: 0}
+	position := types.Position3D{X: 0, Y: 0, Z: 0}
 	range_ := 10.0
-	comp := NewSpatialComponent("spatial-test", TypeNeuron, position, range_)
+	comp := NewSpatialComponent("spatial-test", types.TypeNeuron, position, range_)
 
 	if comp.GetRange() != range_ {
 		t.Errorf("Expected range %f, got %f", range_, comp.GetRange())
@@ -283,12 +283,12 @@ func TestDefaultSpatialComponent(t *testing.T) {
 		t.Errorf("Expected ID 'spatial-test', got %s", comp.ID())
 	}
 
-	if comp.Type() != TypeNeuron {
-		t.Errorf("Expected type %v, got %v", TypeNeuron, comp.Type())
+	if comp.Type() != types.TypeNeuron {
+		t.Errorf("Expected type %v, got %v", types.TypeNeuron, comp.Type())
 	}
 
 	// Test position setting
-	newPos := Position3D{X: 5, Y: 5, Z: 5}
+	newPos := types.Position3D{X: 5, Y: 5, Z: 5}
 	comp.SetPosition(newPos)
 
 	currentPos := comp.Position()
@@ -302,7 +302,7 @@ func TestDefaultSpatialComponent(t *testing.T) {
 // ============================================================================
 
 func TestDefaultMonitorableComponent(t *testing.T) {
-	comp := NewMonitorableComponent("monitor-test", TypeNeuron, Position3D{})
+	comp := NewMonitorableComponent("monitor-test", types.TypeNeuron, types.Position3D{})
 
 	// Test initial health metrics
 	metrics := comp.GetHealthMetrics()
@@ -368,9 +368,9 @@ func TestDefaultMonitorableComponent(t *testing.T) {
 // ============================================================================
 
 func TestCreateComponentInfo(t *testing.T) {
-	comp := NewBaseComponent("info-test", TypeSynapse, Position3D{X: 1, Y: 2, Z: 3})
+	comp := NewBaseComponent("info-test", types.TypeSynapse, types.Position3D{X: 1, Y: 2, Z: 3})
 	comp.UpdateMetadata("test-key", "test-value")
-	comp.SetState(StateDeveloping)
+	comp.SetState(types.StateDeveloping)
 
 	info := CreateComponentInfo(comp)
 
@@ -401,29 +401,29 @@ func TestCreateComponentInfo(t *testing.T) {
 
 func TestFilterComponentsByType(t *testing.T) {
 	components := []Component{
-		NewBaseComponent("neuron1", TypeNeuron, Position3D{}),
-		NewBaseComponent("synapse1", TypeSynapse, Position3D{}),
-		NewBaseComponent("neuron2", TypeNeuron, Position3D{}),
-		NewBaseComponent("glia1", TypeGlialCell, Position3D{}),
-		NewBaseComponent("microglia1", TypeMicrogliaCell, Position3D{}),
+		NewBaseComponent("neuron1", types.TypeNeuron, types.Position3D{}),
+		NewBaseComponent("synapse1", types.TypeSynapse, types.Position3D{}),
+		NewBaseComponent("neuron2", types.TypeNeuron, types.Position3D{}),
+		NewBaseComponent("glia1", types.TypeGlialCell, types.Position3D{}),
+		NewBaseComponent("microglia1", types.TypeMicrogliaCell, types.Position3D{}),
 	}
 
-	neurons := FilterComponentsByType(components, TypeNeuron)
+	neurons := FilterComponentsByType(components, types.TypeNeuron)
 	if len(neurons) != 2 {
 		t.Errorf("Expected 2 neurons, got %d", len(neurons))
 	}
 
-	synapses := FilterComponentsByType(components, TypeSynapse)
+	synapses := FilterComponentsByType(components, types.TypeSynapse)
 	if len(synapses) != 1 {
 		t.Errorf("Expected 1 synapse, got %d", len(synapses))
 	}
 
-	glia := FilterComponentsByType(components, TypeGlialCell)
+	glia := FilterComponentsByType(components, types.TypeGlialCell)
 	if len(glia) != 1 {
 		t.Errorf("Expected 1 glial cell, got %d", len(glia))
 	}
 
-	microglia := FilterComponentsByType(components, TypeMicrogliaCell)
+	microglia := FilterComponentsByType(components, types.TypeMicrogliaCell)
 	if len(microglia) != 1 {
 		t.Errorf("Expected 1 microglia cell, got %d", len(microglia))
 	}
@@ -431,26 +431,26 @@ func TestFilterComponentsByType(t *testing.T) {
 
 func TestFilterComponentsByState(t *testing.T) {
 	components := []Component{
-		NewBaseComponent("comp1", TypeNeuron, Position3D{}),
-		NewBaseComponent("comp2", TypeNeuron, Position3D{}),
-		NewBaseComponent("comp3", TypeNeuron, Position3D{}),
+		NewBaseComponent("comp1", types.TypeNeuron, types.Position3D{}),
+		NewBaseComponent("comp2", types.TypeNeuron, types.Position3D{}),
+		NewBaseComponent("comp3", types.TypeNeuron, types.Position3D{}),
 	}
 
 	// Set different states
-	components[1].SetState(StateInactive)
-	components[2].SetState(StateDying)
+	components[1].SetState(types.StateInactive)
+	components[2].SetState(types.StateDying)
 
-	activeComponents := FilterComponentsByState(components, StateActive)
+	activeComponents := FilterComponentsByState(components, types.StateActive)
 	if len(activeComponents) != 1 {
 		t.Errorf("Expected 1 active component, got %d", len(activeComponents))
 	}
 
-	inactiveComponents := FilterComponentsByState(components, StateInactive)
+	inactiveComponents := FilterComponentsByState(components, types.StateInactive)
 	if len(inactiveComponents) != 1 {
 		t.Errorf("Expected 1 inactive component, got %d", len(inactiveComponents))
 	}
 
-	dyingComponents := FilterComponentsByState(components, StateDying)
+	dyingComponents := FilterComponentsByState(components, types.StateDying)
 	if len(dyingComponents) != 1 {
 		t.Errorf("Expected 1 dying component, got %d", len(dyingComponents))
 	}
@@ -461,7 +461,7 @@ func TestFilterComponentsByState(t *testing.T) {
 // ============================================================================
 
 func TestConcurrentAccess(t *testing.T) {
-	comp := NewBaseComponent("concurrent-test", TypeNeuron, Position3D{})
+	comp := NewBaseComponent("concurrent-test", types.TypeNeuron, types.Position3D{})
 
 	// Test concurrent metadata updates
 	done := make(chan bool, 2)
@@ -495,23 +495,23 @@ func TestConcurrentAccess(t *testing.T) {
 }
 
 func TestConcurrentStateChanges(t *testing.T) {
-	comp := NewBaseComponent("state-test", TypeNeuron, Position3D{})
+	comp := NewBaseComponent("state-test", types.TypeNeuron, types.Position3D{})
 
-	// UPDATED: Added StateStopped to concurrent state testing
-	states := []ComponentState{
-		StateActive,
-		StateInactive,
-		StateShuttingDown,
-		StateStopped, // NEW: Added StateStopped
-		StateDeveloping,
-		StateDying,
+	// UPDATED: Added types.StateStopped to concurrent state testing
+	states := []types.ComponentState{
+		types.StateActive,
+		types.StateInactive,
+		types.StateShuttingDown,
+		types.StateStopped, // NEW: Added types.types.StateStopped
+		types.StateDeveloping,
+		types.StateDying,
 	}
 
 	done := make(chan bool, len(states))
 
 	// Multiple goroutines changing state
 	for _, state := range states {
-		go func(s ComponentState) {
+		go func(s types.ComponentState) {
 			for i := 0; i < 50; i++ {
 				comp.SetState(s)
 			}
@@ -540,11 +540,11 @@ func TestConcurrentStateChanges(t *testing.T) {
 }
 
 func TestBaseComponentStopLifecycle(t *testing.T) {
-	comp := NewBaseComponent("test", TypeNeuron, Position3D{})
+	comp := NewBaseComponent("test", types.TypeNeuron, types.Position3D{})
 
 	// Verify initial state
-	if comp.State() != StateActive {
-		t.Errorf("Expected initial state %v, got %v", StateActive, comp.State())
+	if comp.State() != types.StateActive {
+		t.Errorf("Expected initial state %v, got %v", types.StateActive, comp.State())
 	}
 
 	if !comp.IsActive() {
@@ -557,9 +557,9 @@ func TestBaseComponentStopLifecycle(t *testing.T) {
 		t.Errorf("Stop() returned error: %v", err)
 	}
 
-	// After stop, component should be in StateStopped (not StateInactive)
-	if comp.State() != StateStopped {
-		t.Errorf("Expected state %v after Stop(), got %v", StateStopped, comp.State())
+	// After stop, component should be in types.StateStopped (not types.StateInactive)
+	if comp.State() != types.StateStopped {
+		t.Errorf("Expected state %v after Stop(), got %v", types.StateStopped, comp.State())
 	}
 
 	if comp.IsActive() {
@@ -568,14 +568,14 @@ func TestBaseComponentStopLifecycle(t *testing.T) {
 }
 
 func TestBaseComponentCanRestart(t *testing.T) {
-	comp := NewBaseComponent("test", TypeNeuron, Position3D{})
+	comp := NewBaseComponent("test", types.TypeNeuron, types.Position3D{})
 
 	// Test states that can be restarted
-	restartableStates := []ComponentState{
-		StateInactive,
-		StateStopped,
-		StateMaintenance,
-		StateHibernating,
+	restartableStates := []types.ComponentState{
+		types.StateInactive,
+		types.StateStopped,
+		types.StateMaintenance,
+		types.StateHibernating,
 	}
 
 	for _, state := range restartableStates {
@@ -588,12 +588,12 @@ func TestBaseComponentCanRestart(t *testing.T) {
 	}
 
 	// Test states that cannot be restarted
-	nonRestartableStates := []ComponentState{
-		StateActive,
-		StateShuttingDown,
-		StateDeveloping,
-		StateDying,
-		StateDamaged,
+	nonRestartableStates := []types.ComponentState{
+		types.StateActive,
+		types.StateShuttingDown,
+		types.StateDeveloping,
+		types.StateDying,
+		types.StateDamaged,
 	}
 
 	for _, state := range nonRestartableStates {
@@ -606,12 +606,12 @@ func TestBaseComponentCanRestart(t *testing.T) {
 }
 
 func TestBaseComponentRestart(t *testing.T) {
-	comp := NewBaseComponent("test", TypeNeuron, Position3D{})
+	comp := NewBaseComponent("test", types.TypeNeuron, types.Position3D{})
 
 	// Stop the component first
 	comp.Stop()
-	if comp.State() != StateStopped {
-		t.Errorf("Expected state %v after Stop(), got %v", StateStopped, comp.State())
+	if comp.State() != types.StateStopped {
+		t.Errorf("Expected state %v after Stop(), got %v", types.StateStopped, comp.State())
 	}
 
 	// Test successful restart
@@ -620,8 +620,8 @@ func TestBaseComponentRestart(t *testing.T) {
 		t.Errorf("Restart() returned error: %v", err)
 	}
 
-	if comp.State() != StateActive {
-		t.Errorf("Expected state %v after Restart(), got %v", StateActive, comp.State())
+	if comp.State() != types.StateActive {
+		t.Errorf("Expected state %v after Restart(), got %v", types.StateActive, comp.State())
 	}
 
 	if !comp.IsActive() {
@@ -629,24 +629,24 @@ func TestBaseComponentRestart(t *testing.T) {
 	}
 
 	// Test restart from invalid state
-	comp.SetState(StateDying)
+	comp.SetState(types.StateDying)
 	err = comp.Restart()
 	if err == nil {
-		t.Error("Restart() should return error when called from StateDying")
+		t.Error("Restart() should return error when called from types.StateDying")
 	}
 
-	if comp.State() == StateActive {
+	if comp.State() == types.StateActive {
 		t.Error("Component should not become active after failed restart")
 	}
 }
 
 func TestBaseComponentFullLifecycle(t *testing.T) {
-	comp := NewBaseComponent("lifecycle-test", TypeNeuron, Position3D{})
+	comp := NewBaseComponent("lifecycle-test", types.TypeNeuron, types.Position3D{})
 
 	// Test complete lifecycle: Start -> Stop -> Restart -> Stop
 
 	// Initial state should be active
-	if !comp.IsActive() || comp.State() != StateActive {
+	if !comp.IsActive() || comp.State() != types.StateActive {
 		t.Error("Component should start in active state")
 	}
 
@@ -662,7 +662,7 @@ func TestBaseComponentFullLifecycle(t *testing.T) {
 		t.Errorf("Stop() returned error: %v", err)
 	}
 
-	if comp.IsActive() || comp.State() != StateStopped {
+	if comp.IsActive() || comp.State() != types.StateStopped {
 		t.Error("Component should be stopped after Stop()")
 	}
 
@@ -672,7 +672,7 @@ func TestBaseComponentFullLifecycle(t *testing.T) {
 		t.Errorf("Restart() returned error: %v", err)
 	}
 
-	if !comp.IsActive() || comp.State() != StateActive {
+	if !comp.IsActive() || comp.State() != types.StateActive {
 		t.Error("Component should be active after Restart()")
 	}
 
@@ -682,27 +682,27 @@ func TestBaseComponentFullLifecycle(t *testing.T) {
 		t.Errorf("Second Stop() returned error: %v", err)
 	}
 
-	if comp.IsActive() || comp.State() != StateStopped {
+	if comp.IsActive() || comp.State() != types.StateStopped {
 		t.Error("Component should be stopped after second Stop()")
 	}
 }
 
 func TestFilterComponentsByStopped(t *testing.T) {
 	components := []Component{
-		NewBaseComponent("comp1", TypeNeuron, Position3D{}),
-		NewBaseComponent("comp2", TypeNeuron, Position3D{}),
-		NewBaseComponent("comp3", TypeNeuron, Position3D{}),
-		NewBaseComponent("comp4", TypeNeuron, Position3D{}),
+		NewBaseComponent("comp1", types.TypeNeuron, types.Position3D{}),
+		NewBaseComponent("comp2", types.TypeNeuron, types.Position3D{}),
+		NewBaseComponent("comp3", types.TypeNeuron, types.Position3D{}),
+		NewBaseComponent("comp4", types.TypeNeuron, types.Position3D{}),
 	}
 
-	// Set different states including StateStopped
-	components[0].SetState(StateActive)
-	components[1].SetState(StateStopped)
-	components[2].SetState(StateInactive)
-	components[3].SetState(StateStopped)
+	// Set different states including types.StateStopped
+	components[0].SetState(types.StateActive)
+	components[1].SetState(types.StateStopped)
+	components[2].SetState(types.StateInactive)
+	components[3].SetState(types.StateStopped)
 
-	// Test filtering by StateStopped
-	stoppedComponents := FilterComponentsByState(components, StateStopped)
+	// Test filtering by types.StateStopped
+	stoppedComponents := FilterComponentsByState(components, types.StateStopped)
 	if len(stoppedComponents) != 2 {
 		t.Errorf("Expected 2 stopped components, got %d", len(stoppedComponents))
 	}
@@ -714,12 +714,12 @@ func TestFilterComponentsByStopped(t *testing.T) {
 	}
 
 	if !stoppedIDs["comp2"] || !stoppedIDs["comp4"] {
-		t.Error("FilterComponentsByState should return comp2 and comp4 for StateStopped")
+		t.Error("FilterComponentsByState should return comp2 and comp4 for types.StateStopped")
 	}
 }
 
 func TestStatePersistenceAfterRestart(t *testing.T) {
-	comp := NewBaseComponent("persistence-test", TypeNeuron, Position3D{})
+	comp := NewBaseComponent("persistence-test", types.TypeNeuron, types.Position3D{})
 
 	// Add some metadata
 	comp.UpdateMetadata("test-key", "test-value")
@@ -740,7 +740,7 @@ func TestStatePersistenceAfterRestart(t *testing.T) {
 	}
 
 	// Verify position is preserved
-	originalPos := Position3D{X: 10, Y: 20, Z: 30}
+	originalPos := types.Position3D{X: 10, Y: 20, Z: 30}
 	comp.SetPosition(originalPos)
 	comp.Stop()
 	comp.Restart()
@@ -752,7 +752,7 @@ func TestStatePersistenceAfterRestart(t *testing.T) {
 }
 
 func TestConcurrentStopRestart(t *testing.T) {
-	comp := NewBaseComponent("concurrent-lifecycle", TypeNeuron, Position3D{})
+	comp := NewBaseComponent("concurrent-lifecycle", types.TypeNeuron, types.Position3D{})
 
 	done := make(chan bool, 2)
 
@@ -788,7 +788,7 @@ func TestConcurrentStopRestart(t *testing.T) {
 
 	// Final state should be valid
 	finalState := comp.State()
-	validStates := []ComponentState{StateActive, StateStopped}
+	validStates := []types.ComponentState{types.StateActive, types.StateStopped}
 	validFinalState := false
 	for _, state := range validStates {
 		if finalState == state {
@@ -808,15 +808,15 @@ func TestConcurrentStopRestart(t *testing.T) {
 
 func TestComponentInterface(t *testing.T) {
 	// Test that BaseComponent implements Component interface
-	var comp Component = NewBaseComponent("test", TypeNeuron, Position3D{})
+	var comp Component = NewBaseComponent("test", types.TypeNeuron, types.Position3D{})
 
 	// Test basic interface methods
 	if comp.ID() != "test" {
 		t.Errorf("Expected ID 'test', got %s", comp.ID())
 	}
 
-	if comp.Type() != TypeNeuron {
-		t.Errorf("Expected type %v, got %v", TypeNeuron, comp.Type())
+	if comp.Type() != types.TypeNeuron {
+		t.Errorf("Expected type %v, got %v", types.TypeNeuron, comp.Type())
 	}
 
 	if !comp.IsActive() {
@@ -826,7 +826,7 @@ func TestComponentInterface(t *testing.T) {
 
 func TestSpatialComponentInterface(t *testing.T) {
 	// Test that DefaultSpatialComponent implements SpatialComponent interface
-	var spatial SpatialComponent = NewSpatialComponent("spatial", TypeNeuron, Position3D{}, 5.0)
+	var spatial SpatialComponent = NewSpatialComponent("spatial", types.TypeNeuron, types.Position3D{}, 5.0)
 
 	if spatial.GetRange() != 5.0 {
 		t.Errorf("Expected range 5.0, got %f", spatial.GetRange())
@@ -840,7 +840,7 @@ func TestSpatialComponentInterface(t *testing.T) {
 
 func TestMonitorableComponentInterface(t *testing.T) {
 	// Test that DefaultMonitorableComponent implements MonitorableComponent interface
-	var monitorable MonitorableComponent = NewMonitorableComponent("monitor", TypeNeuron, Position3D{})
+	var monitorable MonitorableComponent = NewMonitorableComponent("monitor", types.TypeNeuron, types.Position3D{})
 
 	metrics := monitorable.GetHealthMetrics()
 	if metrics.HealthScore != 1.0 {
@@ -860,23 +860,23 @@ func TestMonitorableComponentInterface(t *testing.T) {
 // MockChemicalReceiver for testing chemical interfaces
 type MockChemicalReceiver struct {
 	*BaseComponent
-	receptors []message.LigandType
-	bindings  map[message.LigandType]float64
+	receptors []types.LigandType
+	bindings  map[types.LigandType]float64
 }
 
 func NewMockChemicalReceiver(id string) *MockChemicalReceiver {
 	return &MockChemicalReceiver{
-		BaseComponent: NewBaseComponent(id, TypeNeuron, Position3D{}),
-		receptors:     []message.LigandType{message.LigandGlutamate, message.LigandGABA},
-		bindings:      make(map[message.LigandType]float64),
+		BaseComponent: NewBaseComponent(id, types.TypeNeuron, types.Position3D{}),
+		receptors:     []types.LigandType{types.LigandGlutamate, types.LigandGABA},
+		bindings:      make(map[types.LigandType]float64),
 	}
 }
 
-func (mcr *MockChemicalReceiver) GetReceptors() []message.LigandType {
+func (mcr *MockChemicalReceiver) GetReceptors() []types.LigandType {
 	return mcr.receptors
 }
 
-func (mcr *MockChemicalReceiver) Bind(ligandType message.LigandType, sourceID string, concentration float64) {
+func (mcr *MockChemicalReceiver) Bind(ligandType types.LigandType, sourceID string, concentration float64) {
 	mcr.bindings[ligandType] = concentration
 }
 
@@ -890,12 +890,12 @@ func TestChemicalReceiverInterface(t *testing.T) {
 	}
 
 	// Test binding
-	receiver.Bind(message.LigandGlutamate, "source1", 0.5)
+	receiver.Bind(types.LigandGlutamate, "source1", 0.5)
 
 	// Verify through mock implementation
 	mock := receiver.(*MockChemicalReceiver)
-	if mock.bindings[message.LigandGlutamate] != 0.5 {
-		t.Errorf("Expected binding concentration 0.5, got %f", mock.bindings[message.LigandGlutamate])
+	if mock.bindings[types.LigandGlutamate] != 0.5 {
+		t.Errorf("Expected binding concentration 0.5, got %f", mock.bindings[types.LigandGlutamate])
 	}
 
 	// Test component interface is also implemented
@@ -907,17 +907,17 @@ func TestChemicalReceiverInterface(t *testing.T) {
 // MockMessageReceiver for testing message interfaces
 type MockMessageReceiver struct {
 	*BaseComponent
-	receivedMessages []message.NeuralSignal
+	receivedMessages []types.NeuralSignal
 }
 
 func NewMockMessageReceiver(id string) *MockMessageReceiver {
 	return &MockMessageReceiver{
-		BaseComponent:    NewBaseComponent(id, TypeNeuron, Position3D{}),
-		receivedMessages: make([]message.NeuralSignal, 0),
+		BaseComponent:    NewBaseComponent(id, types.TypeNeuron, types.Position3D{}),
+		receivedMessages: make([]types.NeuralSignal, 0),
 	}
 }
 
-func (mmr *MockMessageReceiver) Receive(msg message.NeuralSignal) {
+func (mmr *MockMessageReceiver) Receive(msg types.NeuralSignal) {
 	mmr.receivedMessages = append(mmr.receivedMessages, msg)
 }
 
@@ -926,7 +926,7 @@ func TestMessageReceiverInterface(t *testing.T) {
 	var receiver MessageReceiver = NewMockMessageReceiver("message-test")
 
 	// Test receiving a message
-	testMessage := message.NeuralSignal{
+	testMessage := types.NeuralSignal{
 		Value:    1.0,
 		SourceID: "source1",
 		TargetID: "message-test",

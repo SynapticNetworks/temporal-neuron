@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/SynapticNetworks/temporal-neuron/message"
+	"github.com/SynapticNetworks/temporal-neuron/types"
 )
 
 /*
@@ -175,7 +175,7 @@ func (s *SynapticScalingState) SetScalingParameters(config SynapticScalingConfig
 // receptor density (AMPA, NMDA receptors). The pre-synaptic neuron releases
 // the same amount of neurotransmitter, but the post-synaptic response changes
 // based on receptor availability.
-func (s *SynapticScalingState) ApplyPostSynapticGain(msg message.NeuralSignal) float64 {
+func (s *SynapticScalingState) ApplyPostSynapticGain(msg types.NeuralSignal) float64 {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	// If scaling is disabled or no source ID, use original signal

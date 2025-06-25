@@ -51,6 +51,8 @@ import (
 	"math"
 	"testing"
 	"time"
+
+	"github.com/SynapticNetworks/temporal-neuron/types"
 )
 
 // =================================================================================
@@ -83,7 +85,7 @@ func TestSTDPClassicTimingWindow(t *testing.T) {
 
 	// Configure STDP parameters based on biological data
 	// These values reflect experimental measurements from cortical synapses
-	stdpConfig := STDPConfig{
+	stdpConfig := types.PlasticityConfig{
 		Enabled:        true,
 		LearningRate:   0.01,                   // 1% change per pairing (Bi & Poo, 1998)
 		TimeConstant:   20 * time.Millisecond,  // Classic cortical value
@@ -145,7 +147,7 @@ func TestSTDPClassicTimingWindow(t *testing.T) {
 			weightBefore := synapse.GetWeight()
 
 			// Apply plasticity adjustment with specific timing
-			adjustment := PlasticityAdjustment{
+			adjustment := types.PlasticityAdjustment{
 				DeltaT: tc.timeDifference,
 			}
 			synapse.ApplyPlasticity(adjustment)
@@ -186,7 +188,7 @@ func TestSTDPExponentialDecay(t *testing.T) {
 	preNeuron := NewMockNeuron("pre_neuron")
 	postNeuron := NewMockNeuron("post_neuron")
 
-	stdpConfig := STDPConfig{
+	stdpConfig := types.PlasticityConfig{
 		Enabled:        true,
 		LearningRate:   0.02,                  // Larger for easier measurement
 		TimeConstant:   15 * time.Millisecond, // Shorter for sharper decay
@@ -214,7 +216,7 @@ func TestSTDPExponentialDecay(t *testing.T) {
 		synapse := NewBasicSynapse("decay_test", preNeuron, postNeuron,
 			stdpConfig, pruningConfig, initialWeight, 0)
 
-		adjustment := PlasticityAdjustment{DeltaT: deltaT}
+		adjustment := types.PlasticityAdjustment{DeltaT: deltaT}
 		synapse.ApplyPlasticity(adjustment)
 
 		weightChanges[i] = synapse.GetWeight() - initialWeight
@@ -287,7 +289,7 @@ func TestActivityDependentPruning(t *testing.T) {
 		}
 
 		// Simulate recent activity through plasticity
-		recentAdjustment := PlasticityAdjustment{DeltaT: -10 * time.Millisecond}
+		recentAdjustment := types.PlasticityAdjustment{DeltaT: -10 * time.Millisecond}
 		synapse.ApplyPlasticity(recentAdjustment)
 
 		// Even after inactivity period, recently active synapse should be protected
@@ -327,7 +329,7 @@ func TestActivityDependentPruning(t *testing.T) {
 		time.Sleep(80 * time.Millisecond)
 
 		// Apply recent plasticity to mark as active
-		recentAdjustment := PlasticityAdjustment{DeltaT: -5 * time.Millisecond}
+		recentAdjustment := types.PlasticityAdjustment{DeltaT: -5 * time.Millisecond}
 		synapse.ApplyPlasticity(recentAdjustment)
 
 		// Should not be pruned because it's recently active
@@ -606,7 +608,7 @@ func TestRealisticSynapticDynamics(t *testing.T) {
 	postNeuron := NewMockNeuron("post_neuron")
 
 	// Configure with biologically realistic parameters
-	stdpConfig := STDPConfig{
+	stdpConfig := types.PlasticityConfig{
 		Enabled:        true,
 		LearningRate:   0.005, // Conservative learning rate
 		TimeConstant:   15 * time.Millisecond,
@@ -637,7 +639,7 @@ func TestRealisticSynapticDynamics(t *testing.T) {
 		synapse.Transmit(1.0)
 
 		// Apply STDP with favorable timing
-		adjustment := PlasticityAdjustment{DeltaT: pairingInterval}
+		adjustment := types.PlasticityAdjustment{DeltaT: pairingInterval}
 		synapse.ApplyPlasticity(adjustment)
 
 		// Brief pause between pairings

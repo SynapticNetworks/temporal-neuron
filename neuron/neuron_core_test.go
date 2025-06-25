@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/SynapticNetworks/temporal-neuron/message"
+	"github.com/SynapticNetworks/temporal-neuron/types"
 )
 
 /*
@@ -693,12 +693,12 @@ func TestNeuronCoreHomeostatic_HomeostasisWithInhibition(t *testing.T) {
 	t.Log("Applying inhibitory signals...")
 	for i := 0; i < 30; i++ {
 		// Send inhibitory signal (negative value)
-		inhibitorySignal := message.NeuralSignal{
+		inhibitorySignal := types.NeuralSignal{
 			Value:                -0.8, // Strong inhibitory signal
 			Timestamp:            time.Now(),
 			SourceID:             "inhibitory_source",
 			TargetID:             neuron.ID(),
-			NeurotransmitterType: message.LigandGABA, // Inhibitory neurotransmitter
+			NeurotransmitterType: types.LigandGABA, // Inhibitory neurotransmitter
 		}
 		neuron.Receive(inhibitorySignal)
 		time.Sleep(20 * time.Millisecond)
@@ -984,12 +984,12 @@ func TestNeuronCoreHomeostatic_Recovery(t *testing.T) {
 		silenceStart := time.Now()
 		for time.Since(silenceStart) < 500*time.Millisecond {
 			// Send strong inhibitory signals
-			inhibSignal := message.NeuralSignal{
+			inhibSignal := types.NeuralSignal{
 				Value:                -2.0,
 				Timestamp:            time.Now(),
 				SourceID:             "silencer",
 				TargetID:             neuron.ID(),
-				NeurotransmitterType: message.LigandGABA,
+				NeurotransmitterType: types.LigandGABA,
 			}
 			neuron.Receive(inhibSignal)
 			time.Sleep(10 * time.Millisecond)

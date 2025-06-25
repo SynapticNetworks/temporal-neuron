@@ -173,14 +173,14 @@ For components that participate in neurotransmitter communication:
 // Components that can receive chemical signals
 type ChemicalReceiver interface {
     Component
-    GetReceptors() []message.LigandType
-    Bind(ligandType message.LigandType, sourceID string, concentration float64)
+    GetReceptors() []types.LigandType
+    Bind(ligandType types.LigandType, sourceID string, concentration float64)
 }
 
 // Components that can release chemical signals
 type ChemicalReleaser interface {
     Component
-    GetReleasedLigands() []message.LigandType
+    GetReleasedLigands() []types.LigandType
 }
 ```
 
@@ -192,13 +192,13 @@ For components that participate in gap junction networks:
 // Components that can receive electrical signals
 type ElectricalReceiver interface {
     Component
-    OnSignal(signalType message.SignalType, sourceID string, data interface{})
+    OnSignal(signalType types.SignalType, sourceID string, data interface{})
 }
 
 // Components that can send electrical signals
 type ElectricalTransmitter interface {
     Component
-    GetSignalTypes() []message.SignalType
+    GetSignalTypes() []types.SignalType
 }
 ```
 
@@ -210,7 +210,7 @@ For components that handle neural signal transmission:
 // Components that can receive neural signals
 type MessageReceiver interface {
     Component
-    Receive(msg message.NeuralSignal)
+    Receive(msg types.NeuralSignal)
 }
 
 // Components that can transmit neural signals
@@ -335,23 +335,23 @@ func main() {
 // Custom neuron that implements multiple interfaces
 type CustomNeuron struct {
     *component.BaseComponent
-    receptors []message.LigandType
+    receptors []types.LigandType
     synapses  map[string]SynapseConnection
 }
 
 // Implement ChemicalReceiver interface
-func (cn *CustomNeuron) GetReceptors() []message.LigandType {
+func (cn *CustomNeuron) GetReceptors() []types.LigandType {
     return cn.receptors
 }
 
-func (cn *CustomNeuron) Bind(ligandType message.LigandType, sourceID string, concentration float64) {
+func (cn *CustomNeuron) Bind(ligandType types.LigandType, sourceID string, concentration float64) {
     // Process chemical binding
     cn.UpdateMetadata("last_binding", time.Now())
     // ... custom binding logic
 }
 
 // Implement MessageReceiver interface
-func (cn *CustomNeuron) Receive(msg message.NeuralSignal) {
+func (cn *CustomNeuron) Receive(msg types.NeuralSignal) {
     // Process incoming neural signal
     cn.UpdateMetadata("last_signal", msg.Timestamp)
     // ... custom signal processing
@@ -415,10 +415,10 @@ The matrix injects biological functions into components via callbacks:
 ```go
 // Example of matrix callbacks provided to components
 callbacks := NeuronCallbacks{
-    ReleaseChemical: func(ligand message.LigandType, concentration float64) error {
+    ReleaseChemical: func(ligand types.LigandType, concentration float64) error {
         return matrix.chemicalSystem.Release(ligand, neuronID, concentration)
     },
-    SendElectricalSignal: func(signal message.SignalType, data interface{}) {
+    SendElectricalSignal: func(signal types.SignalType, data interface{}) {
         matrix.electricalSystem.Broadcast(signal, neuronID, data)
     },
     // ... other biological functions
@@ -460,13 +460,13 @@ The test suite includes mock implementations for testing interface compliance:
 // Mock chemical receiver for testing
 type MockChemicalReceiver struct {
     *component.BaseComponent
-    receptors []message.LigandType
-    bindings  map[message.LigandType]float64
+    receptors []types.LigandType
+    bindings  map[types.LigandType]float64
 }
 
 // Use in tests
 receiver := NewMockChemicalReceiver("test-receiver")
-receiver.Bind(message.LigandGlutamate, "source", 0.5)
+receiver.Bind(types.LigandGlutamate, "source", 0.5)
 ```
 
 ## API Reference

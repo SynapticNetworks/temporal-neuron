@@ -4,16 +4,17 @@ import (
 	"sort"
 	"time"
 
-	"github.com/SynapticNetworks/temporal-neuron/message"
+	"github.com/SynapticNetworks/temporal-neuron/component"
+	"github.com/SynapticNetworks/temporal-neuron/types"
 )
 
 // delayedMessage represents a neural signal awaiting axonal delivery.
 // Models action potential propagation down the axon with timing delays
 // before reaching target synapses.
 type delayedMessage struct {
-	message      message.NeuralSignal // The neural signal to deliver
-	target       MessageReceiver      // Target post-synaptic neuron
-	deliveryTime time.Time            // When the message should be delivered
+	message      types.NeuralSignal        // The neural signal to deliver
+	target       component.MessageReceiver // Target post-synaptic neuron
+	deliveryTime time.Time                 // When the message should be delivered
 }
 
 // ScheduleDelayedDelivery queues a message for delivery after total propagation delay.
@@ -27,9 +28,9 @@ type delayedMessage struct {
 //
 //	deliveryQueue: The channel to which the delayed message should be added.
 //	msg: The neural signal to deliver (includes timing and source info).
-//	target: The post-synaptic neuron to receive the message.
+//	target: The post-synaptic neuron to receive the types.
 //	delay: Total delay including synaptic and spatial components.
-func ScheduleDelayedDelivery(deliveryQueue chan<- delayedMessage, msg message.NeuralSignal, target MessageReceiver, delay time.Duration) {
+func ScheduleDelayedDelivery(deliveryQueue chan<- delayedMessage, msg types.NeuralSignal, target component.MessageReceiver, delay time.Duration) {
 	delayedMsg := delayedMessage{
 		message:      msg,
 		target:       target,

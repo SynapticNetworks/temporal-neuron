@@ -5,13 +5,13 @@ import (
 	"time"
 
 	"github.com/SynapticNetworks/temporal-neuron/component"
-	"github.com/SynapticNetworks/temporal-neuron/message"
+	"github.com/SynapticNetworks/temporal-neuron/types"
 )
 
 // === NEURON CONFIGURATION ===
 type NeuronConfig struct {
 	// Spatial properties
-	Position component.Position3D
+	Position types.Position3D
 
 	// Basic neural properties
 	Threshold        float64
@@ -24,8 +24,8 @@ type NeuronConfig struct {
 	HomeostasisStrength float64
 
 	// Chemical properties (using message types)
-	Receptors       []message.LigandType
-	ReleasedLigands []message.LigandType
+	Receptors       []types.LigandType
+	ReleasedLigands []types.LigandType
 
 	// Synaptic scaling
 	EnableSynapticScaling bool
@@ -149,10 +149,12 @@ func DefaultConservativeConfig() NeuronConfig {
 }
 
 // === FACTORY FUNCTION SIGNATURE ===
-type NeuronFactoryFunc func(id string, config NeuronConfig, callbacks NeuronCallbacks) (NeuronInterface, error)
+// FIXED: Updated to use component.NeuronCallbacks and return component.NeuralComponent
+type NeuronFactoryFunc func(id string, config NeuronConfig, callbacks component.NeuronCallbacks) (component.NeuralComponent, error)
 
 // === ENHANCED CALLBACK NEURON FACTORY ===
-func CallbackNeuronFactory(id string, config NeuronConfig, callbacks NeuronCallbacks) (NeuronInterface, error) {
+// FIXED: Updated signature to match the corrected factory function type
+func CallbackNeuronFactory(id string, config NeuronConfig, callbacks component.NeuronCallbacks) (component.NeuralComponent, error) {
 	// Validate that essential callbacks are provided for enabled features
 	if err := validateCallbacks(config, callbacks); err != nil {
 		return nil, fmt.Errorf("callback validation failed: %w", err)
@@ -213,57 +215,30 @@ func CallbackNeuronFactory(id string, config NeuronConfig, callbacks NeuronCallb
 		neuron.UpdateMetadata(key, value)
 	}
 
+	// FIXED: Return as component.NeuralComponent interface
 	return neuron, nil
 }
 
 // === VALIDATION FUNCTIONS ===
 
-// validateCallbacks ensures required callbacks are available for enabled features
-func validateCallbacks(config NeuronConfig, callbacks NeuronCallbacks) error {
-	// Check STDP feedback requirements
-	if config.EnableSTDPFeedback {
-		if callbacks.ListSynapses == nil {
-			return fmt.Errorf("STDP feedback enabled but ListSynapses callback missing")
-		}
-		if callbacks.ApplyPlasticity == nil {
-			return fmt.Errorf("STDP feedback enabled but ApplyPlasticity callback missing")
-		}
+// FIXED: Updated to use component.NeuronCallbacks interface
+func validateCallbacks(config NeuronConfig, callbacks component.NeuronCallbacks) error {
+	// For interface-based callbacks, we can't check if function fields are nil
+	// since they're methods. Instead, we just validate the interface is not nil
+	if callbacks == nil {
+		return fmt.Errorf("callbacks cannot be nil")
 	}
 
-	// Check homeostatic scaling requirements
-	if config.EnableAutoScaling {
-		if callbacks.ListSynapses == nil {
-			return fmt.Errorf("auto scaling enabled but ListSynapses callback missing")
-		}
-		if callbacks.SetSynapseWeight == nil {
-			return fmt.Errorf("auto scaling enabled but SetSynapseWeight callback missing")
-		}
-	}
-
-	// Check pruning requirements
-	if config.EnableAutoPruning {
-		if callbacks.ListSynapses == nil {
-			return fmt.Errorf("auto pruning enabled but ListSynapses callback missing")
-		}
-		if callbacks.GetSynapse == nil {
-			return fmt.Errorf("auto pruning enabled but GetSynapse callback missing")
-		}
-		if callbacks.DeleteSynapse == nil {
-			return fmt.Errorf("auto pruning enabled but DeleteSynapse callback missing")
-		}
-	}
-
-	// Check synapse creation requirement
-	if callbacks.CreateSynapse == nil {
-		return fmt.Errorf("CreateSynapse callback is required for all neurons")
-	}
+	// The actual validation will happen at runtime when methods are called
+	// This is the nature of interface-based dependency injection
 
 	return nil
 }
 
 // === SPECIALIZED FACTORY VARIANTS ===
 
-func HomeostaticNeuronFactory(id string, config NeuronConfig, callbacks NeuronCallbacks) (NeuronInterface, error) {
+// FIXED: Updated all factory signatures to use component.NeuronCallbacks
+func HomeostaticNeuronFactory(id string, config NeuronConfig, callbacks component.NeuronCallbacks) (component.NeuralComponent, error) {
 	// Start with default excitatory configuration
 	if isEmptyConfig(config) {
 		config = DefaultExcitatoryConfig()
@@ -283,18 +258,18 @@ func HomeostaticNeuronFactory(id string, config NeuronConfig, callbacks NeuronCa
 	return CallbackNeuronFactory(id, config, callbacks)
 }
 
-func ExcitatoryNeuronFactory(id string, config NeuronConfig, callbacks NeuronCallbacks) (NeuronInterface, error) {
+func ExcitatoryNeuronFactory(id string, config NeuronConfig, callbacks component.NeuronCallbacks) (component.NeuralComponent, error) {
 	// Start with default excitatory configuration
 	if isEmptyConfig(config) {
 		config = DefaultExcitatoryConfig()
 	}
 
 	// Excitatory neuron-specific configuration
-	config.ReleasedLigands = []message.LigandType{message.LigandGlutamate}
-	config.Receptors = []message.LigandType{
-		message.LigandGlutamate,
-		message.LigandGABA,
-		message.LigandDopamine,
+	config.ReleasedLigands = []types.LigandType{types.LigandGlutamate}
+	config.Receptors = []types.LigandType{
+		types.LigandGlutamate,
+		types.LigandGABA,
+		types.LigandDopamine,
 	}
 
 	// Enable STDP for excitatory neurons (they drive learning)
@@ -305,18 +280,18 @@ func ExcitatoryNeuronFactory(id string, config NeuronConfig, callbacks NeuronCal
 	return CallbackNeuronFactory(id, config, callbacks)
 }
 
-func InhibitoryNeuronFactory(id string, config NeuronConfig, callbacks NeuronCallbacks) (NeuronInterface, error) {
+func InhibitoryNeuronFactory(id string, config NeuronConfig, callbacks component.NeuronCallbacks) (component.NeuralComponent, error) {
 	// Start with default inhibitory configuration
 	if isEmptyConfig(config) {
 		config = DefaultInhibitoryConfig()
 	}
 
 	// Inhibitory neuron-specific configuration
-	config.ReleasedLigands = []message.LigandType{message.LigandGABA}
-	config.Receptors = []message.LigandType{
-		message.LigandGlutamate,
-		message.LigandGABA,
-		message.LigandSerotonin,
+	config.ReleasedLigands = []types.LigandType{types.LigandGABA}
+	config.Receptors = []types.LigandType{
+		types.LigandGlutamate,
+		types.LigandGABA,
+		types.LigandSerotonin,
 	}
 
 	// Inhibitory neurons typically have different plasticity characteristics
@@ -333,7 +308,7 @@ func InhibitoryNeuronFactory(id string, config NeuronConfig, callbacks NeuronCal
 
 // === LEARNING-FOCUSED FACTORY VARIANTS ===
 
-func LearningNeuronFactory(id string, config NeuronConfig, callbacks NeuronCallbacks) (NeuronInterface, error) {
+func LearningNeuronFactory(id string, config NeuronConfig, callbacks component.NeuronCallbacks) (component.NeuralComponent, error) {
 	// Start with learning-optimized configuration
 	if isEmptyConfig(config) {
 		config = DefaultLearningConfig()
@@ -354,7 +329,7 @@ func LearningNeuronFactory(id string, config NeuronConfig, callbacks NeuronCallb
 	return CallbackNeuronFactory(id, config, callbacks)
 }
 
-func ConservativeNeuronFactory(id string, config NeuronConfig, callbacks NeuronCallbacks) (NeuronInterface, error) {
+func ConservativeNeuronFactory(id string, config NeuronConfig, callbacks component.NeuronCallbacks) (component.NeuralComponent, error) {
 	// Start with conservative configuration
 	if isEmptyConfig(config) {
 		config = DefaultConservativeConfig()
@@ -375,8 +350,8 @@ func ConservativeNeuronFactory(id string, config NeuronConfig, callbacks NeuronC
 
 // === DENDRITIC MODE FACTORY FUNCTIONS ===
 
-// CreatePassiveDendriticNeuron creates a neuron with passive dendritic integration
-func CreatePassiveDendriticNeuron(id string, config NeuronConfig, callbacks NeuronCallbacks) (NeuronInterface, error) {
+// FIXED: Updated all dendritic factory signatures
+func CreatePassiveDendriticNeuron(id string, config NeuronConfig, callbacks component.NeuronCallbacks) (component.NeuralComponent, error) {
 	if isEmptyConfig(config) {
 		config = DefaultExcitatoryConfig()
 	}
@@ -384,8 +359,7 @@ func CreatePassiveDendriticNeuron(id string, config NeuronConfig, callbacks Neur
 	return CallbackNeuronFactory(id, config, callbacks)
 }
 
-// CreateBiologicalDendriticNeuron creates a neuron with biological temporal summation
-func CreateBiologicalDendriticNeuron(id string, config NeuronConfig, callbacks NeuronCallbacks, bioConfig BiologicalConfig) (NeuronInterface, error) {
+func CreateBiologicalDendriticNeuron(id string, config NeuronConfig, callbacks component.NeuronCallbacks, bioConfig BiologicalConfig) (component.NeuralComponent, error) {
 	if isEmptyConfig(config) {
 		config = DefaultExcitatoryConfig()
 	}
@@ -393,8 +367,7 @@ func CreateBiologicalDendriticNeuron(id string, config NeuronConfig, callbacks N
 	return CallbackNeuronFactory(id, config, callbacks)
 }
 
-// CreateActiveDendriticNeuron creates a neuron with active dendritic computation and type-safe coincidence detection
-func CreateActiveDendriticNeuron(id string, config NeuronConfig, callbacks NeuronCallbacks, activeConfig ActiveDendriteConfig, bioConfig BiologicalConfig) (NeuronInterface, error) {
+func CreateActiveDendriticNeuron(id string, config NeuronConfig, callbacks component.NeuronCallbacks, activeConfig ActiveDendriteConfig, bioConfig BiologicalConfig) (component.NeuralComponent, error) {
 	if isEmptyConfig(config) {
 		config = DefaultExcitatoryConfig()
 	}
@@ -402,8 +375,7 @@ func CreateActiveDendriticNeuron(id string, config NeuronConfig, callbacks Neuro
 	return CallbackNeuronFactory(id, config, callbacks)
 }
 
-// CreateCorticalPyramidalNeuron creates a realistic cortical pyramidal neuron with NMDA coincidence detection
-func CreateCorticalPyramidalNeuron(id string, config NeuronConfig, callbacks NeuronCallbacks) (NeuronInterface, error) {
+func CreateCorticalPyramidalNeuron(id string, config NeuronConfig, callbacks component.NeuronCallbacks) (component.NeuralComponent, error) {
 	if isEmptyConfig(config) {
 		config = DefaultExcitatoryConfig()
 	}
@@ -418,8 +390,7 @@ func CreateCorticalPyramidalNeuron(id string, config NeuronConfig, callbacks Neu
 	return CallbackNeuronFactory(id, config, callbacks)
 }
 
-// CreateCustomCoincidenceNeuron creates a neuron with custom coincidence detection configuration
-func CreateCustomCoincidenceNeuron(id string, config NeuronConfig, callbacks NeuronCallbacks, detectorConfig CoincidenceDetectorConfig) (NeuronInterface, error) {
+func CreateCustomCoincidenceNeuron(id string, config NeuronConfig, callbacks component.NeuronCallbacks, detectorConfig CoincidenceDetectorConfig) (component.NeuralComponent, error) {
 	if isEmptyConfig(config) {
 		config = DefaultExcitatoryConfig()
 	}

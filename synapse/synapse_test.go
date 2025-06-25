@@ -36,6 +36,8 @@ package synapse
 import (
 	"testing"
 	"time"
+
+	"github.com/SynapticNetworks/temporal-neuron/types"
 )
 
 // =================================================================================
@@ -67,7 +69,7 @@ func TestSynapseCreation(t *testing.T) {
 
 	// Create STDP configuration with biologically realistic parameters
 	// These values are based on experimental data from cortical synapses
-	stdpConfig := STDPConfig{
+	stdpConfig := types.PlasticityConfig{
 		Enabled:        true,                   // Enable spike-timing dependent plasticity
 		LearningRate:   0.01,                   // 1% weight change per STDP event (typical range: 0.001-0.1)
 		TimeConstant:   20 * time.Millisecond,  // Exponential decay time constant (typical: 10-50ms)

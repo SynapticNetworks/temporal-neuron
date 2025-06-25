@@ -38,7 +38,7 @@ dendrite.go
 All existing complex dendrite logic unchanged
 Input processing algorithms and coincidence detection
 Synaptic integration and filtering
-Only interface changes: accepts message.NeuralSignal, returns processed values
+Only interface changes: accepts types.NeuralSignal, returns processed values
 Internal complexity preserved exactly as-is
 Branch-specific processing and dendritic computation
 
@@ -100,6 +100,6 @@ synaptic_scaling_test.go - From your old files, test synaptic scaling mechanisms
 
 🔄 Integration Flow
 Message Reception:
-message.NeuralSignal → neuron.Receive() → dendrite.ProcessInput() → accumulator → firing decision
+types.NeuralSignal → neuron.Receive() → dendrite.ProcessInput() → accumulator → firing decision
 Component Integration:
 Neuron acts as adapter between component system and your complex dendrite logic, preserving all dendrite sophistication while enabling component-based architecture.

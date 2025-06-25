@@ -4,7 +4,7 @@ import (
 	"math"
 	"time"
 
-	"github.com/SynapticNetworks/temporal-neuron/message"
+	"github.com/SynapticNetworks/temporal-neuron/types"
 )
 
 /*
@@ -65,7 +65,7 @@ func (n *Neuron) Run() {
 // 2. Synaptic scaling (post-synaptic receptor sensitivity)
 // 3. Accumulator integration
 // 4. Firing decision (delegated to firing.go)
-func (n *Neuron) processIncomingMessage(msg message.NeuralSignal) {
+func (n *Neuron) processIncomingMessage(msg types.NeuralSignal) {
 	n.stateMutex.Lock()
 	defer n.stateMutex.Unlock()
 
@@ -108,7 +108,7 @@ func (n *Neuron) processIncomingMessage(msg message.NeuralSignal) {
 }
 
 // applySynapticScalingToMessage applies post-synaptic receptor scaling and records activity
-func (n *Neuron) applySynapticScalingToMessage(msg message.NeuralSignal) float64 {
+func (n *Neuron) applySynapticScalingToMessage(msg types.NeuralSignal) float64 {
 	var scaledValue float64
 
 	// BEFORE:

@@ -4,97 +4,9 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/SynapticNetworks/temporal-neuron/types"
 )
-
-// ============================================================================
-// COMPONENT ARCHITECTURE: TYPES AND ENUMERATIONS
-// ============================================================================
-
-// ComponentType represents the distinct categories of neural components within the simulation.
-// This allows for clear classification and differential handling of various elements
-// like neurons, synapses, and different types of glial cells.
-type ComponentType int
-
-const (
-	TypeNeuron        ComponentType = iota // An excitable neural cell responsible for processing and transmitting signals.
-	TypeSynapse                            // A specialized junction that allows a neuron to pass an electrical or chemical signal to another neuron or to an effector cell.
-	TypeGlialCell                          // A non-neuronal cell in the central nervous system and the peripheral nervous system that does not produce electrical impulses. Examples include astrocytes, oligodendrocytes, and Schwann cells.
-	TypeMicrogliaCell                      // Resident immune cells of the brain and spinal cord, acting as the first and main form of active immune defense in the central nervous system (CNS).
-	TypeEpendymalCell                      // Cells that line the ventricles of the brain and the central canal of the spinal cord, forming the blood-cerebrospinal fluid (CSF) barrier.
-)
-
-// String provides a human-readable representation for ComponentType.
-func (ct ComponentType) String() string {
-	switch ct {
-	case TypeNeuron:
-		return "Neuron"
-	case TypeSynapse:
-		return "Synapse"
-	case TypeGlialCell:
-		return "GlialCell"
-	case TypeMicrogliaCell:
-		return "MicrogliaCell"
-	case TypeEpendymalCell:
-		return "EpendymalCell"
-	default:
-		return "Unknown"
-	}
-}
-
-// ComponentState represents the various operational states a neural component can be in.
-// This is crucial for managing the lifecycle, behavior, and resource allocation
-// for different components during simulation runtime.
-type ComponentState int
-
-const (
-	StateActive       ComponentState = iota // The component is fully operational and participating in the simulation.
-	StateInactive                           // The component is temporarily disabled or paused, but can be reactivated.
-	StateShuttingDown                       // The component is in the process of gracefully terminating its operations.
-	StateStopped                            // The component has fully ceased operations and is no longer active.
-	StateDeveloping                         // The component is undergoing a developmental or maturation phase.
-	StateDying                              // The component is in a process of decay or programmed cell death (apoptosis).
-	StateDamaged                            // The component has incurred damage and may be impaired or non-functional.
-	StateMaintenance                        // The component is undergoing internal maintenance or repair.
-	StateHibernating                        // The component is in a low-activity state to conserve resources.
-)
-
-// String provides a human-readable representation for ComponentState.
-func (cs ComponentState) String() string {
-	switch cs {
-	case StateActive:
-		return "Active"
-	case StateInactive:
-		return "Inactive"
-	case StateShuttingDown:
-		return "ShuttingDown"
-	case StateStopped:
-		return "Stopped"
-	case StateDeveloping:
-		return "Developing"
-	case StateDying:
-		return "Dying"
-	case StateDamaged:
-		return "Damaged"
-	case StateMaintenance:
-		return "Maintenance"
-	case StateHibernating:
-		return "Hibernating"
-	default:
-		return "Unknown"
-	}
-}
-
-// ============================================================================
-// SPATIAL REPRESENTATION
-// ============================================================================
-
-// Position3D defines the spatial coordinates for a component in a 3-dimensional space.
-// This is essential for simulations that require spatial relationships,
-// such as neural networks with specific anatomical layouts or distance-dependent
-// effects (e.g., signal propagation delays, diffusion).
-type Position3D struct {
-	X, Y, Z float64
-}
 
 // ============================================================================
 // METADATA AND MONITORING STRUCTURES
@@ -104,9 +16,9 @@ type Position3D struct {
 // This structure is used for introspection, debugging, and overall system monitoring.
 type ComponentInfo struct {
 	ID           string                 `json:"id"`            // Unique identifier for the component.
-	Type         ComponentType          `json:"type"`          // The categorical type of the component (e.g., Neuron, Synapse).
-	Position     Position3D             `json:"position"`      // The 3D spatial coordinates of the component.
-	State        ComponentState         `json:"state"`         // The current operational state of the component.
+	Type         types.ComponentType    `json:"type"`          // The categorical type of the component (e.g., Neuron, Synapse).
+	Position     types.Position3D       `json:"position"`      // The 3D spatial coordinates of the component.
+	State        types.ComponentState   `json:"state"`         // The current operational state of the component.
 	RegisteredAt time.Time              `json:"registered_at"` // Timestamp when the component was first registered or created.
 	Metadata     map[string]interface{} `json:"metadata"`      // A flexible map for storing additional, component-specific attributes.
 }
@@ -135,11 +47,11 @@ type Component interface {
 	// ID returns the globally unique identifier for this component.
 	ID() string
 	// Type returns the categorical type of the component (e.g., TypeNeuron, TypeSynapse).
-	Type() ComponentType
+	Type() types.ComponentType
 	// Position returns the 3D spatial coordinates of the component.
-	Position() Position3D
-	// State returns the current operational state of the component.
-	State() ComponentState
+	Position() types.Position3D
+	// types.State returns the current operational state of the component.
+	State() types.ComponentState
 
 	// IsActive checks if the component is currently in an active and operational state.
 	IsActive() bool
@@ -162,9 +74,9 @@ type Component interface {
 	UpdateMetadata(key string, value interface{})
 
 	// SetPosition updates the component's 3D spatial coordinates.
-	SetPosition(position Position3D)
+	SetPosition(position types.Position3D)
 	// SetState manually sets the component's operational state.
-	SetState(state ComponentState)
+	SetState(state types.ComponentState)
 
 	// GetActivityLevel returns a normalized measure of the component's recent activity.
 	// The interpretation of 'activity' is component-specific (e.g., firing rate for neurons).
@@ -183,9 +95,9 @@ type Component interface {
 // and thread-safe metadata handling. This promotes code reuse and consistency across the simulation.
 type BaseComponent struct {
 	id            string                 // Unique identifier for this instance.
-	componentType ComponentType          // The specific type of this component.
-	position      Position3D             // Current 3D spatial coordinates.
-	state         ComponentState         // Current operational state (e.g., Active, Stopped).
+	componentType types.ComponentType    // The specific type of this component.
+	position      types.Position3D       // Current 3D spatial coordinates.
+	state         types.ComponentState   // Current operational state (e.g., Active, Stopped).
 	metadata      map[string]interface{} // Dynamic, extensible key-value store for component-specific data.
 	lastActivity  time.Time              // Timestamp of the last significant activity or state update.
 	isActive      bool                   // A boolean flag indicating if the component is considered 'active'.
@@ -195,12 +107,12 @@ type BaseComponent struct {
 // NewBaseComponent is the constructor for BaseComponent. It initializes a new
 // base component with mandatory identification and spatial properties, setting
 // its initial state to `StateActive`.
-func NewBaseComponent(id string, componentType ComponentType, position Position3D) *BaseComponent {
+func NewBaseComponent(id string, componentType types.ComponentType, position types.Position3D) *BaseComponent {
 	return &BaseComponent{
 		id:            id,
 		componentType: componentType,
 		position:      position,
-		state:         StateActive,                  // Components start as active by default.
+		state:         types.StateActive,            // Components start as active by default.
 		metadata:      make(map[string]interface{}), // Initialize metadata map.
 		lastActivity:  time.Now(),                   // Record creation time as initial activity.
 		isActive:      true,                         // Set active flag.
@@ -217,13 +129,13 @@ func (bc *BaseComponent) ID() string {
 }
 
 // Type returns the categorical type of the base component. It is safe for concurrent access.
-func (bc *BaseComponent) Type() ComponentType {
+func (bc *BaseComponent) Type() types.ComponentType {
 	return bc.componentType
 }
 
 // Position returns the current 3D position of the base component.
 // It uses a read lock for thread safety.
-func (bc *BaseComponent) Position() Position3D {
+func (bc *BaseComponent) Position() types.Position3D {
 	bc.mu.RLock()
 	defer bc.mu.RUnlock()
 	return bc.position
@@ -231,16 +143,16 @@ func (bc *BaseComponent) Position() Position3D {
 
 // SetPosition updates the 3D position of the base component.
 // It uses a write lock for thread safety and updates the last activity timestamp.
-func (bc *BaseComponent) SetPosition(position Position3D) {
+func (bc *BaseComponent) SetPosition(position types.Position3D) {
 	bc.mu.Lock()
 	defer bc.mu.Unlock()
 	bc.position = position
 	bc.lastActivity = time.Now() // Mark activity on position change.
 }
 
-// State returns the current operational state of the base component.
+// types.State returns the current operational state of the base component.
 // It uses a read lock for thread safety.
-func (bc *BaseComponent) State() ComponentState {
+func (bc *BaseComponent) State() types.ComponentState {
 	bc.mu.RLock()
 	defer bc.mu.RUnlock()
 	return bc.state
@@ -248,7 +160,7 @@ func (bc *BaseComponent) State() ComponentState {
 
 // SetState updates the operational state of the base component.
 // It uses a write lock for thread safety and updates the last activity timestamp.
-func (bc *BaseComponent) SetState(state ComponentState) {
+func (bc *BaseComponent) SetState(state types.ComponentState) {
 	bc.mu.Lock()
 	defer bc.mu.Unlock()
 	bc.state = state
@@ -267,11 +179,11 @@ func (bc *BaseComponent) CanRestart() bool {
 // is already held. It checks if the component can transition back to an active state.
 func (bc *BaseComponent) canRestartUnsafe() bool {
 	switch bc.state {
-	case StateInactive, StateStopped, StateMaintenance, StateHibernating:
+	case types.StateInactive, types.StateStopped, types.StateMaintenance, types.StateHibernating:
 		return true // These states are typically restartable.
-	case StateDying, StateDamaged:
+	case types.StateDying, types.StateDamaged:
 		return false // Requires special recovery or is beyond recovery.
-	case StateActive, StateShuttingDown, StateDeveloping:
+	case types.StateActive, types.StateShuttingDown, types.StateDeveloping:
 		return false // Already active or in an ongoing transition.
 	default:
 		return false // Unknown states are not restartable by default.
@@ -290,7 +202,7 @@ func (bc *BaseComponent) Restart() error {
 	}
 
 	bc.isActive = true           // Mark as active.
-	bc.state = StateActive       // Set state to active.
+	bc.state = types.StateActive // Set state to active.
 	bc.lastActivity = time.Now() // Update last activity timestamp.
 
 	return nil
@@ -302,7 +214,7 @@ func (bc *BaseComponent) Start() error {
 	bc.mu.Lock()
 	defer bc.mu.Unlock()
 	bc.isActive = true
-	bc.state = StateActive
+	bc.state = types.StateActive
 	bc.lastActivity = time.Now()
 	return nil
 }
@@ -316,7 +228,7 @@ func (bc *BaseComponent) Stop() error {
 	defer bc.mu.Unlock()
 
 	// Initiate graceful shutdown.
-	bc.state = StateShuttingDown
+	bc.state = types.StateShuttingDown
 	bc.lastActivity = time.Now()
 
 	// In a more complex simulation, this section would contain:
@@ -327,7 +239,7 @@ func (bc *BaseComponent) Stop() error {
 
 	// Mark as fully stopped and inactive.
 	bc.isActive = false
-	bc.state = StateStopped
+	bc.state = types.StateStopped
 	bc.lastActivity = time.Now()
 
 	return nil
@@ -338,7 +250,7 @@ func (bc *BaseComponent) Stop() error {
 func (bc *BaseComponent) IsActive() bool {
 	bc.mu.RLock()
 	defer bc.mu.RUnlock()
-	return bc.isActive && bc.state == StateActive
+	return bc.isActive && bc.state == types.StateActive
 }
 
 // GetMetadata retrieves a copy of the component's internal metadata map.
@@ -409,8 +321,8 @@ func CreateComponentInfo(comp Component) ComponentInfo {
 }
 
 // FilterComponentsByType filters a slice of `Component` interfaces, returning
-// a new slice containing only components of the specified `ComponentType`.
-func FilterComponentsByType(components []Component, componentType ComponentType) []Component {
+// a new slice containing only components of the specified `types.ComponentType`.
+func FilterComponentsByType(components []Component, componentType types.ComponentType) []Component {
 	var filtered []Component
 	for _, comp := range components {
 		if comp.Type() == componentType {
@@ -421,8 +333,8 @@ func FilterComponentsByType(components []Component, componentType ComponentType)
 }
 
 // FilterComponentsByState filters a slice of `Component` interfaces, returning
-// a new slice containing only components that are in the specified `ComponentState`.
-func FilterComponentsByState(components []Component, state ComponentState) []Component {
+// a new slice containing only components that are in the specified `types.ComponentState`.
+func FilterComponentsByState(components []Component, state types.ComponentState) []Component {
 	var filtered []Component
 	for _, comp := range components {
 		if comp.State() == state {

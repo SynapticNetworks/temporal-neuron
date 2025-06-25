@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/SynapticNetworks/temporal-neuron/component"
-	"github.com/SynapticNetworks/temporal-neuron/message"
+	"github.com/SynapticNetworks/temporal-neuron/types"
 )
 
 /*
@@ -47,14 +47,14 @@ type Neuron struct {
 	fireFactor       float64
 
 	// === BIOLOGICAL PROPERTIES ===
-	receptors       []message.LigandType // ChemicalReceiver
-	releasedLigands []message.LigandType // ChemicalReleaser
-	signalTypes     []message.SignalType // ElectricalReceiver/Transmitter
+	receptors       []types.LigandType // ChemicalReceiver
+	releasedLigands []types.LigandType // ChemicalReleaser
+	signalTypes     []types.SignalType // ElectricalReceiver/Transmitter
 
 	// === NEURAL PROCESSING STATE ===
 	accumulator  float64
 	lastFireTime time.Time
-	inputBuffer  chan message.NeuralSignal
+	inputBuffer  chan types.NeuralSignal
 
 	// === HOMEOSTATIC SYSTEM ===
 	homeostatic HomeostaticMetrics
@@ -76,10 +76,10 @@ type Neuron struct {
 	deliveryQueue     chan delayedMessage
 
 	// === CALLBACK-BASED OUTPUTS (NO SYNAPSE DEPENDENCY) ===
-	outputCallbacks map[string]OutputCallback
+	outputCallbacks map[string]types.OutputCallback
 
 	// === INJECTED MATRIX CALLBACKS ===
-	matrixCallbacks *NeuronCallbacks
+	matrixCallbacks component.NeuronCallbacks
 
 	// === LIFECYCLE MANAGEMENT ===
 	ctx       context.Context
@@ -117,7 +117,7 @@ func NewNeuron(id string, threshold float64, decayRate float64, refractoryPeriod
 	ctx, cancel := context.WithCancel(context.Background())
 
 	// Create base component
-	baseComponent := component.NewBaseComponent(id, component.TypeNeuron, component.Position3D{})
+	baseComponent := component.NewBaseComponent(id, types.TypeNeuron, types.Position3D{})
 
 	// Calculate homeostatic bounds
 	minThreshold := threshold * DENDRITE_FACTOR_THRESHOLD_MIN_RATIO // Using new constant
@@ -132,13 +132,13 @@ func NewNeuron(id string, threshold float64, decayRate float64, refractoryPeriod
 		fireFactor:       fireFactor,
 
 		// Initialize arrays
-		receptors:       make([]message.LigandType, 0),
-		releasedLigands: make([]message.LigandType, 0),
-		signalTypes:     []message.SignalType{message.SignalFired},
+		receptors:       make([]types.LigandType, 0),
+		releasedLigands: make([]types.LigandType, 0),
+		signalTypes:     []types.SignalType{types.SignalFired},
 
 		// Initialize processing
-		inputBuffer:     make(chan message.NeuralSignal, 100),
-		outputCallbacks: make(map[string]OutputCallback),
+		inputBuffer:     make(chan types.NeuralSignal, 100),
+		outputCallbacks: make(map[string]types.OutputCallback),
 
 		// Initialize homeostatic system
 		homeostatic: HomeostaticMetrics{
@@ -176,7 +176,7 @@ func NewNeuron(id string, threshold float64, decayRate float64, refractoryPeriod
 		cancel: cancel,
 	}
 
-	neuron.SetState(component.StateInactive) // Start inactive, not active
+	neuron.SetState(types.StateInactive) // Start inactive, not active
 
 	return neuron
 }
@@ -186,11 +186,11 @@ func NewNeuron(id string, threshold float64, decayRate float64, refractoryPeriod
 // ============================================================================
 
 // ChemicalReceiver interface
-func (n *Neuron) GetReceptors() []message.LigandType {
+func (n *Neuron) GetReceptors() []types.LigandType {
 	return n.receptors
 }
 
-func (n *Neuron) Bind(ligandType message.LigandType, sourceID string, concentration float64) {
+func (n *Neuron) Bind(ligandType types.LigandType, sourceID string, concentration float64) {
 	if !n.hasReceptor(ligandType) {
 		return
 	}
@@ -213,14 +213,14 @@ func (n *Neuron) Bind(ligandType message.LigandType, sourceID string, concentrat
 }
 
 // ChemicalReleaser interface
-func (n *Neuron) GetReleasedLigands() []message.LigandType {
+func (n *Neuron) GetReleasedLigands() []types.LigandType {
 	return n.releasedLigands
 }
 
 // OnSignal handles electrical signals from gap junctions and network coordination
-func (n *Neuron) OnSignal(signalType message.SignalType, sourceID string, data interface{}) {
+func (n *Neuron) OnSignal(signalType types.SignalType, sourceID string, data interface{}) {
 	switch signalType {
-	case message.SignalFired:
+	case types.SignalFired:
 		// Gap junction synchronization
 		if value, ok := data.(float64); ok {
 			n.stateMutex.Lock()
@@ -232,7 +232,7 @@ func (n *Neuron) OnSignal(signalType message.SignalType, sourceID string, data i
 			}
 			n.stateMutex.Unlock()
 		}
-	case message.SignalThresholdChanged:
+	case types.SignalThresholdChanged:
 		// Network-wide threshold adjustment
 		if adjustment, ok := data.(float64); ok {
 			n.stateMutex.Lock()
@@ -248,14 +248,14 @@ func (n *Neuron) OnSignal(signalType message.SignalType, sourceID string, data i
 }
 
 // ElectricalTransmitter interface
-func (n *Neuron) GetSignalTypes() []message.SignalType {
+func (n *Neuron) GetSignalTypes() []types.SignalType {
 	return n.signalTypes
 }
 
 // Fix for the data race in neuron.go
 // The Receive method needs to protect the lastFireTime read with mutex
 // MessageReceiver interface
-func (n *Neuron) Receive(msg message.NeuralSignal) {
+func (n *Neuron) Receive(msg types.NeuralSignal) {
 	// Check refractory period with proper synchronization
 	n.stateMutex.Lock()
 	inRefractory := !n.lastFireTime.IsZero() && time.Since(n.lastFireTime) < n.refractoryPeriod
@@ -288,14 +288,14 @@ func (n *Neuron) GetActivityLevel() float64 {
 // CONFIGURATION METHODS
 // ============================================================================
 
-func (n *Neuron) SetReceptors(receptors []message.LigandType) {
-	n.receptors = make([]message.LigandType, len(receptors))
+func (n *Neuron) SetReceptors(receptors []types.LigandType) {
+	n.receptors = make([]types.LigandType, len(receptors))
 	copy(n.receptors, receptors)
 	n.UpdateMetadata("receptors", receptors)
 }
 
-func (n *Neuron) SetReleasedLigands(ligands []message.LigandType) {
-	n.releasedLigands = make([]message.LigandType, len(ligands))
+func (n *Neuron) SetReleasedLigands(ligands []types.LigandType) {
+	n.releasedLigands = make([]types.LigandType, len(ligands))
 	copy(n.releasedLigands, ligands)
 	n.UpdateMetadata("released_ligands", ligands)
 }
@@ -490,11 +490,11 @@ func (n *Neuron) GetDendriticMode() DendriticIntegrationMode {
 // CALLBACK MANAGEMENT
 // ============================================================================
 
-func (n *Neuron) SetCallbacks(callbacks NeuronCallbacks) {
-	n.matrixCallbacks = &callbacks
+func (n *Neuron) SetCallbacks(callbacks component.NeuronCallbacks) {
+	n.matrixCallbacks = callbacks
 }
 
-func (n *Neuron) AddOutputCallback(synapseID string, callback OutputCallback) {
+func (n *Neuron) AddOutputCallback(synapseID string, callback types.OutputCallback) {
 	n.outputsMutex.Lock()
 	defer n.outputsMutex.Unlock()
 	n.outputCallbacks[synapseID] = callback
@@ -512,10 +512,6 @@ func (n *Neuron) ConnectToNeuron(targetNeuronID string, weight float64, synapseT
 		return fmt.Errorf("matrix callbacks not available for neuron %s", n.ID())
 	}
 
-	if n.matrixCallbacks.CreateSynapse == nil {
-		return fmt.Errorf("CreateSynapse callback not available for neuron %s", n.ID())
-	}
-
 	if targetNeuronID == "" {
 		return fmt.Errorf("target neuron ID cannot be empty")
 	}
@@ -528,7 +524,8 @@ func (n *Neuron) ConnectToNeuron(targetNeuronID string, weight float64, synapseT
 		return fmt.Errorf("connection weight cannot be negative: %f", weight)
 	}
 
-	config := SynapseCreationConfig{
+	config := types.SynapseCreationConfig{
+		SourceNeuronID: n.ID(),
 		TargetNeuronID: targetNeuronID,
 		InitialWeight:  weight,
 		SynapseType:    synapseType,
@@ -572,16 +569,16 @@ func (n *Neuron) SendSTDPFeedback() {
 		return // STDP feedback disabled
 	}
 
-	if n.matrixCallbacks == nil || n.matrixCallbacks.ListSynapses == nil || n.matrixCallbacks.ApplyPlasticity == nil {
+	if n.matrixCallbacks == nil {
 		return // Callbacks not available
 	}
 
 	// Get all incoming synapses that recently contributed to firing
-	incomingDirection := SynapseIncoming
+	incomingDirection := types.SynapseIncoming
 	myID := n.ID()
 	recentActivity := time.Now().Add(-feedbackDelay * 10) // STDP window
 
-	incomingSynapses := n.matrixCallbacks.ListSynapses(SynapseCriteria{
+	incomingSynapses := n.matrixCallbacks.ListSynapses(types.SynapseCriteria{
 		Direction:     &incomingDirection,
 		TargetID:      &myID,
 		ActivitySince: &recentActivity,
@@ -592,7 +589,7 @@ func (n *Neuron) SendSTDPFeedback() {
 		// Calculate timing difference (simplified - would need actual spike times)
 		deltaT := n.calculateSTDPTiming(synapseInfo)
 
-		adjustment := PlasticityAdjustment{
+		adjustment := types.PlasticityAdjustment{
 			DeltaT:       deltaT,
 			LearningRate: learningRate, // Use configured learning rate
 		}
@@ -609,7 +606,7 @@ func (n *Neuron) SendSTDPFeedback() {
 // CALLBACKS USED: ListSynapses, SetSynapseWeight
 // BIOLOGICAL INTERACTION: Homeostatic plasticity, synaptic scaling
 func (n *Neuron) PerformHomeostasisScaling() {
-	if n.matrixCallbacks == nil || n.matrixCallbacks.ListSynapses == nil || n.matrixCallbacks.SetSynapseWeight == nil {
+	if n.matrixCallbacks == nil {
 		return
 	}
 
@@ -626,10 +623,10 @@ func (n *Neuron) PerformHomeostasisScaling() {
 	scalingFactor := n.calculateScalingFactor(currentRate, targetRate)
 
 	// Get all incoming synapses
-	incomingDirection := SynapseIncoming
+	incomingDirection := types.SynapseIncoming
 	myID := n.ID()
 
-	incomingSynapses := n.matrixCallbacks.ListSynapses(SynapseCriteria{
+	incomingSynapses := n.matrixCallbacks.ListSynapses(types.SynapseCriteria{
 		Direction: &incomingDirection,
 		TargetID:  &myID,
 	})
@@ -662,10 +659,10 @@ func (n *Neuron) PruneDysfunctionalSynapses() {
 	}
 
 	// Get all synapses (both incoming and outgoing)
-	bothDirections := SynapseBoth
+	bothDirections := types.SynapseBoth
 	myID := n.ID()
 
-	allSynapses := n.matrixCallbacks.ListSynapses(SynapseCriteria{
+	allSynapses := n.matrixCallbacks.ListSynapses(types.SynapseCriteria{
 		Direction: &bothDirections,
 		SourceID:  &myID,
 		TargetID:  &myID,
@@ -697,22 +694,22 @@ func (n *Neuron) PruneDysfunctionalSynapses() {
 // CALLBACKS USED: ListSynapses
 // BIOLOGICAL INTERACTION: Network analysis, connectivity monitoring
 func (n *Neuron) GetConnectionMetrics() map[string]interface{} {
-	if n.matrixCallbacks == nil || n.matrixCallbacks.ListSynapses == nil {
+	if n.matrixCallbacks == nil {
 		return map[string]interface{}{"error": "callbacks not available"}
 	}
 
 	myID := n.ID()
 
 	// Count incoming synapses
-	incomingDirection := SynapseIncoming
-	incoming := n.matrixCallbacks.ListSynapses(SynapseCriteria{
+	incomingDirection := types.SynapseIncoming
+	incoming := n.matrixCallbacks.ListSynapses(types.SynapseCriteria{
 		Direction: &incomingDirection,
 		TargetID:  &myID,
 	})
 
 	// Count outgoing synapses
-	outgoingDirection := SynapseOutgoing
-	outgoing := n.matrixCallbacks.ListSynapses(SynapseCriteria{
+	outgoingDirection := types.SynapseOutgoing
+	outgoing := n.matrixCallbacks.ListSynapses(types.SynapseCriteria{
 		Direction: &outgoingDirection,
 		SourceID:  &myID,
 	})
@@ -743,7 +740,7 @@ func (n *Neuron) GetConnectionMetrics() map[string]interface{} {
 // ENHANCED HELPER METHODS
 // ============================================================================
 
-func (n *Neuron) calculateSTDPTiming(synapseInfo SynapseInfo) time.Duration {
+func (n *Neuron) calculateSTDPTiming(synapseInfo types.SynapseInfo) time.Duration {
 	// Simplified STDP timing calculation
 	// In real implementation, would track precise spike times
 	timeSinceActivity := time.Since(synapseInfo.LastActivity)
@@ -792,7 +789,7 @@ func calculateAverage(values []float64) float64 {
 // ============================================================================
 
 // hasReceptor checks if neuron has a specific ligand receptor
-func (n *Neuron) hasReceptor(ligandType message.LigandType) bool {
+func (n *Neuron) hasReceptor(ligandType types.LigandType) bool {
 	for _, receptor := range n.receptors {
 		if receptor == ligandType {
 			return true
@@ -802,17 +799,17 @@ func (n *Neuron) hasReceptor(ligandType message.LigandType) bool {
 }
 
 // calculateChemicalEffect computes the effect of chemical binding
-func (n *Neuron) calculateChemicalEffect(ligandType message.LigandType, concentration float64) float64 {
+func (n *Neuron) calculateChemicalEffect(ligandType types.LigandType, concentration float64) float64 {
 	switch ligandType {
-	case message.LigandGlutamate:
+	case types.LigandGlutamate:
 		return concentration * DENDRITE_FACTOR_EFFECT_GLUTAMATE
-	case message.LigandGABA:
+	case types.LigandGABA:
 		return concentration * DENDRITE_FACTOR_EFFECT_GABA
-	case message.LigandDopamine:
+	case types.LigandDopamine:
 		return concentration * DENDRITE_FACTOR_EFFECT_DOPAMINE
-	case message.LigandSerotonin:
+	case types.LigandSerotonin:
 		return concentration * DENDRITE_FACTOR_EFFECT_SEROTONIN
-	case message.LigandAcetylcholine:
+	case types.LigandAcetylcholine:
 		return concentration * DENDRITE_FACTOR_EFFECT_ACETYLCHOLINE
 	default:
 		return 0.0
@@ -842,7 +839,7 @@ func (n *Neuron) Start() error {
 		return fmt.Errorf("cannot start neuron %s: %w", n.ID(), err)
 	}
 
-	n.SetState(component.StateActive)
+	n.SetState(types.StateActive)
 	go n.Run() // Run() method is in processing.go
 	return nil
 }
@@ -851,7 +848,7 @@ func (n *Neuron) Stop() error {
 	var lastErr error
 
 	n.closeOnce.Do(func() {
-		n.SetState(component.StateStopped)
+		n.SetState(types.StateStopped)
 
 		// Signal cancellation first
 		n.cancel()
@@ -937,7 +934,7 @@ func (n *Neuron) validateNeuronState() error {
 }
 
 func (n *Neuron) SetSynapseWeight(synapseID string, weight float64) error {
-	if n.matrixCallbacks == nil || n.matrixCallbacks.SetSynapseWeight == nil {
+	if n.matrixCallbacks == nil {
 		return fmt.Errorf("SetSynapseWeight callback not available")
 	}
 	return n.matrixCallbacks.SetSynapseWeight(synapseID, weight)
@@ -946,7 +943,7 @@ func (n *Neuron) SetSynapseWeight(synapseID string, weight float64) error {
 // ScheduleDelayedDelivery implements the SynapseNeuronInterface requirement.
 // This method queues messages for delayed delivery without spawning goroutines.
 // ScheduleDelayedDelivery implements the SynapseNeuronInterface requirement
-func (n *Neuron) ScheduleDelayedDelivery(msg message.NeuralSignal, target component.MessageReceiver, delay time.Duration) {
+func (n *Neuron) ScheduleDelayedDelivery(msg types.NeuralSignal, target component.MessageReceiver, delay time.Duration) {
 
 	// Use your existing axon delivery mechanism
 	ScheduleDelayedDelivery(n.deliveryQueue, msg, target, delay)

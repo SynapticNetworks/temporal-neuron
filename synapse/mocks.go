@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/SynapticNetworks/temporal-neuron/component"
-	"github.com/SynapticNetworks/temporal-neuron/message"
+	"github.com/SynapticNetworks/temporal-neuron/types"
 )
 
 // =================================================================================
@@ -19,8 +19,8 @@ type MockNeuron struct {
 	*component.BaseComponent
 
 	// === MESSAGE STORAGE ===
-	receivedMsgs []message.NeuralSignal    // All messages received by this neuron
-	msgChannel   chan message.NeuralSignal // Channel for concurrent test access
+	receivedMsgs []types.NeuralSignal    // All messages received by this neuron
+	msgChannel   chan types.NeuralSignal // Channel for concurrent test access
 
 	// === DELAY SCHEDULING ===
 	delayQueue  []delayedMessage // Internal queue for delayed messages
@@ -32,20 +32,20 @@ type MockNeuron struct {
 
 // delayedMessage represents a message awaiting delivery in the mock system
 type delayedMessage struct {
-	message      message.NeuralSignal
+	message      types.NeuralSignal
 	target       component.MessageReceiver // Target must be component.MessageReceiver
 	deliveryTime time.Time
 }
 
 // NewMockNeuron creates a simple mock neuron for testing synapse functionality.
 func NewMockNeuron(id string) *MockNeuron {
-	base := component.NewBaseComponent(id, component.TypeNeuron, component.Position3D{})
-	base.SetState(component.StateInactive)
+	base := component.NewBaseComponent(id, types.TypeNeuron, types.Position3D{})
+	base.SetState(types.StateInactive)
 
 	return &MockNeuron{
 		BaseComponent: base,
-		receivedMsgs:  make([]message.NeuralSignal, 0),
-		msgChannel:    make(chan message.NeuralSignal, 10),
+		receivedMsgs:  make([]types.NeuralSignal, 0),
+		msgChannel:    make(chan types.NeuralSignal, 10),
 		delayQueue:    make([]delayedMessage, 0),
 		currentTime:   time.Now(),
 		mockMutex:     sync.RWMutex{},
@@ -57,7 +57,7 @@ func NewMockNeuron(id string) *MockNeuron {
 // =================================================================================
 
 // Receive accepts a neural signal and stores it for test verification.
-func (m *MockNeuron) Receive(msg message.NeuralSignal) {
+func (m *MockNeuron) Receive(msg types.NeuralSignal) {
 	m.mockMutex.Lock()
 	defer m.mockMutex.Unlock()
 
@@ -70,7 +70,7 @@ func (m *MockNeuron) Receive(msg message.NeuralSignal) {
 }
 
 // ScheduleDelayedDelivery implements the SynapseNeuronInterface.ScheduleDelayedDelivery() requirement.
-func (m *MockNeuron) ScheduleDelayedDelivery(msg message.NeuralSignal, target component.MessageReceiver, delay time.Duration) {
+func (m *MockNeuron) ScheduleDelayedDelivery(msg types.NeuralSignal, target component.MessageReceiver, delay time.Duration) {
 	m.mockMutex.Lock()
 	defer m.mockMutex.Unlock()
 
@@ -92,11 +92,11 @@ func (m *MockNeuron) ScheduleDelayedDelivery(msg message.NeuralSignal, target co
 // =================================================================================
 
 // GetReceivedMessages returns all messages received by this mock neuron.
-func (m *MockNeuron) GetReceivedMessages() []message.NeuralSignal {
+func (m *MockNeuron) GetReceivedMessages() []types.NeuralSignal {
 	m.mockMutex.RLock()
 	defer m.mockMutex.RUnlock()
 
-	copied := make([]message.NeuralSignal, len(m.receivedMsgs))
+	copied := make([]types.NeuralSignal, len(m.receivedMsgs))
 	copy(copied, m.receivedMsgs)
 	return copied
 }
@@ -173,10 +173,10 @@ type MockSynapse struct {
 
 	weight     float64
 	delay      time.Duration
-	ligandType message.LigandType
+	ligandType types.LigandType
 
 	plasticityEnabled bool
-	stdpConfig        STDPConfig
+	stdpConfig        types.PlasticityConfig
 	pruningConfig     PruningConfig
 
 	activity          float64
@@ -191,7 +191,7 @@ type MockSynapse struct {
 
 	mutex sync.RWMutex
 
-	receivedSignals []message.NeuralSignal
+	receivedSignals []types.NeuralSignal
 }
 
 // NewMockSynapse creates a mock synapse.
@@ -202,7 +202,7 @@ func NewMockSynapse(id string, preID, postID string, weight float64) *MockSynaps
 		postSynapticID:    postID,
 		weight:            weight,
 		delay:             time.Millisecond,
-		ligandType:        message.LigandGlutamate,
+		ligandType:        types.LigandGlutamate,
 		plasticityEnabled: true,
 		stdpConfig:        CreateDefaultSTDPConfig(),
 		pruningConfig:     CreateDefaultPruningConfig(),
@@ -211,16 +211,16 @@ func NewMockSynapse(id string, preID, postID string, weight float64) *MockSynaps
 		transmissionCount: 0,
 		// callbacks:         nil, // This line is also removed as the field is gone
 		isActive:        true,
-		receivedSignals: make([]message.NeuralSignal, 0),
+		receivedSignals: make([]types.NeuralSignal, 0),
 		mutex:           sync.RWMutex{},
 	}
 }
 
 // GetReceivedMessages for MockSynapse, for testing purposes.
-func (m *MockSynapse) GetReceivedMessages() []message.NeuralSignal {
+func (m *MockSynapse) GetReceivedMessages() []types.NeuralSignal {
 	m.mutex.RLock()
 	defer m.mutex.RUnlock()
-	copied := make([]message.NeuralSignal, len(m.receivedSignals))
+	copied := make([]types.NeuralSignal, len(m.receivedSignals))
 	copy(copied, m.receivedSignals)
 	return copied
 }
@@ -237,7 +237,7 @@ func (ms *MockSynapse) Transmit(signalValue float64) {
 	ms.mutex.Lock()
 	defer ms.mutex.Unlock()
 
-	msg := message.NeuralSignal{
+	msg := types.NeuralSignal{
 		Value:                signalValue * ms.weight,
 		Timestamp:            time.Now(),
 		SourceID:             ms.preSynapticID,
@@ -252,7 +252,7 @@ func (ms *MockSynapse) Transmit(signalValue float64) {
 }
 
 // ApplyPlasticity updates the synapse's internal state based on feedback.
-func (ms *MockSynapse) ApplyPlasticity(adjustment PlasticityAdjustment) {
+func (ms *MockSynapse) ApplyPlasticity(adjustment types.PlasticityAdjustment) {
 	ms.mutex.Lock()
 	defer ms.mutex.Unlock()
 	ms.lastActivity = time.Now()
@@ -295,7 +295,7 @@ func (ms *MockSynapse) GetDelay() time.Duration {
 }
 
 // GetPlasticityConfig returns the STDP configuration.
-func (ms *MockSynapse) GetPlasticityConfig() STDPConfig {
+func (ms *MockSynapse) GetPlasticityConfig() types.PlasticityConfig {
 	return ms.stdpConfig
 }
 

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/SynapticNetworks/temporal-neuron/message"
+	"github.com/SynapticNetworks/temporal-neuron/types"
 )
 
 // ============================================================================
@@ -163,7 +163,7 @@ func TestSynapticScaling_PostSynapticGainApplication(t *testing.T) {
 
 	// Test with scaling disabled (should pass signals unchanged)
 	t.Run("DisabledScaling", func(t *testing.T) {
-		msg := message.NeuralSignal{
+		msg := types.NeuralSignal{
 			Value:    2.5,
 			SourceID: "test_source",
 		}
@@ -182,7 +182,7 @@ func TestSynapticScaling_PostSynapticGainApplication(t *testing.T) {
 
 	// Test automatic registration with default gain
 	t.Run("AutomaticRegistration", func(t *testing.T) {
-		msg := message.NeuralSignal{
+		msg := types.NeuralSignal{
 			Value:    1.8,
 			SourceID: "new_source",
 		}
@@ -211,7 +211,7 @@ func TestSynapticScaling_PostSynapticGainApplication(t *testing.T) {
 	t.Run("CustomGainApplication", func(t *testing.T) {
 		scaling.SetInputGain("custom_source", 2.0)
 
-		msg := message.NeuralSignal{
+		msg := types.NeuralSignal{
 			Value:    1.5,
 			SourceID: "custom_source",
 		}
@@ -250,7 +250,7 @@ func TestSynapticScaling_PostSynapticGainApplication(t *testing.T) {
 
 	// Test empty source ID handling
 	t.Run("EmptySourceID", func(t *testing.T) {
-		msg := message.NeuralSignal{
+		msg := types.NeuralSignal{
 			Value:    2.0,
 			SourceID: "", // Empty source ID
 		}
@@ -700,7 +700,7 @@ func TestSynapticScaling_ConcurrentAccess(t *testing.T) {
 					sourceID := fmt.Sprintf("source_%d", goroutineID)
 
 					// Apply gain to a signal
-					msg := message.NeuralSignal{
+					msg := types.NeuralSignal{
 						Value:    float64(j) * 0.01,
 						SourceID: sourceID,
 					}
@@ -946,7 +946,7 @@ func TestSynapticScaling_BiologicalRealism(t *testing.T) {
 //
 // EXPECTED RESULTS:
 // - Scaling integrates cleanly with message processing workflow
-// - Activity tracking works with real message.NeuralSignal processing
+// - Activity tracking works with real types.NeuralSignal processing
 // - Scaling decisions are based on actual neural activity patterns
 // - System maintains stability under realistic operating conditions
 func TestSynapticScaling_ScalingIntegration(t *testing.T) {
@@ -963,11 +963,11 @@ func TestSynapticScaling_ScalingIntegration(t *testing.T) {
 		for round := 0; round < 10; round++ {
 			for _, sourceID := range sources {
 				// Create realistic neural signal
-				msg := message.NeuralSignal{
+				msg := types.NeuralSignal{
 					Value:                1.5 + 0.5*rand.Float64(), // Variable signal strength
 					Timestamp:            time.Now(),
 					SourceID:             sourceID,
-					NeurotransmitterType: message.LigandGlutamate,
+					NeurotransmitterType: types.LigandGlutamate,
 				}
 
 				// Apply gain (as would happen in neuron processing)
@@ -1071,7 +1071,7 @@ func BenchmarkGainApplication(b *testing.B) {
 	scaling := NewSynapticScalingState()
 	scaling.EnableScaling(1.0, 0.001, 30*time.Second)
 
-	msg := message.NeuralSignal{
+	msg := types.NeuralSignal{
 		Value:    1.5,
 		SourceID: "benchmark_source",
 	}

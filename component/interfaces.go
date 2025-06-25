@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/SynapticNetworks/temporal-neuron/message"
+	"github.com/SynapticNetworks/temporal-neuron/types"
 )
 
 // ============================================================================
@@ -14,14 +14,14 @@ import (
 // ChemicalReceiver interface for components that can receive chemical signals
 type ChemicalReceiver interface {
 	Component
-	GetReceptors() []message.LigandType
-	Bind(ligandType message.LigandType, sourceID string, concentration float64)
+	GetReceptors() []types.LigandType
+	Bind(ligandType types.LigandType, sourceID string, concentration float64)
 }
 
 // ChemicalReleaser interface for components that can release chemical signals
 type ChemicalReleaser interface {
 	Component
-	GetReleasedLigands() []message.LigandType
+	GetReleasedLigands() []types.LigandType
 }
 
 // ============================================================================
@@ -31,13 +31,13 @@ type ChemicalReleaser interface {
 // ElectricalReceiver interface for components that can receive electrical signals
 type ElectricalReceiver interface {
 	Component
-	OnSignal(signalType message.SignalType, sourceID string, data interface{})
+	OnSignal(signalType types.SignalType, sourceID string, data interface{})
 }
 
 // ElectricalTransmitter interface for components that can send electrical signals
 type ElectricalTransmitter interface {
 	Component
-	GetSignalTypes() []message.SignalType
+	GetSignalTypes() []types.SignalType
 }
 
 // ============================================================================
@@ -47,7 +47,7 @@ type ElectricalTransmitter interface {
 // MessageReceiver interface for components that can receive neural signals
 type MessageReceiver interface {
 	Component
-	Receive(msg message.NeuralSignal)
+	Receive(msg types.NeuralSignal)
 }
 
 // MessageTransmitter interface for components that can transmit neural signals
@@ -71,7 +71,49 @@ type MessageScheduler interface {
 	//   msg: The neural signal to deliver
 	//   target: The receiving component.MessageReceiver (e.g., the postsynaptic neuron)
 	//   delay: Total transmission delay (synaptic + axonal)
-	ScheduleDelayedDelivery(msg message.NeuralSignal, target MessageReceiver, delay time.Duration)
+	ScheduleDelayedDelivery(msg types.NeuralSignal, target MessageReceiver, delay time.Duration)
+}
+
+// SynapticProcessor defines the universal contract for any component that acts
+// as a synapse. It is the key to the pluggable architecture, ensuring that the
+// Neuron can work with any synapse type that fulfills these methods.
+type SynapticProcessor interface {
+	// ID returns the unique identifier for the synapse.
+	ID() string
+
+	// Transmit processes an outgoing signal from the pre-synaptic neuron.
+	// IMPORTANT: This method completes synchronously - it does NOT block
+	// the calling neuron while waiting for delays. Instead, it schedules
+	// delayed delivery through the neuron's axonal queue system.
+	//
+	// Parameters:
+	//   signalValue: The strength of the signal from the pre-synaptic neuron
+	Transmit(signalValue float64)
+
+	// ApplyPlasticity updates the synapse's internal state based on feedback
+	ApplyPlasticity(adjustment types.PlasticityAdjustment) // Use types.PlasticityAdjustment
+	// Note: The specific plasticity types (STDP, BCM, etc.) should be in types/events.go or types/configs.go
+
+	// ShouldPrune evaluates if the synapse should be removed
+	ShouldPrune() bool
+
+	// GetWeight returns the current synaptic weight
+	GetWeight() float64
+
+	// SetWeight allows direct manipulation of synaptic strength
+	SetWeight(weight float64)
+
+	// Add other common methods here if needed, like:
+	GetActivityInfo() types.ActivityInfo // For health monitoring etc.
+	GetLastActivity() time.Time
+	Type() types.ComponentType
+	Position() types.Position3D
+	IsActive() bool
+	GetPresynapticID() string
+	GetPostsynapticID() string
+	GetDelay() time.Duration
+	GetPlasticityConfig() types.PlasticityConfig // If a generic config is needed
+	UpdateWeight(event types.PlasticityEvent)
 }
 
 // ============================================================================
@@ -81,7 +123,7 @@ type MessageScheduler interface {
 // SpatialComponent interface for components with spatial awareness
 type SpatialComponent interface {
 	Component
-	SetPosition(position Position3D)
+	SetPosition(position types.Position3D)
 	GetRange() float64
 }
 
@@ -106,7 +148,7 @@ type DefaultSpatialComponent struct {
 }
 
 // NewSpatialComponent creates a component with spatial capabilities
-func NewSpatialComponent(id string, componentType ComponentType, position Position3D, range_ float64) *DefaultSpatialComponent {
+func NewSpatialComponent(id string, componentType types.ComponentType, position types.Position3D, range_ float64) *DefaultSpatialComponent {
 	return &DefaultSpatialComponent{
 		BaseComponent: NewBaseComponent(id, componentType, position),
 		range_:        range_,
@@ -129,7 +171,7 @@ type DefaultMonitorableComponent struct {
 }
 
 // NewMonitorableComponent creates a component with health monitoring
-func NewMonitorableComponent(id string, componentType ComponentType, position Position3D) *DefaultMonitorableComponent {
+func NewMonitorableComponent(id string, componentType types.ComponentType, position types.Position3D) *DefaultMonitorableComponent {
 	return &DefaultMonitorableComponent{
 		BaseComponent: NewBaseComponent(id, componentType, position),
 		healthMetrics: HealthMetrics{

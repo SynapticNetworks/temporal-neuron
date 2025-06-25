@@ -73,7 +73,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/SynapticNetworks/temporal-neuron/message"
+	"github.com/SynapticNetworks/temporal-neuron/types"
 )
 
 // =================================================================================
@@ -265,7 +265,7 @@ func NewAdvancedStressMockNeuron(id string, metrics *StressTestMetrics) *Advance
 }
 
 // Receive implements high-performance reception with comprehensive monitoring
-func (n *AdvancedStressMockNeuron) Receive(msg message.NeuralSignal) {
+func (n *AdvancedStressMockNeuron) Receive(msg types.NeuralSignal) {
 	startTime := time.Now()
 
 	// Track concurrency
@@ -720,7 +720,7 @@ func TestMixedOperationChaos(t *testing.T) {
 					return
 				default:
 					deltaT := time.Duration((rand.Intn(40) - 20)) * time.Millisecond
-					synapse.ApplyPlasticity(PlasticityAdjustment{DeltaT: deltaT})
+					synapse.ApplyPlasticity(types.PlasticityAdjustment{DeltaT: deltaT})
 					time.Sleep(5 * time.Millisecond)
 				}
 			}
@@ -880,7 +880,7 @@ func validateSystemState(t *testing.T, synapse *BasicSynapse, testName string) {
 
 	// 3. Plasticity functionality
 	initialWeight := synapse.GetWeight()
-	adjustment := PlasticityAdjustment{DeltaT: -10 * time.Millisecond}
+	adjustment := types.PlasticityAdjustment{DeltaT: -10 * time.Millisecond}
 	synapse.ApplyPlasticity(adjustment)
 
 	newWeight := synapse.GetWeight()
@@ -890,7 +890,7 @@ func validateSystemState(t *testing.T, synapse *BasicSynapse, testName string) {
 
 	// 4. Activity info accessibility
 	info := synapse.GetActivityInfo()
-	if info == nil || len(info) == 0 {
+	if info.ComponentID == "" {
 		t.Errorf("%s: Activity info not accessible after stress test", testName)
 		return
 	}

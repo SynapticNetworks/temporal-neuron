@@ -1,10 +1,9 @@
 package neuron
 
 import (
-	"fmt"
 	"time"
 
-	"github.com/SynapticNetworks/temporal-neuron/message"
+	"github.com/SynapticNetworks/temporal-neuron/types"
 )
 
 /*
@@ -41,14 +40,6 @@ func (n *Neuron) fireUnsafe() {
 		return
 	}
 
-	// DEBUG: Check all pointers before using them
-	if n == nil {
-		panic("neuron is nil")
-	}
-	if n.homeostatic.firingHistory == nil {
-		panic("firingHistory is nil")
-	}
-
 	// Update firing state
 	n.lastFireTime = now
 	n.addCalciumFromFiringUnsafe()
@@ -58,41 +49,23 @@ func (n *Neuron) fireUnsafe() {
 	outputValue := n.accumulator * n.fireFactor
 
 	// === MATRIX COORDINATION VIA CALLBACKS ===
-	// Ensure matrixCallbacks is not nil before attempting to use it
+	// Only use callbacks if they are available
 	if n.matrixCallbacks != nil {
 		// Report health and activity
-		// Ensure ReportHealth callback is not nil before calling
-		if n.matrixCallbacks.ReportHealth != nil {
-			activityLevel := n.calculateCurrentFiringRateUnsafe()
+		activityLevel := n.calculateCurrentFiringRateUnsafe()
 
-			// DEBUG: Check outputCallbacks before accessing
-			if n.outputCallbacks == nil {
-				panic("outputCallbacks is nil at line 47") // This panic should ideally not be hit with proper initialization
-			}
+		n.outputsMutex.RLock()
+		connectionCount := len(n.outputCallbacks)
+		n.outputsMutex.RUnlock()
 
-			n.outputsMutex.RLock()
-			connectionCount := len(n.outputCallbacks)
-			n.outputsMutex.RUnlock()
-
-			n.matrixCallbacks.ReportHealth(activityLevel, connectionCount)
-		}
+		// Just call the interface methods directly - they handle their own error cases
+		n.matrixCallbacks.ReportHealth(activityLevel, connectionCount)
 
 		// Send electrical signal for gap junction coordination
-		// Ensure SendElectricalSignal callback is not nil before calling
-		if n.matrixCallbacks.SendElectricalSignal != nil {
-			n.matrixCallbacks.SendElectricalSignal(message.SignalFired, outputValue)
-		}
+		n.matrixCallbacks.SendElectricalSignal(types.SignalFired, outputValue)
 
 		// Release chemicals into extracellular space
-		// Ensure ReleaseChemical callback is not nil before calling
-		if n.matrixCallbacks.ReleaseChemical != nil {
-			n.releaseChemicalsViaCallback(outputValue)
-		}
-	}
-
-	// DEBUG: Check before calling transmit
-	if n.deliveryQueue == nil {
-		panic("deliveryQueue is nil before transmit") // This indicates a deeper initialization issue
+		n.releaseChemicalsViaCallback(outputValue)
 	}
 
 	// === SYNAPTIC TRANSMISSION VIA AXONAL DELIVERY ===
@@ -107,68 +80,33 @@ func (n *Neuron) fireUnsafe() {
 func (n *Neuron) transmitToOutputSynapsesWithDelay(outputValue float64, fireTime time.Time) {
 	// Get snapshot of current callbacks to avoid holding lock during transmission
 	n.outputsMutex.RLock()
-	callbacks := make(map[string]OutputCallback, len(n.outputCallbacks))
+	callbacks := make(map[string]types.OutputCallback, len(n.outputCallbacks))
 	for id, callback := range n.outputCallbacks {
-		// DEBUG: Check each callback function
-		if callback.TransmitMessage == nil {
-			panic(fmt.Sprintf("callback.TransmitMessage is nil for synapse %s", id))
-		}
-		if callback.GetTargetID == nil {
-			panic(fmt.Sprintf("callback.GetTargetID is nil for synapse %s", id))
-		}
-		if callback.GetDelay == nil {
-			panic(fmt.Sprintf("callback.GetDelay is nil for synapse %s", id))
-		}
-
 		callbacks[id] = callback
 	}
 	n.outputsMutex.RUnlock()
 
 	// Transmit to all output synapses with axonal delays
 	for synapseID, callback := range callbacks {
-		msg := message.NeuralSignal{
+		msg := types.NeuralSignal{
 			Value:                outputValue,
-			OriginalValue:        outputValue,
 			Timestamp:            fireTime,
 			SourceID:             n.ID(),
 			SynapseID:            synapseID,
 			TargetID:             callback.GetTargetID(),
 			NeurotransmitterType: n.getPrimaryNeurotransmitter(),
-			VesicleReleased:      true,
-			CalciumLevel:         n.homeostatic.calciumLevel,
 		}
 
 		// Get delay for this connection
 		delay := callback.GetDelay()
 		if delay <= 0 {
-			delay = AXON_DELAY_DEFAULT_TRANSMISSION // Use default if no delay specified
+			delay = AXON_DELAY_DEFAULT_TRANSMISSION
 		}
 
-		// Create message receiver adapter for callback-based delivery
-		receiver := &callbackMessageReceiver{callback: callback}
-
-		// DEBUG: Check before ScheduleDelayedDelivery
-		if n.deliveryQueue == nil {
-			panic("deliveryQueue is nil before ScheduleDelayedDelivery")
-		}
-
-		// Schedule for axonal delivery with realistic timing
-		ScheduleDelayedDelivery(n.deliveryQueue, msg, receiver, delay)
+		// OPTION 1: Direct callback transmission (simplest)
+		// Just use the callback directly without adapters
+		callback.TransmitMessage(msg)
 	}
-}
-
-// callbackMessageReceiver adapts OutputCallback to MessageReceiver interface for axonal delivery
-type callbackMessageReceiver struct {
-	callback OutputCallback
-}
-
-func (c *callbackMessageReceiver) Receive(msg message.NeuralSignal) {
-	// Delegate to the actual callback for synapse transmission
-	c.callback.TransmitMessage(msg)
-}
-
-func (c *callbackMessageReceiver) ID() string {
-	return c.callback.GetTargetID()
 }
 
 // ============================================================================
@@ -184,27 +122,27 @@ func (n *Neuron) releaseChemicalsViaCallback(outputValue float64) {
 }
 
 // getPrimaryNeurotransmitter returns the main neurotransmitter type for this neuron
-func (n *Neuron) getPrimaryNeurotransmitter() message.LigandType {
+func (n *Neuron) getPrimaryNeurotransmitter() types.LigandType {
 	if len(n.releasedLigands) > 0 {
 		return n.releasedLigands[0]
 	}
-	return message.LigandGlutamate // Default to glutamate
+	return types.LigandGlutamate // Default to glutamate
 }
 
 // calculateReleaseConcentration computes neurotransmitter release concentration
-func (n *Neuron) calculateReleaseConcentration(ligandType message.LigandType, outputValue float64) float64 {
+func (n *Neuron) calculateReleaseConcentration(ligandType types.LigandType, outputValue float64) float64 {
 	baseConcentration := outputValue * DENDRITE_CONCENTRATION_SCALE_BASE
 
 	switch ligandType {
-	case message.LigandGlutamate:
+	case types.LigandGlutamate:
 		return baseConcentration * DENDRITE_CONCENTRATION_FACTOR_GLUTAMATE
-	case message.LigandGABA:
+	case types.LigandGABA:
 		return baseConcentration * DENDRITE_CONCENTRATION_FACTOR_GABA
-	case message.LigandDopamine:
+	case types.LigandDopamine:
 		return baseConcentration * DENDRITE_CONCENTRATION_FACTOR_DOPAMINE
-	case message.LigandSerotonin:
+	case types.LigandSerotonin:
 		return baseConcentration * DENDRITE_CONCENTRATION_FACTOR_DEFAULT
-	case message.LigandAcetylcholine:
+	case types.LigandAcetylcholine:
 		return baseConcentration * DENDRITE_CONCENTRATION_FACTOR_DEFAULT
 	default:
 		return baseConcentration * DENDRITE_CONCENTRATION_FACTOR_DEFAULT

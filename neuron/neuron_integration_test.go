@@ -1,11 +1,11 @@
 package neuron
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
-	"github.com/SynapticNetworks/temporal-neuron/component"
-	"github.com/SynapticNetworks/temporal-neuron/message"
+	"github.com/SynapticNetworks/temporal-neuron/types"
 )
 
 // ============================================================================
@@ -33,7 +33,7 @@ func TestNeuronIntegration_BasicMessageProcessing(t *testing.T) {
 	defer neuron.Stop()
 
 	// Send a message
-	msg := message.NeuralSignal{
+	msg := types.NeuralSignal{
 		Value:     1.0, // Above threshold
 		Timestamp: time.Now(),
 		SourceID:  "test-source",
@@ -71,8 +71,8 @@ func TestNeuronIntegration_OutputCallbacks(t *testing.T) {
 	mockSynapse := &MockSynapse{id: "test-synapse"}
 
 	// Set up output callback
-	callback := OutputCallback{
-		TransmitMessage: func(msg message.NeuralSignal) error {
+	callback := types.OutputCallback{
+		TransmitMessage: func(msg types.NeuralSignal) error {
 			mockSynapse.ReceiveSignal(msg)
 			return nil
 		},
@@ -90,7 +90,7 @@ func TestNeuronIntegration_OutputCallbacks(t *testing.T) {
 	defer neuron.Stop()
 
 	// Send strong signal to trigger firing
-	msg := message.NeuralSignal{
+	msg := types.NeuralSignal{
 		Value:     2.0, // Well above threshold
 		Timestamp: time.Now(),
 		SourceID:  "stimulus",
@@ -143,7 +143,7 @@ func TestNeuronIntegration_MatrixCallbacks(t *testing.T) {
 	}
 
 	// Test firing (should trigger health reporting and chemical release)
-	msg := message.NeuralSignal{
+	msg := types.NeuralSignal{
 		Value:     2.0,
 		Timestamp: time.Now(),
 		SourceID:  "stimulus",
@@ -189,8 +189,8 @@ func TestNeuronIntegration_ChemicalSignaling(t *testing.T) {
 	)
 
 	// Set up chemical properties
-	neuron.SetReceptors([]message.LigandType{message.LigandGlutamate})
-	neuron.SetReleasedLigands([]message.LigandType{message.LigandDopamine})
+	neuron.SetReceptors([]types.LigandType{types.LigandGlutamate})
+	neuron.SetReleasedLigands([]types.LigandType{types.LigandDopamine})
 
 	callbacks := mockMatrix.CreateBasicCallbacks()
 	neuron.SetCallbacks(callbacks)
@@ -202,10 +202,10 @@ func TestNeuronIntegration_ChemicalSignaling(t *testing.T) {
 	defer neuron.Stop()
 
 	// Test chemical reception
-	neuron.Bind(message.LigandGlutamate, "external-source", 0.3)
+	neuron.Bind(types.LigandGlutamate, "external-source", 0.3)
 
 	// Test chemical release (via firing)
-	msg := message.NeuralSignal{
+	msg := types.NeuralSignal{
 		Value:     2.0,
 		Timestamp: time.Now(),
 		SourceID:  "stimulus",
@@ -241,7 +241,7 @@ func TestNeuronIntegration_ComponentInterfaces(t *testing.T) {
 		t.Errorf("Expected ID 'interface-neuron', got %s", neuron.ID())
 	}
 
-	if neuron.Type() != component.TypeNeuron {
+	if neuron.Type() != types.TypeNeuron {
 		t.Errorf("Expected type TypeNeuron, got %v", neuron.Type())
 	}
 
@@ -261,7 +261,7 @@ func TestNeuronIntegration_ComponentInterfaces(t *testing.T) {
 	}
 
 	// Test MessageReceiver interface
-	msg := message.NeuralSignal{
+	msg := types.NeuralSignal{
 		Value:     0.5,
 		Timestamp: time.Now(),
 		SourceID:  "test",
@@ -274,9 +274,15 @@ func TestNeuronIntegration_ComponentInterfaces(t *testing.T) {
 	t.Log("✓ Neuron properly implements component interfaces")
 }
 
-func TestNeuronIntegration_ErrorHandling(t *testing.T) {
-	// Test: Does neuron handle missing callbacks gracefully?
+// ============================================================================
+// CLEANED UP ERROR HANDLING TEST - Uses Real Components Instead of Incomplete Callbacks
+// ============================================================================
 
+func TestNeuronIntegration_ErrorHandling(t *testing.T) {
+	t.Log("=== Testing Neuron Error Handling with Real Components ===")
+
+	// Create neuron with proper mock matrix
+	mockMatrix := NewMockMatrix()
 	neuron := NewNeuron(
 		"error-neuron",
 		1.0,
@@ -287,16 +293,8 @@ func TestNeuronIntegration_ErrorHandling(t *testing.T) {
 		0.5,
 	)
 
-	// Set incomplete callbacks
-	incompleteCallbacks := NeuronCallbacks{
-		// Only some callbacks provided
-		ReportHealth: func(activityLevel float64, connectionCount int) {},
-		ListSynapses: func(criteria SynapseCriteria) []SynapseInfo {
-			return []SynapseInfo{}
-		},
-	}
-
-	neuron.SetCallbacks(incompleteCallbacks)
+	// Set proper callbacks
+	neuron.SetCallbacks(mockMatrix.CreateBasicCallbacks())
 
 	err := neuron.Start()
 	if err != nil {
@@ -304,19 +302,152 @@ func TestNeuronIntegration_ErrorHandling(t *testing.T) {
 	}
 	defer neuron.Stop()
 
-	// Test operations that require missing callbacks
+	// ============================================================================
+	// TEST 1: Error injection for synapse creation
+	// ============================================================================
+	t.Log("Testing synapse creation error handling...")
+
+	mockMatrix.SetCreateSynapseError(fmt.Errorf("matrix overload"))
 	err = neuron.ConnectToNeuron("target", 1.0, "excitatory")
 	if err == nil {
-		t.Error("Expected error when CreateSynapse callback missing")
+		t.Error("Expected error when matrix rejects synapse creation")
+	} else {
+		t.Logf("✓ Correctly handled synapse creation error: %v", err)
 	}
 
-	// These should not panic
+	// Clear error for subsequent tests
+	mockMatrix.SetCreateSynapseError(nil)
+
+	// ============================================================================
+	// TEST 2: Error injection for plasticity operations
+	// ============================================================================
+	t.Log("Testing plasticity error handling...")
+
+	// Add a synapse for plasticity testing
+	synapseInfo := types.SynapseInfo{
+		ID:       "test-synapse",
+		SourceID: "source-neuron",
+		TargetID: neuron.ID(),
+		Weight:   1.5,
+	}
+	mockMatrix.AddSynapse(synapseInfo)
+
+	// Inject plasticity error
+	mockMatrix.SetApplyPlasticityError(fmt.Errorf("plasticity mechanism failure"))
+
+	// These should handle errors gracefully (not panic)
+	neuron.SendSTDPFeedback()
+	t.Log("✓ SendSTDPFeedback handled plasticity error gracefully")
+
+	// Clear error
+	mockMatrix.SetApplyPlasticityError(nil)
+
+	// ============================================================================
+	// TEST 3: Error injection for weight operations
+	// ============================================================================
+	t.Log("Testing weight operation error handling...")
+
+	mockMatrix.SetSetSynapseWeightError(fmt.Errorf("weight adjustment failed"))
+	neuron.PerformHomeostasisScaling()
+	t.Log("✓ PerformHomeostasisScaling handled weight error gracefully")
+
+	// Clear error
+	mockMatrix.SetSetSynapseWeightError(nil)
+
+	// ============================================================================
+	// TEST 4: Error injection for synapse access
+	// ============================================================================
+	t.Log("Testing synapse access error handling...")
+
+	mockMatrix.SetGetSynapseError(fmt.Errorf("synapse not accessible"))
+	neuron.PruneDysfunctionalSynapses()
+	t.Log("✓ PruneDysfunctionalSynapses handled access error gracefully")
+
+	// Clear error
+	mockMatrix.SetGetSynapseError(nil)
+
+	// ============================================================================
+	// TEST 5: Basic functionality should still work regardless of errors
+	// ============================================================================
+	t.Log("Testing basic functionality resilience...")
+
+	msg := types.NeuralSignal{
+		Value:     1.0,
+		Timestamp: time.Now(),
+		SourceID:  "test",
+		TargetID:  neuron.ID(),
+	}
+
+	// This should always work regardless of callback errors
+	neuron.Receive(msg)
+	t.Log("✓ Basic message reception works despite callback errors")
+
+	// ============================================================================
+	// TEST 6: Recovery after error clearing
+	// ============================================================================
+	t.Log("Testing recovery after errors are cleared...")
+
+	// Now operations should work normally
+	err = neuron.ConnectToNeuron("target", 1.0, "excitatory")
+	if err != nil {
+		t.Errorf("Expected successful connection after error cleared, got: %v", err)
+	} else {
+		t.Log("✓ Operations work normally after errors are cleared")
+	}
+
+	// Verify the connection was actually created
+	creations := mockMatrix.GetSynapseCreations()
+	if len(creations) == 0 {
+		t.Error("Expected synapse creation to be recorded")
+	} else {
+		t.Logf("✓ Synapse creation recorded: %s -> %s",
+			creations[len(creations)-1].Config.SourceNeuronID,
+			creations[len(creations)-1].Config.TargetNeuronID)
+	}
+
+	t.Log("✓ Neuron handles errors gracefully and recovers properly")
+}
+
+// ============================================================================
+// ADDITIONAL: Test with nil callbacks (if you want to test that scenario)
+// ============================================================================
+
+func TestNeuronIntegration_NilCallbacks(t *testing.T) {
+	t.Log("=== Testing Neuron with Nil Callbacks ===")
+
+	neuron := NewNeuron(
+		"nil-callback-neuron",
+		1.0,
+		0.1,
+		5*time.Millisecond,
+		1.0,
+		10.0,
+		0.5,
+	)
+
+	// Don't set any callbacks (leave as nil)
+
+	err := neuron.Start()
+	if err != nil {
+		t.Fatalf("Failed to start neuron: %v", err)
+	}
+	defer neuron.Stop()
+
+	// Operations requiring callbacks should handle nil gracefully
+	err = neuron.ConnectToNeuron("target", 1.0, "excitatory")
+	if err == nil {
+		t.Error("Expected error when callbacks are nil")
+	} else {
+		t.Logf("✓ Correctly handled nil callbacks: %v", err)
+	}
+
+	// These should not panic even with nil callbacks
 	neuron.SendSTDPFeedback()
 	neuron.PerformHomeostasisScaling()
 	neuron.PruneDysfunctionalSynapses()
 
 	// Basic functionality should still work
-	msg := message.NeuralSignal{
+	msg := types.NeuralSignal{
 		Value:     1.0,
 		Timestamp: time.Now(),
 		SourceID:  "test",
@@ -325,8 +456,86 @@ func TestNeuronIntegration_ErrorHandling(t *testing.T) {
 
 	neuron.Receive(msg)
 
-	t.Log("✓ Neuron handles missing callbacks gracefully")
+	t.Log("✓ Neuron handles nil callbacks gracefully")
 }
+
+// ============================================================================
+// STRESS TEST: Multiple error conditions simultaneously
+// ============================================================================
+
+func TestNeuronIntegration_MultipleErrors(t *testing.T) {
+	t.Log("=== Testing Multiple Simultaneous Errors ===")
+
+	mockMatrix := NewMockMatrix()
+	neuron := NewNeuron(
+		"stress-neuron",
+		1.0,
+		0.1,
+		5*time.Millisecond,
+		1.0,
+		10.0,
+		0.5,
+	)
+
+	neuron.SetCallbacks(mockMatrix.CreateBasicCallbacks())
+	neuron.Start()
+	defer neuron.Stop()
+
+	// Set multiple errors simultaneously
+	mockMatrix.SetCreateSynapseError(fmt.Errorf("creation failed"))
+	mockMatrix.SetApplyPlasticityError(fmt.Errorf("plasticity failed"))
+	mockMatrix.SetSetSynapseWeightError(fmt.Errorf("weight setting failed"))
+	mockMatrix.SetGetSynapseError(fmt.Errorf("synapse access failed"))
+
+	// Add some synapses for operations to work on
+	for i := 0; i < 3; i++ {
+		synapseInfo := types.SynapseInfo{
+			ID:       fmt.Sprintf("synapse-%d", i),
+			SourceID: "source",
+			TargetID: neuron.ID(),
+			Weight:   1.0,
+		}
+		mockMatrix.AddSynapse(synapseInfo)
+	}
+
+	// All these operations should handle errors gracefully
+	neuron.ConnectToNeuron("target", 1.0, "excitatory")
+	neuron.SendSTDPFeedback()
+	neuron.PerformHomeostasisScaling()
+	neuron.PruneDysfunctionalSynapses()
+
+	// Basic operations should still work
+	msg := types.NeuralSignal{
+		Value:     1.0,
+		Timestamp: time.Now(),
+		SourceID:  "test",
+		TargetID:  neuron.ID(),
+	}
+	neuron.Receive(msg)
+
+	t.Log("✓ Neuron handles multiple simultaneous errors gracefully")
+}
+
+// ============================================================================
+// WHAT TO DELETE FROM YOUR OLD TEST:
+// ============================================================================
+
+/*
+DELETE THIS ENTIRE SECTION - it's using the old struct-based approach:
+
+incompleteCallbacks := NeuronCallbacks{
+    // Only some callbacks provided
+    ReportHealth: func(activityLevel float64, connectionCount int) {},
+    ListSynapses: func(criteria types.SynapseCriteria) []types.SynapseInfo {
+        return []types.SynapseInfo{}
+    },
+}
+
+This was problematic because:
+1. NeuronCallbacks is now an interface, not a struct
+2. You can't create incomplete interface implementations like this
+3. The mock approach is much more realistic and testable
+*/
 
 // ============================================================================
 // TEST SUMMARY

@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/SynapticNetworks/temporal-neuron/message"
+	"github.com/SynapticNetworks/temporal-neuron/types"
 )
 
 /*
@@ -175,7 +175,7 @@ func TestCoincidence_NMDADetector(t *testing.T) {
 		// Test with insufficient inputs
 		inputs := []TimestampedInput{
 			{
-				Message:     message.NeuralSignal{Value: 1.0, SourceID: "test1"},
+				Message:     types.NeuralSignal{Value: 1.0, SourceID: "test1"},
 				ArrivalTime: time.Now(),
 				DecayFactor: 1.0,
 			},
@@ -296,17 +296,17 @@ func TestCoincidence_NMDADetector(t *testing.T) {
 		// Mix of old and recent inputs
 		inputs := []TimestampedInput{
 			{
-				Message:     message.NeuralSignal{Value: 1.0, SourceID: "old"},
+				Message:     types.NeuralSignal{Value: 1.0, SourceID: "old"},
 				ArrivalTime: oldTime,
 				DecayFactor: 1.0,
 			},
 			{
-				Message:     message.NeuralSignal{Value: 1.0, SourceID: "recent1"},
+				Message:     types.NeuralSignal{Value: 1.0, SourceID: "recent1"},
 				ArrivalTime: now.Add(-1 * time.Millisecond),
 				DecayFactor: 1.0,
 			},
 			{
-				Message:     message.NeuralSignal{Value: 1.0, SourceID: "recent2"},
+				Message:     types.NeuralSignal{Value: 1.0, SourceID: "recent2"},
 				ArrivalTime: now,
 				DecayFactor: 1.0,
 			},
@@ -346,7 +346,7 @@ func TestCoincidence_SimpleTemporalDetector(t *testing.T) {
 		// Test with insufficient inputs
 		inputs := []TimestampedInput{
 			{
-				Message:     message.NeuralSignal{Value: 1.0, SourceID: "test1"},
+				Message:     types.NeuralSignal{Value: 1.0, SourceID: "test1"},
 				ArrivalTime: time.Now(),
 				DecayFactor: 1.0,
 			},
@@ -405,17 +405,17 @@ func TestCoincidence_SimpleTemporalDetector(t *testing.T) {
 		// Inputs spread across time
 		inputs := []TimestampedInput{
 			{
-				Message:     message.NeuralSignal{Value: 0.3, SourceID: "recent1"},
+				Message:     types.NeuralSignal{Value: 0.3, SourceID: "recent1"},
 				ArrivalTime: now,
 				DecayFactor: 1.0,
 			},
 			{
-				Message:     message.NeuralSignal{Value: 0.3, SourceID: "recent2"},
+				Message:     types.NeuralSignal{Value: 0.3, SourceID: "recent2"},
 				ArrivalTime: now.Add(-1 * time.Millisecond),
 				DecayFactor: 1.0,
 			},
 			{
-				Message:     message.NeuralSignal{Value: 0.3, SourceID: "old"},
+				Message:     types.NeuralSignal{Value: 0.3, SourceID: "old"},
 				ArrivalTime: now.Add(-config.TemporalWindow * 2), // Outside window
 				DecayFactor: 1.0,
 			},
@@ -557,23 +557,23 @@ func TestCoincidence_ActiveDendriteIntegration(t *testing.T) {
 		baseInputValue := 1.0
 		inputValue := baseInputValue * 1.1 // 10% buffer for temporal decay
 
-		inputs := []message.NeuralSignal{
+		inputs := []types.NeuralSignal{
 			{
 				Value:                inputValue,
 				SourceID:             "proximal_1",
-				NeurotransmitterType: message.LigandGlutamate,
+				NeurotransmitterType: types.LigandGlutamate,
 				Timestamp:            time.Now(),
 			},
 			{
 				Value:                inputValue,
 				SourceID:             "proximal_2",
-				NeurotransmitterType: message.LigandGlutamate,
+				NeurotransmitterType: types.LigandGlutamate,
 				Timestamp:            time.Now(),
 			},
 			{
 				Value:                inputValue,
 				SourceID:             "proximal_3",
-				NeurotransmitterType: message.LigandGlutamate,
+				NeurotransmitterType: types.LigandGlutamate,
 				Timestamp:            time.Now(),
 			},
 		}
@@ -788,12 +788,12 @@ func TestCoincidence_EdgeCases(t *testing.T) {
 		// Test with extreme input values
 		inputs := []TimestampedInput{
 			{
-				Message:     message.NeuralSignal{Value: 1000.0, SourceID: "extreme"},
+				Message:     types.NeuralSignal{Value: 1000.0, SourceID: "extreme"},
 				ArrivalTime: time.Now(),
 				DecayFactor: 1.0,
 			},
 			{
-				Message:     message.NeuralSignal{Value: -1000.0, SourceID: "extreme2"},
+				Message:     types.NeuralSignal{Value: -1000.0, SourceID: "extreme2"},
 				ArrivalTime: time.Now(),
 				DecayFactor: 1.0,
 			},
@@ -817,7 +817,7 @@ func TestCoincidence_EdgeCases(t *testing.T) {
 		// Test with zero decay factors (complete spatial attenuation)
 		inputs := []TimestampedInput{
 			{
-				Message:     message.NeuralSignal{Value: 10.0, SourceID: "attenuated"},
+				Message:     types.NeuralSignal{Value: 10.0, SourceID: "attenuated"},
 				ArrivalTime: time.Now(),
 				DecayFactor: 0.0, // Complete attenuation
 			},
@@ -949,12 +949,12 @@ func TestCoincidence_AdaptiveBehavior(t *testing.T) {
 		// Inputs spread over time - some outside short window
 		inputs := []TimestampedInput{
 			{
-				Message:     message.NeuralSignal{Value: 0.3, SourceID: "recent"},
+				Message:     types.NeuralSignal{Value: 0.3, SourceID: "recent"},
 				ArrivalTime: now,
 				DecayFactor: 1.0,
 			},
 			{
-				Message:     message.NeuralSignal{Value: 0.3, SourceID: "old"},
+				Message:     types.NeuralSignal{Value: 0.3, SourceID: "old"},
 				ArrivalTime: now.Add(-3 * time.Millisecond), // Outside short window
 				DecayFactor: 1.0,
 			},
@@ -1199,7 +1199,7 @@ func createTestInputs(count int, value float64, baseTime time.Time) []Timestampe
 
 	for i := 0; i < count; i++ {
 		inputs[i] = TimestampedInput{
-			Message: message.NeuralSignal{
+			Message: types.NeuralSignal{
 				Value:    value,
 				SourceID: "test_source_" + string(rune('A'+i)),
 			},
@@ -1260,17 +1260,17 @@ func TestCoincidence_DiagnosticPipeline(t *testing.T) {
 		now := time.Now()
 		directTestInputs := []TimestampedInput{
 			{
-				Message:     message.NeuralSignal{Value: 0.8, SourceID: "test1"},
+				Message:     types.NeuralSignal{Value: 0.8, SourceID: "test1"},
 				ArrivalTime: now,
 				DecayFactor: 1.0, // No spatial decay
 			},
 			{
-				Message:     message.NeuralSignal{Value: 0.8, SourceID: "test2"},
+				Message:     types.NeuralSignal{Value: 0.8, SourceID: "test2"},
 				ArrivalTime: now.Add(1 * time.Millisecond),
 				DecayFactor: 1.0,
 			},
 			{
-				Message:     message.NeuralSignal{Value: 0.8, SourceID: "test3"},
+				Message:     types.NeuralSignal{Value: 0.8, SourceID: "test3"},
 				ArrivalTime: now.Add(2 * time.Millisecond),
 				DecayFactor: 1.0,
 			},
@@ -1300,23 +1300,23 @@ func TestCoincidence_DiagnosticPipeline(t *testing.T) {
 		t.Log("\n--- STEP 2: Input Handling Test ---")
 
 		inputValue := 0.8 // Simple round number
-		inputs := []message.NeuralSignal{
+		inputs := []types.NeuralSignal{
 			{
 				Value:                inputValue,
 				SourceID:             "proximal_1",
-				NeurotransmitterType: message.LigandGlutamate,
+				NeurotransmitterType: types.LigandGlutamate,
 				Timestamp:            now,
 			},
 			{
 				Value:                inputValue,
 				SourceID:             "proximal_2",
-				NeurotransmitterType: message.LigandGlutamate,
+				NeurotransmitterType: types.LigandGlutamate,
 				Timestamp:            now.Add(500 * time.Microsecond),
 			},
 			{
 				Value:                inputValue,
 				SourceID:             "proximal_3",
-				NeurotransmitterType: message.LigandGlutamate,
+				NeurotransmitterType: types.LigandGlutamate,
 				Timestamp:            now.Add(1 * time.Millisecond),
 			},
 		}
@@ -1369,23 +1369,23 @@ func TestCoincidence_DiagnosticPipeline(t *testing.T) {
 
 		// Handle inputs and process immediately
 		processTime := time.Now()
-		immediateInputs := []message.NeuralSignal{
+		immediateInputs := []types.NeuralSignal{
 			{
 				Value:                1.0,
 				SourceID:             "immediate_1",
-				NeurotransmitterType: message.LigandGlutamate,
+				NeurotransmitterType: types.LigandGlutamate,
 				Timestamp:            processTime,
 			},
 			{
 				Value:                1.0,
 				SourceID:             "immediate_2",
-				NeurotransmitterType: message.LigandGlutamate,
+				NeurotransmitterType: types.LigandGlutamate,
 				Timestamp:            processTime,
 			},
 			{
 				Value:                1.0,
 				SourceID:             "immediate_3",
-				NeurotransmitterType: message.LigandGlutamate,
+				NeurotransmitterType: types.LigandGlutamate,
 				Timestamp:            processTime,
 			},
 		}
@@ -1434,10 +1434,10 @@ func TestCoincidence_DiagnosticPipeline(t *testing.T) {
 			mode := NewActiveDendriteMode(activeConfig, bioConfig)
 
 			// Test with 3.0 pA total input
-			inputs := []message.NeuralSignal{
-				{Value: 1.0, SourceID: "test", NeurotransmitterType: message.LigandGlutamate},
-				{Value: 1.0, SourceID: "test", NeurotransmitterType: message.LigandGlutamate},
-				{Value: 1.0, SourceID: "test", NeurotransmitterType: message.LigandGlutamate},
+			inputs := []types.NeuralSignal{
+				{Value: 1.0, SourceID: "test", NeurotransmitterType: types.LigandGlutamate},
+				{Value: 1.0, SourceID: "test", NeurotransmitterType: types.LigandGlutamate},
+				{Value: 1.0, SourceID: "test", NeurotransmitterType: types.LigandGlutamate},
 			}
 
 			for _, input := range inputs {
@@ -1492,10 +1492,10 @@ func TestCoincidence_BufferTimingFix(t *testing.T) {
 
 	// Use clear, simple inputs that should definitely trigger coincidence
 	inputValue := 1.0 // 3 × 1.0 = 3.0 pA >> 1.8 pA threshold
-	inputs := []message.NeuralSignal{
-		{Value: inputValue, SourceID: "test1", NeurotransmitterType: message.LigandGlutamate},
-		{Value: inputValue, SourceID: "test2", NeurotransmitterType: message.LigandGlutamate},
-		{Value: inputValue, SourceID: "test3", NeurotransmitterType: message.LigandGlutamate},
+	inputs := []types.NeuralSignal{
+		{Value: inputValue, SourceID: "test1", NeurotransmitterType: types.LigandGlutamate},
+		{Value: inputValue, SourceID: "test2", NeurotransmitterType: types.LigandGlutamate},
+		{Value: inputValue, SourceID: "test3", NeurotransmitterType: types.LigandGlutamate},
 	}
 
 	t.Logf("Input configuration:")

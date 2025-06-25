@@ -34,7 +34,7 @@ import (
 	"time"
 
 	"github.com/SynapticNetworks/temporal-neuron/component"
-	"github.com/SynapticNetworks/temporal-neuron/message"
+	"github.com/SynapticNetworks/temporal-neuron/types"
 )
 
 // ============================================================================
@@ -762,11 +762,11 @@ func fillInputBuffer(neuron *Neuron) {
 	fillCount := int(float64(capacity) * 0.9)
 
 	for i := 0; i < fillCount; i++ {
-		msg := message.NeuralSignal{
+		msg := types.NeuralSignal{
 			Value:                0.1,
 			Timestamp:            time.Now(),
 			SourceID:             "load-test",
-			NeurotransmitterType: message.LigandGlutamate,
+			NeurotransmitterType: types.LigandGlutamate,
 		}
 
 		select {
@@ -785,8 +785,8 @@ func addMockConnections(neuron *Neuron, count int) {
 		synapseID := fmt.Sprintf("mock-synapse-%d", i)
 		targetID := fmt.Sprintf("mock-target-%d", i)
 
-		callback := OutputCallback{
-			TransmitMessage: func(msg message.NeuralSignal) error {
+		callback := types.OutputCallback{
+			TransmitMessage: func(msg types.NeuralSignal) error {
 				return nil // Mock transmission
 			},
 			GetWeight: func() float64 {
