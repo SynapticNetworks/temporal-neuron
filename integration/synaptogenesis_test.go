@@ -8,6 +8,7 @@ import (
 	"github.com/SynapticNetworks/temporal-neuron/component"
 	"github.com/SynapticNetworks/temporal-neuron/extracellular"
 	"github.com/SynapticNetworks/temporal-neuron/neuron"
+	"github.com/SynapticNetworks/temporal-neuron/synapse"
 	"github.com/SynapticNetworks/temporal-neuron/types"
 )
 
@@ -846,6 +847,233 @@ func TestSynaptogenesis_MatrixCommunication_SpatialProximity(t *testing.T) {
 	for _, test := range spatialTests {
 		t.Logf("   %s (%.0f μm): %.4f μM", test.name, test.distance, concentrationResults[test.name])
 	}
+}
+
+// TestSynaptogenesis_ActualSynapseCreation validates that chemical signaling
+// leads to actual synapse formation between neurons.
+func TestSynaptogenesis_ActualSynapseCreation(t *testing.T) {
+	t.Log("=== SYNAPTOGENESIS: Actual Synapse Creation Test ===")
+
+	// === SETUP MATRIX ===
+	matrix := extracellular.NewExtracellularMatrix(extracellular.ExtracellularMatrixConfig{
+		ChemicalEnabled: true,
+		SpatialEnabled:  true,
+		UpdateInterval:  10 * time.Millisecond,
+		MaxComponents:   10,
+	})
+
+	err := matrix.Start()
+	if err != nil {
+		t.Fatalf("Failed to start matrix: %v", err)
+	}
+	defer matrix.Stop()
+
+	// === REGISTER SYNAPTOGENIC NEURON FACTORY ===
+	matrix.RegisterNeuronType("synaptogenic", func(id string, config types.NeuronConfig, callbacks component.NeuronCallbacks) (component.NeuralComponent, error) {
+		neuron := neuron.NewNeuron(
+			id,
+			config.Threshold,
+			0.95,
+			5*time.Millisecond,
+			1.5,
+			config.TargetFiringRate,
+			0.1,
+		)
+		neuron.SetCallbacks(callbacks)
+		return neuron, nil
+	})
+
+	// === REGISTER EXCITATORY SYNAPSE TYPE ===
+	matrix.RegisterSynapseType("excitatory", func(id string, config types.SynapseConfig, callbacks extracellular.SynapseCallbacks) (component.SynapticProcessor, error) {
+		// Get the actual neurons from the matrix
+		preNeuron, exists := matrix.GetNeuron(config.PresynapticID)
+		if !exists {
+			return nil, fmt.Errorf("presynaptic neuron not found: %s", config.PresynapticID)
+		}
+
+		postNeuron, exists := matrix.GetNeuron(config.PostsynapticID)
+		if !exists {
+			return nil, fmt.Errorf("postsynaptic neuron not found: %s", config.PostsynapticID)
+		}
+
+		// Use the real NewBasicSynapse constructor
+		return synapse.NewBasicSynapse(
+			id,
+			preNeuron.(component.MessageScheduler), // Pre-synaptic neuron
+			postNeuron.(component.MessageReceiver), // Post-synaptic neuron
+			synapse.CreateDefaultSTDPConfig(),      // STDP configuration
+			synapse.CreateDefaultPruningConfig(),   // Pruning configuration
+			config.InitialWeight,                   // Starting weight
+			config.Delay,                           // Transmission delay
+		), nil
+	})
+
+	// === CREATE SOURCE NEURON (BDNF RELEASER) ===
+	sourceNeuron, err := matrix.CreateNeuron(types.NeuronConfig{
+		NeuronType:       "synaptogenic",
+		Threshold:        0.4,
+		TargetFiringRate: 3.0,
+		Position:         types.Position3D{X: 0, Y: 0, Z: 0},
+	})
+	if err != nil {
+		t.Fatalf("Failed to create source neuron: %v", err)
+	}
+	defer sourceNeuron.Stop()
+
+	// === CREATE TARGET NEURON (SYNAPSE SEEKER) ===
+	targetNeuron, err := matrix.CreateNeuron(types.NeuronConfig{
+		NeuronType:       "synaptogenic",
+		Threshold:        0.5,
+		TargetFiringRate: 2.0,
+		Position:         types.Position3D{X: 10, Y: 0, Z: 0}, // 10 μm away (closer for stronger signal)
+	})
+	if err != nil {
+		t.Fatalf("Failed to create target neuron: %v", err)
+	}
+	defer targetNeuron.Stop()
+
+	err = sourceNeuron.Start()
+	if err != nil {
+		t.Fatalf("Failed to start source neuron: %v", err)
+	}
+
+	err = targetNeuron.Start()
+	if err != nil {
+		t.Fatalf("Failed to start target neuron: %v", err)
+	}
+
+	// === CONFIGURE SOURCE FOR BDNF RELEASE ===
+	if sourceNeuronImpl, ok := sourceNeuron.(*neuron.Neuron); ok {
+		sourceNeuronImpl.SetCustomChemicalRelease(func(activityRate, outputValue float64, release func(types.LigandType, float64) error) {
+			if activityRate > 1.0 {
+				release(types.LigandBDNF, 3.0) // Stronger BDNF signal for better diffusion
+			}
+		})
+	}
+
+	// === CONFIGURE TARGET FOR SYNAPSE SEEKING ===
+	if targetNeuronImpl, ok := targetNeuron.(*neuron.Neuron); ok {
+		targetNeuronImpl.SetCustomChemicalRelease(func(activityRate, outputValue float64, release func(types.LigandType, float64) error) {
+			// Check BDNF concentration at target location
+			targetPos := targetNeuron.Position()
+			bdnfConcentration := matrix.GetChemicalModulator().GetConcentration(types.LigandBDNF, targetPos)
+
+			// Lower threshold based on actual spatial test results (0.7 μM at 10 μm)
+			if bdnfConcentration > 0.3 { // μM threshold for synapse formation
+				t.Logf("Target neuron detects BDNF: %.3f μM - requesting synapse", bdnfConcentration)
+
+				// Request synapse creation via matrix
+				err := targetNeuronImpl.ConnectToNeuron(sourceNeuron.ID(), 1.0, "excitatory")
+				if err != nil {
+					t.Logf("Synapse creation failed: %v", err)
+				} else {
+					t.Log("✅ NEW SYNAPSE CREATED!")
+				}
+			}
+		})
+	}
+
+	// === COUNT INITIAL SYNAPSES ===
+	initialConnections := getConnectionCount(sourceNeuron, targetNeuron)
+	t.Logf("Initial connections: Source=%d, Target=%d",
+		initialConnections.source, initialConnections.target)
+
+	// === TRIGGER BDNF RELEASE FROM SOURCE ===
+	t.Log("\n--- Triggering BDNF Release ---")
+	for i := 0; i < 15; i++ {
+		signal := types.NeuralSignal{
+			Value:     1.5,
+			Timestamp: time.Now(),
+			SourceID:  "synapse_trigger",
+			TargetID:  sourceNeuron.ID(),
+		}
+		sourceNeuron.Receive(signal)
+		time.Sleep(30 * time.Millisecond)
+	}
+
+	// === WAIT FOR CHEMICAL DIFFUSION ===
+	time.Sleep(200 * time.Millisecond)
+
+	// === CHECK BDNF CONCENTRATION AT TARGET ===
+	targetPos := targetNeuron.Position()
+	bdnfLevel := matrix.GetChemicalModulator().GetConcentration(types.LigandBDNF, targetPos)
+	t.Logf("BDNF concentration at target (10 μm): %.3f μM", bdnfLevel)
+
+	// === TRIGGER TARGET NEURON TO CHECK FOR BDNF ===
+	t.Log("\n--- Triggering Target Neuron Response ---")
+	for i := 0; i < 5; i++ {
+		signal := types.NeuralSignal{
+			Value:     1.0,
+			Timestamp: time.Now(),
+			SourceID:  "synapse_seeker",
+			TargetID:  targetNeuron.ID(),
+		}
+		targetNeuron.Receive(signal)
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	// === WAIT FOR SYNAPSE FORMATION ===
+	time.Sleep(300 * time.Millisecond)
+
+	// === COUNT FINAL SYNAPSES ===
+	finalConnections := getConnectionCount(sourceNeuron, targetNeuron)
+	t.Logf("Final connections: Source=%d, Target=%d",
+		finalConnections.source, finalConnections.target)
+
+	// === VALIDATE SYNAPSE CREATION ===
+	synapseCreated := (finalConnections.target > initialConnections.target) ||
+		(finalConnections.source > initialConnections.source)
+
+	if synapseCreated {
+		t.Log("🎉 SUCCESS: Activity-dependent synapse formation completed!")
+		t.Logf("   BDNF signaling: %.3f μM", bdnfLevel)
+		t.Logf("   New connections: %d",
+			(finalConnections.target-initialConnections.target)+
+				(finalConnections.source-initialConnections.source))
+	} else {
+		// FIXED: Actually fail the test when synapse creation fails
+		t.Errorf("❌ FAILED: Expected synapse creation but none occurred")
+		t.Errorf("   BDNF level: %.3f μM (threshold: 0.3 μM)", bdnfLevel)
+		t.Errorf("   Distance: 10 μm should be close enough for signaling")
+
+		if bdnfLevel < 0.3 {
+			t.Errorf("   ROOT CAUSE: BDNF concentration below threshold")
+		} else {
+			t.Errorf("   ROOT CAUSE: ConnectToNeuron() may not be working or connection tracking failed")
+		}
+	}
+
+	// === VERIFY BIOLOGICAL REALISM ===
+	if bdnfLevel > 0.1 {
+		t.Log("✅ Biologically realistic BDNF concentration achieved")
+	}
+
+	if bdnfLevel > 0.3 && synapseCreated {
+		t.Log("✅ EXCELLENT: Complete activity-dependent synaptogenesis!")
+	} else if bdnfLevel > 0.3 && !synapseCreated {
+		t.Error("❌ BDNF signaling worked but synapse creation failed")
+	}
+}
+
+// Helper function to count connections
+type connectionCount struct {
+	source int
+	target int
+}
+
+func getConnectionCount(sourceNeuron, targetNeuron component.NeuralComponent) connectionCount {
+	var count connectionCount
+
+	// Try to get connection count from neurons if they implement the interface
+	if source, ok := sourceNeuron.(interface{ GetConnectionCount() int }); ok {
+		count.source = source.GetConnectionCount()
+	}
+
+	if target, ok := targetNeuron.(interface{ GetConnectionCount() int }); ok {
+		count.target = target.GetConnectionCount()
+	}
+
+	return count
 }
 
 // ============================================================================
