@@ -446,31 +446,32 @@ func TestTransmissionDelayAccuracy(t *testing.T) {
 
 	// Test multiple biologically realistic delay values
 	delayTests := []struct {
-		delay          time.Duration
-		tolerance      time.Duration
+		delay time.Duration
+		// The 'tolerance' field in this struct is for *biological range* validation (how much real-world variability is acceptable),
+		// not for *floating-point comparison epsilon*. We'll introduce a separate epsilon for that.
 		biologicalType string
 	}{
 		{
 			delay:          1 * time.Millisecond,
-			tolerance:      500 * time.Microsecond,
 			biologicalType: "Fast local synapse",
 		},
 		{
 			delay:          5 * time.Millisecond,
-			tolerance:      1 * time.Millisecond,
 			biologicalType: "Typical cortical synapse",
 		},
 		{
 			delay:          15 * time.Millisecond,
-			tolerance:      3 * time.Millisecond,
 			biologicalType: "Medium-distance connection",
 		},
 		{
 			delay:          50 * time.Millisecond,
-			tolerance:      10 * time.Millisecond,
 			biologicalType: "Long-distance projection",
 		},
 	}
+
+	// Define a very small tolerance for float64 comparisons, like 100 nanoseconds.
+	// This accounts for floating-point inaccuracies and minor scheduler jitter.
+	const comparisonEpsilon = 350 * time.Nanosecond
 
 	for _, test := range delayTests {
 		t.Run(test.biologicalType, func(t *testing.T) {
@@ -489,20 +490,18 @@ func TestTransmissionDelayAccuracy(t *testing.T) {
 			synapse.Transmit(1.0)
 
 			// Calculate the time at which the message *should* be delivered
-			// This time includes the base transmission delay from the synapse.
-			// The `Transmit` method calls `ScheduleDelayedDelivery` on `preNeuron`,
-			// which uses `preNeuron.currentTime.Add(totalDelay)`.
-			// So, to ensure delivery, `preNeuron.ProcessDelayedMessages` needs to be
-			// called with a `currentTime` that is past this calculated `deliveryTime`.
 			expectedDeliveryTime := startTime.Add(test.delay)
 
 			// Simulate the passage of time in the mock neuron's internal clock
 			// We need to advance the `preNeuron`'s `currentTime` sufficiently
 			// for the message to become due.
-			preNeuron.ProcessDelayedMessages(expectedDeliveryTime.Add(test.tolerance))
+			// Add a small buffer to `expectedDeliveryTime` to ensure the mock's
+			// ProcessDelayedMessages function definitely sees the message as "due".
+			preNeuron.ProcessDelayedMessages(expectedDeliveryTime.Add(comparisonEpsilon * 2))
 
 			// Wait for a small additional buffer for goroutine scheduling in the mock's Receive
-			time.Sleep(10 * time.Millisecond) // A small real-world sleep just in case of goroutine scheduling
+			// This is still good practice, but the ProcessDelayedMessages call is the main control.
+			time.Sleep(10 * time.Millisecond)
 
 			// Verify message was received
 			messages := postNeuron.GetReceivedMessages()
@@ -511,18 +510,16 @@ func TestTransmissionDelayAccuracy(t *testing.T) {
 			}
 
 			// Check that delay was approximately as expected
-			// The exact `actualDelay` is hard to measure precisely due to goroutine scheduling,
-			// but we can check if it falls within a reasonable window.
-			// Since `ProcessDelayedMessages` immediately dispatches once `currentTime` passes `deliveryTime`,
-			// the `Receive` timestamp might be very close to `expectedDeliveryTime`.
 			actualMessageTimestamp := messages[0].Timestamp
-			// Calculate the effective delay as the difference between message timestamp and when transmit was called.
 			effectiveDelay := actualMessageTimestamp.Sub(startTime)
 
-			// Validate that effectiveDelay is close to test.delay
-			if effectiveDelay < test.delay || effectiveDelay > test.delay+(test.tolerance*5) { // Allow slightly more for scheduling
-				t.Errorf("Message effective delay incorrect for %s: expected ~%v, got %v (diff: %v)",
-					test.biologicalType, test.delay, effectiveDelay, effectiveDelay-test.delay)
+			// Validate that effectiveDelay is within the comparisonEpsilon of test.delay
+			if math.Abs(float64(effectiveDelay-test.delay)) > float64(comparisonEpsilon) {
+				t.Errorf("FAIL: Message effective delay incorrect for %s: expected ~%v, got %v (diff: %v, tolerance: %v)",
+					test.biologicalType, test.delay, effectiveDelay, effectiveDelay-test.delay, comparisonEpsilon)
+			} else {
+				t.Logf("PASS: Message effective delay correct for %s: expected %v, got %v (diff: %v, tolerance: %v)",
+					test.biologicalType, test.delay, effectiveDelay, effectiveDelay-test.delay, comparisonEpsilon)
 			}
 
 			// Clear messages for next test
