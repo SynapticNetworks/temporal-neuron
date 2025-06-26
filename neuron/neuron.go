@@ -663,12 +663,12 @@ func (n *Neuron) PruneDysfunctionalSynapses() {
 
 	// Get all synapses (both incoming and outgoing)
 	bothDirections := types.SynapseBoth
-	myID := n.ID()
+	//myID := n.ID()
 
 	allSynapses := n.matrixCallbacks.ListSynapses(types.SynapseCriteria{
 		Direction: &bothDirections,
-		SourceID:  &myID,
-		TargetID:  &myID,
+		//SourceID:  &myID,
+		//TargetID:  &myID,
 	})
 
 	prunedCount := 0
