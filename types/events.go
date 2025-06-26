@@ -214,3 +214,68 @@ type BindingEvent struct {
 	Concentration float64    `json:"concentration"`
 	Timestamp     time.Time  `json:"timestamp"`
 }
+
+// EventType is a string identifier for the type of a biological event.
+type EventType string
+
+// Constants for all defined biological event types.
+const (
+	// --- Microglia Events (Lifecycle & Health) ---
+	HealthPenaltyApplied        EventType = "health.penalty.applied"
+	HealthReported              EventType = "health.reported" // NEW
+	PruningCandidateMarked      EventType = "pruning.candidate.marked"
+	ConnectionPruned            EventType = "connection.pruned"
+	BirthRequestEvaluated       EventType = "birth.request.evaluated"
+	ComponentApoptosisScheduled EventType = "component.apoptosis.scheduled"
+	PatrolCompleted             EventType = "patrol.completed"
+
+	// --- Astrocyte Network Events (Structural) ---
+	ComponentRegistered   EventType = "component.registered"
+	ComponentUnregistered EventType = "component.unregistered"
+	TerritoryAdjusted     EventType = "territory.adjusted"
+
+	// --- Chemical Modulator Events (Signaling) ---
+	LigandReleased      EventType = "ligand.released"
+	LigandBoundToTarget EventType = "ligand.bound.target"
+
+	// --- Gap Junction Events (Electrical) ---
+	ElectricalSignalSent          EventType = "electrical.signal.sent"
+	ElectricalCouplingEstablished EventType = "electrical.coupling.established"
+	ElectricalCouplingRemoved     EventType = "electrical.coupling.removed"
+
+	// --- Neuron Events ---
+	NeuronCreated  EventType = "neuron.created"
+	NeuronFired    EventType = "neuron.fired"
+	NeuronReceived EventType = "neuron.received"
+
+	// --- Synapse Events ---
+	SynapseCreated       EventType = "synapse.created"
+	SynapseTransmitted   EventType = "synapse.transmitted"
+	SynapseWeightChanged EventType = "synapse.weight.changed"
+)
+
+// BiologicalEvent represents a single, significant functional occurrence within the matrix.
+type BiologicalEvent struct {
+	Timestamp   time.Time `json:"timestamp"`
+	EventType   EventType `json:"event_type"`
+	SourceID    string    `json:"source_id"`
+	TargetID    string    `json:"target_id,omitempty"`
+	Description string    `json:"description"`
+
+	// === REUSABLE TYPED FIELDS (all from types package) ===
+	Position      *Position3D    `json:"position,omitempty"`
+	ComponentInfo *ComponentInfo `json:"component_info,omitempty"` // Same package!
+	SynapseInfo   *SynapseInfo   `json:"synapse_info,omitempty"`   // Same package!
+
+	LigandType    *LigandType `json:"ligand_type,omitempty"`
+	Concentration *float64    `json:"concentration,omitempty"`
+	SignalType    *SignalType `json:"signal_type,omitempty"`
+	Strength      *float64    `json:"strength,omitempty"`
+
+	Data interface{} `json:"data,omitempty"`
+}
+
+// BiologicalObserver defines the interface for an event emission system.
+type BiologicalObserver interface {
+	Emit(event BiologicalEvent)
+}

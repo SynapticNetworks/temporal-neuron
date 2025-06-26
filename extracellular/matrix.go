@@ -40,6 +40,7 @@ import (
 	"fmt"
 	"math"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/SynapticNetworks/temporal-neuron/component"
@@ -82,7 +83,10 @@ type ExtracellularMatrix struct {
 	synapses map[string]component.SynapticProcessor // All active synaptic connections
 
 	// === RESOURCE MANAGEMENT ===
-	maxComponents int // Maximum number of components (neurons + synapses) allowed
+	maxComponents int // Maximum number of components (neurons + synapses) allowed#
+
+	// === BIOLOGICAL OBSERVER SYSTEM ===
+	observer atomic.Value // stores types.BiologicalObserver
 
 	// === OPERATIONAL STATE ===
 	// Models the matrix's biological lifecycle and activity state
@@ -332,6 +336,28 @@ func (ecm *ExtracellularMatrix) CreateNeuron(config types.NeuronConfig) (compone
 	// Register in active component tracking for ongoing biological coordination
 	ecm.neurons[neuronID] = neuron
 
+	// After successful neuron creation and integration
+	componentInfo := types.ComponentInfo{
+		ID:            neuron.ID(),
+		Type:          types.TypeNeuron,
+		Position:      config.Position,
+		State:         types.StateActive,
+		RegisteredAt:  time.Now(),
+		LastActivity:  time.Now(),
+		ActivityLevel: 0.0,
+		HealthScore:   1.0,
+		Connections:   []string{}, // Empty initially
+		Metadata:      config.Metadata,
+	}
+
+	ecm.emitEvent(types.BiologicalEvent{
+		EventType:     types.NeuronCreated,
+		SourceID:      neuron.ID(),
+		Description:   "neuron created via matrix factory",
+		Position:      &config.Position,
+		ComponentInfo: &componentInfo,
+	})
+
 	return neuron, nil
 }
 
@@ -424,6 +450,30 @@ func (ecm *ExtracellularMatrix) CreateSynapse(config types.SynapseConfig) (compo
 	// Register in active component tracking for ongoing biological coordination
 	ecm.synapses[synapseID] = synapse
 
+	// After successful synapse creation and integration
+	synapseInfo := types.SynapseInfo{
+		ID:           synapse.ID(),
+		SourceID:     config.PresynapticID,
+		TargetID:     config.PostsynapticID,
+		Weight:       config.InitialWeight,
+		Delay:        config.Delay,
+		LastActivity: time.Now(),
+		SynapseType:  config.SynapseType,
+		Position:     config.Position,
+		LigandType:   config.LigandType,
+		IsActive:     true,
+		Metadata:     config.Metadata,
+	}
+
+	ecm.emitEvent(types.BiologicalEvent{
+		EventType:   types.SynapseCreated,
+		SourceID:    synapse.ID(),
+		TargetID:    config.PostsynapticID, // Synapse connects pre->post
+		Description: "synapse created via matrix factory",
+		Position:    &config.Position,
+		SynapseInfo: &synapseInfo,
+	})
+
 	return synapse, nil
 }
 
@@ -453,6 +503,13 @@ func (ecm *ExtracellularMatrix) createNeuronBiologicalCallbacks(neuronID string)
 		microglia:         ecm.microglia,
 		matrix:            ecm,
 	}
+}
+
+// GetChemicalModulator exposes chemical modulator for testing
+func (ecm *ExtracellularMatrix) GetChemicalModulator() *ChemicalModulator {
+	ecm.mu.RLock()
+	defer ecm.mu.RUnlock()
+	return ecm.chemicalModulator
 }
 
 // matrixNeuronCallbacks implements the component.NeuronCallbacks interface, providing biological
@@ -548,19 +605,57 @@ func (cb *matrixNeuronCallbacks) ListSynapses(criteria types.SynapseCriteria) []
 // === VESICULAR RELEASE SYSTEM ===
 // Models the cellular machinery for neurotransmitter and neuromodulator release
 func (cb *matrixNeuronCallbacks) ReleaseChemical(ligandType types.LigandType, concentration float64) error {
-	return cb.chemicalModulator.Release(ligandType, cb.neuronID, concentration)
+	// This is when a NEURON releases chemicals directly
+	err := cb.chemicalModulator.Release(ligandType, cb.neuronID, concentration)
+
+	cb.matrix.emitEvent(types.BiologicalEvent{
+		EventType:     types.LigandReleased,
+		SourceID:      cb.neuronID, // Neuron is the source
+		Description:   "chemical released by neuron",
+		LigandType:    &ligandType,
+		Concentration: &concentration,
+	})
+
+	return err
 }
 
 // === GAP JUNCTION AND ELECTRICAL COUPLING ===
 // Models direct electrical communication through gap junction channels
 func (cb *matrixNeuronCallbacks) SendElectricalSignal(signalType types.SignalType, data interface{}) {
 	cb.signalMediator.Send(signalType, cb.neuronID, data)
+
+	// Extract strength if data is numeric
+	var strength *float64
+	if s, ok := data.(float64); ok {
+		strength = &s
+	}
+
+	cb.matrix.emitEvent(types.BiologicalEvent{
+		EventType:   types.ElectricalSignalSent,
+		SourceID:    cb.neuronID,
+		Description: "electrical signal sent by neuron",
+		SignalType:  &signalType,
+		Strength:    strength,
+		Data:        data,
+	})
 }
 
 // === METABOLIC AND STRESS SIGNALING ===
 // Models how neurons communicate their health and activity state to glial cells
 func (cb *matrixNeuronCallbacks) ReportHealth(activityLevel float64, connectionCount int) {
 	cb.microglia.UpdateComponentHealth(cb.neuronID, activityLevel, connectionCount)
+
+	// Emit health report event
+	cb.matrix.emitEvent(types.BiologicalEvent{
+		EventType:   types.HealthReported, // or create HealthReported event type
+		SourceID:    cb.neuronID,
+		Description: "neuron reported health status",
+		Strength:    &activityLevel, // Use strength field for activity level
+		Data: map[string]interface{}{
+			"activity_level":   activityLevel,
+			"connection_count": connectionCount,
+		},
+	})
 }
 
 // === AXONAL CONDUCTION AND SPATIAL TIMING ===
@@ -763,7 +858,20 @@ func (ecm *ExtracellularMatrix) createSynapseBiologicalCallbacks(synapseID strin
 		// === SYNAPTIC CLEFT NEUROTRANSMITTER RELEASE ===
 		// Models vesicle fusion and neurotransmitter diffusion in the synaptic cleft
 		ReleaseNeurotransmitter: func(ligandType types.LigandType, concentration float64) error {
-			return ecm.chemicalModulator.Release(ligandType, synapseID, concentration)
+			err := ecm.chemicalModulator.Release(ligandType, synapseID, concentration)
+
+			// Emit chemical release event
+			ecm.emitEvent(types.BiologicalEvent{
+				EventType:     types.LigandReleased,
+				SourceID:      synapseID,
+				TargetID:      config.PostsynapticID, // Target neuron receiving the chemical
+				Description:   "neurotransmitter released at synapse",
+				Position:      &config.Position, // Synapse position from config
+				LigandType:    &ligandType,
+				Concentration: &concentration,
+			})
+
+			return err
 		},
 
 		// === SYNAPTIC ACTIVITY MONITORING ===
@@ -1489,6 +1597,22 @@ func (ecm *ExtracellularMatrix) generateBiologicalNeuronID(neuronType string) st
 // indicates an excitatory plastic synapse from neuron1 to neuron2.
 func (ecm *ExtracellularMatrix) generateBiologicalSynapseID(synapseType, preID, postID string) string {
 	return fmt.Sprintf("%s_%s_to_%s_%d", synapseType, preID, postID, time.Now().UnixNano())
+}
+
+// SetBiologicalObserver registers an observer for biological events
+// If observer is nil, events will not be emitted (zero overhead)
+func (ecm *ExtracellularMatrix) SetBiologicalObserver(observer types.BiologicalObserver) {
+	ecm.observer.Store(observer)
+
+}
+
+// emitEvent safely emits an event if observer is registered (non-blocking)
+func (ecm *ExtracellularMatrix) emitEvent(event types.BiologicalEvent) {
+	if observer := ecm.observer.Load(); observer != nil {
+		event.Timestamp = time.Now()
+		// All our observer implementations use goroutines internally
+		observer.(types.BiologicalObserver).Emit(event)
+	}
 }
 
 // =================================================================================

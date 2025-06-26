@@ -215,3 +215,11 @@ const (
 	// SPATIAL_DELAY_DEFAULT for neurons when matrix spatial delays unavailable
 	SPATIAL_DELAY_DEFAULT = 1 * time.Millisecond
 )
+
+// === NEUROTROPHIC FACTOR RELEASE CONSTANTS ===
+// Biological thresholds and concentrations for growth factor signaling
+const (
+	BDNF_RELEASE_THRESHOLD_HZ = 5.0  // Hz - minimum firing rate for BDNF release
+	BDNF_CONCENTRATION_SCALE  = 0.02 // μM/Hz - BDNF concentration scaling factor
+	BDNF_BASELINE_RELEASE     = 0.01 // μM - minimal BDNF concentration
+)

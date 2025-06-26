@@ -165,11 +165,6 @@ type HealthReport struct {
 	ConnectionCount int
 }
 
-type ChemicalRelease struct {
-	LigandType    types.LigandType
-	Concentration float64
-}
-
 type ElectricalSignal struct {
 	SignalType types.SignalType
 	Data       interface{}

@@ -27,10 +27,16 @@ const (
 	LigandVasopressin                       // Peptide hormone/neurotransmitter
 	LigandOxytocin                          // Peptide hormone/neurotransmitter (social bonding)
 	LigandCalcium                           // Intracellular calcium signaling (essential for plasticity)
+	LigandBDNF                              // Brain-Derived Neurotrophic Factor
+	LigandNGF                               // Nerve Growth Factor
 )
 
 func (lt LigandType) String() string {
 	switch lt {
+	case LigandBDNF:
+		return "BDNF"
+	case LigandNGF:
+		return "NGF"
 	case LigandCalcium:
 		return "Calcium"
 	case LigandGlutamate:
