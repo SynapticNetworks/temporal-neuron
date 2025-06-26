@@ -86,6 +86,9 @@ type Neuron struct {
 	cancel    context.CancelFunc
 	closeOnce sync.Once
 
+	// === CUSTOM BEHAVIORS (OPTIONAL) ===
+	customBehaviors *CustomBehaviors
+
 	// === THREAD SAFETY ===
 	stateMutex   sync.Mutex
 	outputsMutex sync.RWMutex

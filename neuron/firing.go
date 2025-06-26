@@ -119,6 +119,13 @@ func (n *Neuron) releaseChemicalsViaCallback(outputValue float64) {
 		concentration := n.calculateReleaseConcentration(ligandType, outputValue)
 		n.matrixCallbacks.ReleaseChemical(ligandType, concentration)
 	}
+	// Custom behavior callback
+	if n.customBehaviors != nil && n.customBehaviors.CustomChemicalRelease != nil {
+		activityRate := n.calculateCurrentFiringRateUnsafe()
+
+		// Pass the release function directly to the callback
+		n.customBehaviors.CustomChemicalRelease(activityRate, outputValue, n.matrixCallbacks.ReleaseChemical)
+	}
 }
 
 // getPrimaryNeurotransmitter returns the main neurotransmitter type for this neuron

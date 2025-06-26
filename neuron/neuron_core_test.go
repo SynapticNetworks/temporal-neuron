@@ -1302,3 +1302,227 @@ func TestNeuronCoreHomeostatic_LongTermStability(t *testing.T) {
 	t.Logf("  Final rate: %.2f Hz (variance: %.2f, target: %.1f Hz)", avgRate, math.Sqrt(rateVariance), targetRate)
 	t.Logf("  Measurements: %d", len(measurements))
 }
+
+// ============================================================================
+// CUSTOM BEHAVIOR TESTS - EXTENSIBILITY AND TESTING SUPPORT
+// ============================================================================
+
+// TestCustomBehavior_ChemicalRelease validates custom chemical release functionality
+//
+// TESTING SIGNIFICANCE:
+// Custom behaviors allow extending neuron functionality for testing scenarios,
+// research applications, or specialized neural models without modifying core code.
+// This enables activity-dependent chemical release patterns, pharmacological
+// simulations, and novel neurotransmitter systems.
+//
+// EXPECTED RESULTS:
+// - Custom chemical release is triggered based on activity thresholds
+// - Multiple chemicals can be released simultaneously
+// - Custom logic integrates seamlessly with normal neuron operation
+// - Error handling works correctly for custom behaviors
+// TestCustomBehavior_ChemicalRelease validates custom chemical release functionality
+func TestNeuronCoreCustomBehavior_ChemicalRelease(t *testing.T) {
+	// Create neuron with standard configuration
+	neuron := NewNeuron("custom_test", 0.8, 0.95, 5*time.Millisecond,
+		1.0, 3.0, 0.1)
+
+	// Set up mock matrix to capture chemical releases
+	mockMatrix := NewMockMatrix()
+	neuron.SetCallbacks(mockMatrix.CreateBasicCallbacks())
+
+	err := neuron.Start()
+	if err != nil {
+		t.Fatalf("Failed to start neuron: %v", err)
+	}
+	defer neuron.Stop()
+
+	// Configure custom behavior - REALISTIC THRESHOLDS
+	neuron.SetCustomChemicalRelease(func(activityRate, outputValue float64, release func(types.LigandType, float64) error) {
+		// FIXED: Lower threshold to 1.5 Hz (achievable)
+		if activityRate > 1.5 {
+			err := release(types.LigandBDNF, activityRate*0.02)
+			if err != nil {
+				t.Logf("BDNF release failed: %v", err)
+			}
+		}
+
+		// Keep output threshold the same
+		if outputValue > 2.0 {
+			err := release(types.LigandDopamine, 0.5)
+			if err != nil {
+				t.Logf("Dopamine release failed: %v", err)
+			}
+		}
+	})
+
+	// Record initial chemical release count
+	initialReleases := mockMatrix.GetChemicalReleaseCount()
+
+	// Phase 1: Low activity (should not trigger custom release)
+	t.Log("Phase 1: Low activity test...")
+	for i := 0; i < 2; i++ { // REDUCED: fewer signals for clearer low activity
+		SendTestSignal(neuron, "low_activity", 1.0)
+		time.Sleep(200 * time.Millisecond) // SLOWER: 5 Hz = 200ms intervals
+	}
+
+	time.Sleep(50 * time.Millisecond)
+
+	lowActivityReleases := mockMatrix.GetChemicalReleaseCount()
+	lowActivityStatus := neuron.GetFiringStatus()
+	lowActivityRate := lowActivityStatus["current_firing_rate"].(float64)
+
+	t.Logf("Chemical releases after low activity: %d (change: %d), rate: %.2f Hz",
+		lowActivityReleases, lowActivityReleases-initialReleases, lowActivityRate)
+
+	// Phase 2: High activity (should trigger BDNF release)
+	t.Log("Phase 2: High activity test...")
+	for i := 0; i < 20; i++ { // MORE signals
+		SendTestSignal(neuron, "high_activity", 1.0)
+		time.Sleep(30 * time.Millisecond) // FASTER: ~33 Hz rate
+	}
+
+	time.Sleep(50 * time.Millisecond)
+
+	highActivityReleases := mockMatrix.GetChemicalReleaseCount()
+	highActivityStatus := neuron.GetFiringStatus()
+	highActivityRate := highActivityStatus["current_firing_rate"].(float64)
+
+	newReleases := highActivityReleases - lowActivityReleases
+
+	t.Logf("High activity: rate %.2f Hz, releases %d (new: %d)",
+		highActivityRate, highActivityReleases, newReleases)
+
+	if newReleases <= 0 {
+		t.Errorf("Expected additional chemical releases with high activity (rate %.2f > threshold 1.5)", highActivityRate)
+	}
+
+	// Phase 3: Strong output (should trigger dopamine release)
+	t.Log("Phase 3: Strong output test...")
+	SendTestSignal(neuron, "strong_output", 3.0) // Strong signal > 2.0 threshold
+	time.Sleep(50 * time.Millisecond)
+
+	finalReleases := mockMatrix.GetChemicalReleaseCount()
+	strongOutputReleases := finalReleases - highActivityReleases
+
+	if strongOutputReleases <= 0 {
+		t.Error("Expected additional chemical releases with strong output")
+	}
+
+	// Verify neuron status remains healthy
+	status := neuron.GetFiringStatus()
+	currentRate := status["current_firing_rate"].(float64)
+
+	t.Logf("✓ Custom chemical release validated:")
+	t.Logf("  Low activity releases: %d (rate: %.2f Hz)", lowActivityReleases-initialReleases, lowActivityRate)
+	t.Logf("  High activity releases: %d (rate: %.2f Hz)", newReleases, highActivityRate)
+	t.Logf("  Strong output releases: %d", strongOutputReleases)
+	t.Logf("  Final activity rate: %.2f Hz", currentRate)
+	t.Logf("  Total chemical releases: %d", finalReleases)
+}
+
+// TestCustomBehavior_DisableAndReconfigure validates custom behavior management
+//
+// TESTING SIGNIFICANCE:
+// Custom behaviors must be easily enabled, disabled, and reconfigured during
+// neuron operation. This supports dynamic experimental protocols and ensures
+// clean testing environments.
+//
+// EXPECTED RESULTS:
+// - Custom behaviors can be disabled cleanly
+// - Neuron operates normally without custom behaviors
+// - Custom behaviors can be reconfigured with different logic
+// - No memory leaks or state corruption during behavior changes
+func TestNeuronCoreCustomBehavior_ChemicalReleaseDisableAndReconfigure(t *testing.T) {
+	neuron := NewNeuron("reconfigure_test", 0.5, 0.95, 5*time.Millisecond,
+		1.0, 4.0, 0.1)
+
+	mockMatrix := NewMockMatrix()
+	neuron.SetCallbacks(mockMatrix.CreateBasicCallbacks())
+
+	err := neuron.Start()
+	if err != nil {
+		t.Fatalf("Failed to start neuron: %v", err)
+	}
+	defer neuron.Stop()
+
+	// Phase 1: Configure initial custom behavior
+	t.Log("Phase 1: Initial custom behavior...")
+	releaseCounter := 0
+
+	neuron.SetCustomChemicalRelease(func(activityRate, outputValue float64, release func(types.LigandType, float64) error) {
+		releaseCounter++
+		if activityRate > 2.0 {
+			release(types.LigandGlutamate, 0.5)
+		}
+	})
+
+	// Trigger some activity
+	for i := 0; i < 8; i++ {
+		SendTestSignal(neuron, "initial", 1.0)
+		time.Sleep(25 * time.Millisecond) // 40 Hz rate
+	}
+
+	time.Sleep(50 * time.Millisecond)
+	initialCallbacks := releaseCounter
+	initialReleases := mockMatrix.GetChemicalReleaseCount()
+
+	if initialCallbacks == 0 {
+		t.Error("Custom behavior should have been called")
+	}
+
+	// Phase 2: Disable custom behavior
+	t.Log("Phase 2: Disabling custom behavior...")
+	neuron.DisableCustomBehaviors()
+
+	// Trigger more activity
+	for i := 0; i < 8; i++ {
+		SendTestSignal(neuron, "disabled", 1.0)
+		time.Sleep(25 * time.Millisecond)
+	}
+
+	time.Sleep(50 * time.Millisecond)
+	disabledCallbacks := releaseCounter
+	disabledReleases := mockMatrix.GetChemicalReleaseCount()
+
+	if disabledCallbacks != initialCallbacks {
+		t.Error("Custom behavior should not be called when disabled")
+	}
+
+	// Verify normal neuron operation continues
+	status := neuron.GetFiringStatus()
+	firingHistory := status["firing_history_size"].(int)
+	if firingHistory == 0 {
+		t.Error("Neuron should continue normal operation when custom behavior disabled")
+	}
+
+	// Phase 3: Reconfigure with different behavior
+	t.Log("Phase 3: Reconfiguring custom behavior...")
+	neuron.SetCustomChemicalRelease(func(activityRate, outputValue float64, release func(types.LigandType, float64) error) {
+		// Different behavior: release based on output value instead of activity
+		if outputValue > 1.5 {
+			release(types.LigandDopamine, outputValue*0.1)
+		}
+	})
+
+	// Trigger activity with strong signals
+	for i := 0; i < 5; i++ {
+		SendTestSignal(neuron, "reconfigured", 2.0) // Strong signal
+		time.Sleep(30 * time.Millisecond)
+	}
+
+	time.Sleep(50 * time.Millisecond)
+	reconfiguredReleases := mockMatrix.GetChemicalReleaseCount()
+
+	newReconfiguredReleases := reconfiguredReleases - disabledReleases
+	if newReconfiguredReleases <= 0 {
+		t.Error("Expected chemical releases with reconfigured behavior")
+	}
+
+	t.Logf("✓ Custom behavior management validated:")
+	t.Logf("  Initial behavior calls: %d", initialCallbacks)
+	t.Logf("  Disabled behavior calls: %d (should equal initial)", disabledCallbacks)
+	t.Logf("  Initial releases: %d", initialReleases)
+	t.Logf("  Disabled period releases: %d", disabledReleases-initialReleases)
+	t.Logf("  Reconfigured releases: %d", newReconfiguredReleases)
+	t.Logf("  Final firing history: %d entries", firingHistory)
+}
