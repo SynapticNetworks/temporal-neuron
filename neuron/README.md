@@ -1,6 +1,4 @@
---
-
-# Retrograde Feedback Patterns in Neural Networks
+# Temporal-Neuron Architecture
 
 ## Overview
 
@@ -80,6 +78,90 @@ Synapses themselves can implement retrograde feedback by:
 - Sending feedback signals to pre-synaptic neurons via callbacks
 - Implementing sophisticated plasticity rules (STDP, BCM, homeostatic scaling)
 
+## Core Architecture Components
+
+### Extracellular Matrix Coordination System
+
+The central coordination layer manages all biological processes through specialized subsystems:
+
+#### **Astrocyte Network**
+- **Territorial organization** with realistic domain sizes (10-200μm)
+- **Spatial query resolution** to micrometer precision
+- **Synaptic connectivity tracking** and activity monitoring
+- **Thread-safe concurrent access** for biological scalability
+- **Species-specific variations** (human vs mouse astrocyte characteristics)
+
+#### **Microglial Health Monitoring**
+- **Real-time surveillance** of neural component health
+- **Activity-dependent assessment** with configurable sensitivity
+- **Lifecycle coordination** for neurogenesis and apoptosis
+- **Territorial patrol systems** with biological timing (100ms-2s rates)
+- **Cleanup coordination** for network maintenance
+
+#### **Chemical Modulator System**
+- **Multi-neurotransmitter support** (GABA, glutamate, dopamine, serotonin, calcium)
+- **Spatial diffusion modeling** with realistic concentration gradients
+- **Receptor binding kinetics** and competitive interactions
+- **Activity-dependent release** with threshold-based triggering
+- **Pharmacological simulation** capabilities
+
+#### **Signal Mediator (Gap Junctions)**
+- **Bidirectional electrical coupling** with configurable conductance
+- **Sub-millisecond propagation** delays (<0.1ms)
+- **Synchronization support** for network oscillations
+- **Biological conductance ranges** (0.05-1.0 nS)
+
+### Neural Components
+
+#### **Advanced Neuron Implementation**
+- **Multiple dendritic modes**: Passive, active, and biological temporal summation
+- **Homeostatic plasticity** with configurable target firing rates
+- **STDP feedback mechanisms** with biological timing windows
+- **Synaptic scaling** for network stability
+- **Custom behavior system** for research extensibility
+- **Coincidence detection** with NMDA-like voltage dependence
+
+#### **Sophisticated Synapse System**
+- **STDP-enabled plasticity** with asymmetric learning windows
+- **Spatial delay calculation** based on axonal conduction velocity
+- **Weight adaptation** with biological constraints
+- **Activity-dependent modulation** through chemical signaling
+
+## Validated Biological Features
+
+### Neurochemical Modulation
+
+#### **Neurotransmitter Effects**
+- **GABA enhancement**: Realistic inhibitory effects reducing neural excitability
+- **Glutamate modulation**: Adjustable excitatory signaling strength and reliability
+- **Dose-dependent responses**: Chemical concentrations produce proportional effects
+
+#### **Intoxication Modeling**
+The system accurately simulates substance effects on neural circuits:
+- **Motor coordination impairment**: Progressive degradation of fine motor control
+- **Selective vulnerability**: Weak signals affected more than strong signals
+- **BAC correlation**: Effects scale realistically with blood alcohol concentration (0.05%-0.25%)
+- **Recovery patterns**: Chemical clearance enables neural function restoration
+
+#### **Validation Testing**
+- **Motor circuit testing**: Multi-neuron circuits demonstrate coordination degradation
+- **Complex cortical simulation**: 8-neuron networks with strict failure conditions
+- **Biological accuracy**: Matches known intoxication patterns in neural systems
+
+### Spatial Processing
+
+#### **3D Spatial Awareness**
+- **Distance-based delays**: Realistic axonal conduction timing
+- **Spatial organization**: Components positioned in 3D coordinate space
+- **Propagation modeling**: Variable conduction velocities (0.5-120 m/s)
+- **Biological scenarios**: Cortical circuit distance validation
+
+#### **Delay Integration System**
+- **Synaptic delays**: Base transmission delays (0.5-5ms)
+- **Spatial delays**: Distance-dependent propagation timing
+- **Combined timing**: Realistic total transmission delays
+- **Validation testing**: Comprehensive timing accuracy verification
+
 ## Learning Algorithms Enabled
 
 ### Spike-Timing Dependent Plasticity (STDP)
@@ -121,6 +203,32 @@ Retrograde feedback mechanisms closely mirror real neural network operation:
 - **Experience-dependent plasticity**: Learning and memory formation
 - **Homeostatic maintenance**: Long-term stability and health
 
+## Research Applications
+
+### Neural Network Studies
+- **Activity-dependent plasticity** research
+- **Network synchronization** and oscillation studies
+- **Developmental plasticity** and critical period investigation
+- **Pathological pattern** recognition and analysis
+
+### Pharmacological Research
+- **Drug effect simulation** on neural circuits
+- **Substance intoxication** modeling with dose-response relationships
+- **Neurotransmitter interaction** studies
+- **Therapeutic intervention** testing
+
+### Computational Neuroscience
+- **Biological realism validation** against experimental data
+- **Scaling studies** for large network simulation
+- **Performance optimization** for real-time applications
+- **Cross-species comparison** studies
+
+### Clinical Applications
+- **Stroke recovery** monitoring and prediction
+- **Neurodegenerative disease** progression modeling
+- **Neural stimulation** effectiveness assessment
+- **Rehabilitation progress** tracking
+
 ## Usage Patterns
 
 ### Basic Threshold Adjustment
@@ -148,6 +256,28 @@ The component-based architecture makes retrograde feedback implementation clean 
 - **Biological realism**: Multiple signaling modalities mirror real neural networks
 - **Performance**: Direct callback mechanisms avoid routing bottlenecks
 
-This retrograde feedback capability transforms the temporal-neuron system from a simple feedforward network into a sophisticated, self-organizing neural architecture capable of advanced learning, adaptation, and homeostatic regulation—closely mirroring the computational power of biological neural networks.
+### Factory System
+- **Neurogenesis coordination**: Biological neuron creation with proper integration
+- **Synaptogenesis management**: Activity-dependent synapse formation
+- **Component registration**: Automatic integration with all biological systems
+- **Configuration flexibility**: Multiple neuron and synapse types
 
---
+### Performance Characteristics
+- **Sub-100μs detection times** for NMDA-like mechanisms
+- **Concurrent processing** with thread-safe coordination
+- **Memory-efficient operation** under realistic loads
+- **Scalable architecture** supporting thousands of components
+
+## Validation and Testing
+
+The system includes comprehensive test suites validating:
+
+- **Biological accuracy**: Matches experimental neuroscience data
+- **Performance characteristics**: Real-time simulation capabilities
+- **Integration robustness**: Seamless component interaction
+- **Edge case handling**: Graceful failure and recovery
+- **Concurrent operation**: Thread-safe multi-component processing
+
+## Future Research Directions
+
+This retrograde feedback capability transforms the temporal-neuron system from a simple feedforward network into a sophisticated, self-organizing neural architecture capable of advanced learning, adaptation, and homeostatic regulation—closely mirroring the computational power of biological neural networks.

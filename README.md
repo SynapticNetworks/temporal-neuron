@@ -5,225 +5,105 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/SynapticNetworks/temporal-neuron)](https://goreportcard.com/report/github.com/SynapticNetworks/temporal-neuron)
 ![Test Status](https://img.shields.io/badge/tests-passing-brightgreen)
 
-## 💰 Sponsors & Support
+## Overview
 
-This revolutionary research project was conceived and is made possible by the visionary support of our founding sponsor who believes in advancing computational neuroscience and biologically-inspired AI.
+The temporal-neuron architecture supports sophisticated **retrograde feedback** mechanisms where post-synaptic neurons can influence the behavior of their pre-synaptic partners. This bidirectional communication enables advanced learning algorithms, homeostatic regulation, and network-wide coordination that goes far beyond traditional feedforward architectures.
 
-### 🏢 Founding Sponsor
-
-<table>
-<tr>
-<td align="center">
-<a href="https://sistemica.com/">
-<img src="https://sistemica.com/logo.svg" width="200" alt="Sistemica GmbH"/>
-<br/>
-<strong>Sistemica GmbH</strong>
-<br/>
-<em>Founding Vision & Strategic Partner</em>
-</a>
-</td>
-</tr>
-</table>
-
-**Sistemica GmbH** - The visionary company that conceived this revolutionary approach and provides the core development team. Their expertise in innovative software solutions combined with deep understanding of biological systems made this groundbreaking research possible. Sistemica GmbH continues to sponsor the development team and strategic direction of the project.
-
-### 🤝 Become a Sponsor
-
-**Join the neural revolution!** 
-
-We're looking for forward-thinking organizations and individuals who want to support groundbreaking research in:
-
-- 🧠 **Biologically-realistic neural networks**
-- 🔬 **Computational neuroscience research** 
-- 🚀 **Next-generation AI architectures**
-- 🌱 **Open-source scientific software**
-
-#### Why Sponsor Temporal Neuron?
-
-- **🎯 Strategic Innovation**: Get early access to revolutionary neural computing technology
-- **🔬 Research Impact**: Support fundamental advances in computational neuroscience
-- **🏆 Brand Recognition**: Associate your organization with cutting-edge AI research
-- **🤝 Collaboration**: Work directly with our research team on applications
-- **📈 Future Technology**: Gain insights into the next generation of AI systems
-
-#### Sponsorship Tiers
-
-**🥇 Innovation Partner ($5,000+ annually)**
-- Logo placement in README and documentation
-- Early access to releases and research findings
-- Quarterly progress reports and technical insights
-- Priority technical support for integration
-
-**🥈 Research Supporter ($1,000+ annually)**  
-- Recognition in sponsors section
-- Access to sponsor updates and roadmap
-- Community support and integration guidance
-
-**🥉 Community Champion ($500+ annually)**
-- Name in acknowledgments
-- Access to sponsor discussions and updates
-
-**💖 Individual Supporter ($50+ annually)**
-- Listed in community supporters
-- Sponsor badge and recognition
-
-#### How to Sponsor
-
-Contact us to discuss sponsorship opportunities:
-- **Email**: sponsors@synapticnetworks.io
-- **GitHub Sponsors**: [Support this project](https://github.com/sponsors/SynapticNetworks)
-- **Discussions**: [GitHub Discussions](https://github.com/SynapticNetworks/temporal-neuron/discussions)
-
----
-
-## ⚠️ Research Project - Active Development
-
-**This is an active research project exploring biologically-inspired neural computation.** We are building a complete neural substrate that eliminates artificial constraints of traditional neural networks while maintaining biological realism and computational efficiency.
-
-### Research Goals
-- Eliminate artificial constraints of traditional ANNs (batches, activation functions, synchronous processing)
-- Create living neural networks with autonomous neurons and dynamic connectivity  
-- Build foundations for stateful gating networks and advanced learning algorithms
-- Study real-time neural dynamics and emergent network behaviors
-
-### Current Status: Advanced Biological Neural Substrate ✅
-This repository now contains a sophisticated, biologically realistic neural computation platform with comprehensive validation:
-
-- **✅ Temporal Neurons**: Autonomous, concurrent neurons with STDP and homeostatic plasticity
-- **✅ Synaptic Processors**: Intelligent synapses with learning and pruning capabilities
-- **✅ Dendritic Computation**: Multi-mode dendritic integration with biological timing
-- **✅ GABAergic Networks**: Fast-spiking interneurons with precise inhibitory control
-- **✅ Synaptic Scaling**: Homeostatic receptor regulation for network stability
-- **✅ Compartmental Models**: Foundation for complex dendritic architectures
-- **✅ Glial Cell Monitoring**: Neural state surveillance and support systems
-- **🚧 Stateful Gates**: Dynamic pathway modulation and transient rewiring
-- **🚧 Extracellular Matrix**: Coordination layer for dynamic network structure (in development)
-- **🔄 NetworkGenome Manager**: Serialization and remote control (planned)
-
-### Latest Achievements (2024)
-
-**🏆 Comprehensive Biological Validation**
-- **400+ test scenarios** - All passing with complete biological realism validation
-- **182 seconds** of extensive testing covering every neural mechanism
-- **Multi-timescale integration** - STDP (ms), homeostasis (sec-min), scaling (min-hours)
-
-**🧠 Advanced Dendritic Computation**
-- **Multiple integration modes** validated: Passive, Temporal Summation, Shunting Inhibition, Active Dendrites
-- **Biological membrane dynamics** with realistic time constants (10-50ms)
-- **Spatial processing** with distance-dependent signal attenuation
-- **Coincidence detection** within biologically realistic windows (±20ms)
-
-**⚡ Performance Breakthroughs**
-- **44M+ operations/second** for PassiveMembrane mode
-- **Sub-millisecond latency** (48ns average) with biological timing
-- **Massive scalability** with 100K+ concurrent neurons capability
-- **Thread-safe operations** under extreme concurrent stress
-
-**🚫 GABAergic Network Control**
-- **Precise inhibitory timing** with microsecond accuracy
-- **75% activity reduction** while maintaining network functionality  
-- **Biological timing validation** - 0ms delays enabling ±1ms synchrony windows
-- **Oscillation generation** - Gamma rhythm support for cognitive functions
-
-**🏠 Homeostatic Plasticity Systems**
-- **Synaptic scaling** with pattern preservation during adaptation
-- **Activity-dependent regulation** via calcium-based sensing
-- **Multi-input registration** and long-term activity integration
-- **Convergence dynamics** toward target effective strengths
+⚠️ **Research Project - Active Development**: This is an active research project exploring biologically-inspired neural computation with autonomous neurons, dynamic connectivity, and real-time processing capabilities.
 
 ## 🧠 Revolutionary Approach
 
 Traditional artificial neural networks suffer from fundamental limitations that make them unrealistic compared to biological brains:
 
-### Traditional ANNs
-- **Batch Processing**: Discrete training epochs and inference phases
-- **Complex Activation Functions**: Mathematical abstractions (sigmoid, ReLU) that don't exist in biology
-- **Synchronous Operation**: All neurons process simultaneously in lockstep
-- **Static Architecture**: Fixed connectivity that can't adapt during operation
-- **Dead Computation**: Networks only "think" when explicitly invoked
-- **Simplified Integration**: Point neurons with no spatial or temporal structure
-
-### Real Biological Neurons
-- **Continuous Processing**: Always active, processing signals as they arrive
-- **Simple Threshold Behavior**: Fire when electrical charge exceeds threshold
-- **Asynchronous Operation**: Each neuron operates independently with its own timing
-- **Dynamic Connectivity**: Constantly growing and pruning connections
-- **Living Computation**: Networks maintain persistent activity and autonomous behavior
-- **Complex Dendrites**: Sophisticated spatial and temporal integration with active properties
+### Traditional ANNs vs. Biological Reality
+- **Batch Processing** → **Continuous Processing**: Always active, processing signals as they arrive
+- **Complex Activation Functions** → **Simple Threshold Behavior**: Fire when electrical charge exceeds threshold  
+- **Synchronous Operation** → **Asynchronous Operation**: Each neuron operates independently with its own timing
+- **Static Architecture** → **Dynamic Connectivity**: Constantly growing and pruning connections
+- **Dead Computation** → **Living Computation**: Networks maintain persistent activity and autonomous behavior
 
 ### Temporal Neuron Solution
-**We eliminate these artificial constraints by creating neurons that truly live:**
+We eliminate artificial constraints by creating neurons that truly live:
+- ✅ **No Iterations/Batches**: Continuous real-time processing without artificial training epochs
+- ✅ **No Activation Functions**: Simple threshold-based firing like real neurons
+- ✅ **True Asynchronous Processing**: Each neuron operates independently on its own timeline
+- ✅ **Biological Timing**: Refractory periods and membrane potential decay
+- ✅ **Massive Scalability**: Go routines enable networks with 100K+ concurrent neurons
+- ✅ **Living Networks**: Persistent activity and autonomous structural changes
 
-- **✅ No Iterations/Batches**: Continuous real-time processing without artificial training epochs
-- **✅ No Activation Functions**: Simple threshold-based firing like real neurons
-- **✅ True Asynchronous Processing**: Each neuron operates independently on its own timeline
-- **✅ Biological Timing**: Refractory periods and membrane potential decay
-- **✅ Massive Scalability**: Go routines enable networks with 100K+ concurrent neurons
-- **✅ Real-time Response**: Sub-millisecond processing with no batch delays
-- **✅ Living Networks**: Persistent activity and autonomous structural changes
-- **✅ Dendritic Computation**: Multi-timescale integration with spatial dynamics
-- **✅ Inhibitory Control**: GABAergic interneurons with precise timing control
+## Biological Foundation
 
-## 🎯 Key Features
+### Retrograde Signaling
 
-### Biological Realism
-- **Multi-Timescale Plasticity**: STDP (ms), homeostasis (sec-min), synaptic scaling (min-hours)
-- **Leaky Integration**: Continuous membrane potential decay with biological time constants
-- **Refractory Periods**: Neurons cannot fire immediately after firing
-- **Threshold Firing**: Simple biological rule replaces complex activation functions
-- **Synaptic Delays**: Realistic transmission delays based on distance and connection type
-- **Activity-Dependent Adaptation**: Networks self-regulate and maintain stability
-- **Dendritic Processing**: Spatial and temporal integration with active dendrites
-- **GABAergic Inhibition**: Fast-spiking interneurons with sub-millisecond precision
+In biological neural networks, communication is bidirectional. While primary signal flow is forward (pre-synaptic to post-synaptic), there are mechanisms for **backward signaling**:
 
-### Advanced Dendritic Computation
-- **Multiple Integration Modes**: Passive, temporal summation, shunting inhibition, active dendrites
-- **Biological Membrane Dynamics**: Exponential decay with realistic time constants (10-50ms)
-- **Spatial Processing**: Distance-dependent signal attenuation and branch-specific properties
-- **Temporal Summation**: Coincidence detection within biologically realistic windows
-- **Shunting Inhibition**: Divisive inhibition modeling GABA-A receptor effects
-- **Dendritic Spikes**: NMDA-like regenerative events for feature binding
-- **Stateful Gates**: Dynamic pathway modulation with biological trigger mechanisms (wip)
+- **Endocannabinoids**: Lipid-based molecules released by post-synaptic neurons that travel backward across synapses to modulate pre-synaptic neurotransmitter release
+- **Nitric Oxide (NO)**: A gaseous messenger that diffuses from post-synaptic to pre-synaptic terminals, affecting plasticity and excitability
+- **Brain-Derived Neurotrophic Factor (BDNF)**: Growth factors that provide long-term retrograde signaling for synaptic strengthening
+- **Anti-Hebbian Plasticity**: Mechanisms where post-synaptic silence weakens pre-synaptic inputs ("use it or lose it")
 
-### GABAergic Network Control
-- **Fast-Spiking Interneurons**: Sub-millisecond response with immediate inhibition
-- **Biological Timing**: 0ms delays enable ±1ms synchrony windows for precise control
-- **Receptor Kinetics**: GABA-A (fast, 1-2ms onset) and GABA-B (slow, 200ms+ duration)
-- **Network Stabilization**: 75% activity reduction with maintained functionality
-- **Oscillation Generation**: Gamma rhythm support for attention and binding mechanisms
-- **Feedforward Inhibition**: Research-validated timing parameters for circuit control
+### Biological Examples
 
-### Homeostatic Plasticity Systems
-- **Synaptic Scaling**: Proportional receptor strength adjustment preserving learned patterns
-- **Activity Gating**: Calcium-dependent scaling activation with biological thresholds
-- **Pattern Preservation**: Multiplicative scaling maintains relative input ratios
-- **Multi-timescale Integration**: Minutes-to-hours timescales separate from STDP learning
-- **Convergence Dynamics**: Stable approach to target effective strengths
-- **Biological Timing**: Appropriate intervals prevent rapid oscillations
+**Visual System**: In the retina, horizontal cells provide retrograde feedback to photoreceptors, adjusting their sensitivity based on overall light levels.
 
-### Dynamic Network Architecture
-- **Neurogenesis**: Create new neurons during runtime based on activity and need
-- **Synaptogenesis**: Form new connections through biological growth rules
-- **Structural Plasticity**: Automatic pruning of weak or inactive connections
-- **Runtime Connectivity**: Add/remove connections while networks are actively processing
-- **Spatial Organization**: 3D positioning with distance-based connection rules
-- **Compartmental Modeling**: Foundation for multi-compartment neuron models
+**Motor Learning**: During skill acquisition, post-synaptic motor neurons in the spinal cord send retrograde signals to adjust the strength and timing of inputs from motor cortex.
 
-### Performance & Scalability
-- **44M+ operations/second**: Validated high-throughput performance (PassiveMembrane)
-- **Sub-millisecond latency**: Average 48ns response time with biological timing
-- **99.38% success rate**: Excellent reliability under extreme concurrent stress
-- **2000+ concurrent operations**: Massive parallelism without blocking
-- **Linear scaling**: Performance scales with available CPU cores
-- **Memory efficient**: ~2KB per neuron, efficient resource utilization
+**Homeostatic Scaling**: When post-synaptic neurons become too active or too quiet, they release retrograde factors that adjust the strength of all their inputs to maintain stable firing rates.
 
-### Advanced Learning Systems
-- **Spike-Timing Dependent Plasticity**: Precise timing-based learning (validated against Bi & Poo 1998)
-- **Homeostatic Regulation**: Automatic firing rate control and network stability
-- **Synaptic Scaling**: Input strength normalization preserving learned patterns
-- **Competitive Learning**: Winner-take-all dynamics and input selectivity
-- **Continuous Adaptation**: Learning never stops - networks adapt in real-time
-- **Multi-level Learning**: Dendritic gates learn when and how to modulate pathways
+**Fear Conditioning**: In the amygdala, successful fear associations trigger retrograde signals that strengthen the synaptic pathways that led to the correct prediction, while failed predictions weaken them.
+
+## Architecture Implementation
+
+### Signal Flow Patterns
+
+The temporal-neuron architecture supports multiple retrograde feedback patterns:
+
+```
+┌─────────────┐    Forward Signal    ┌─────────────┐
+│             │ ────────────────────→ │             │
+│ Pre-Neuron  │                      │ Post-Neuron │
+│             │ ←──────────────────── │             │
+└─────────────┘   Retrograde Signal  └─────────────┘
+```
+
+### Implementation Mechanisms
+
+#### 1. Electrical Signaling (Primary Method)
+
+The cleanest implementation uses the existing electrical signaling infrastructure. Post-synaptic neurons can send electrical signals back through the matrix to adjust pre-synaptic neuron properties:
+
+- **Post-neuron** calculates timing relationships and effectiveness
+- **Post-neuron** calls `SendElectricalSignal()` with adjustment parameters
+- **Matrix** routes the signal to the appropriate pre-synaptic neurons
+- **Pre-neuron** receives signal via `OnSignal()` and adjusts threshold, excitability, or firing patterns
+
+This mechanism supports:
+- **Spike-timing dependent plasticity**: Adjustments based on precise timing relationships
+- **Activity-dependent scaling**: Global adjustments based on post-synaptic firing rates
+- **Competitive learning**: Weakening of poorly-timed inputs
+
+#### 2. Chemical Signaling (Advanced)
+
+For more sophisticated retrograde feedback, the chemical signaling system can be used:
+
+- **Post-neuron** calls `ReleaseChemical()` with retrograde ligands (endocannabinoids, nitric oxide)
+- **Matrix** diffuses the chemical through the extracellular space
+- **Pre-neurons** with appropriate receptors receive signals via `Bind()`
+- **Pre-neurons** adjust release probability, excitability, or other properties
+
+This enables:
+- **Volume transmission**: Retrograde signals affecting multiple pre-synaptic partners
+- **Neuromodulation**: Context-dependent adjustments based on network state
+- **Homeostatic regulation**: Long-term stability mechanisms
+
+#### 3. Synaptic Mediation
+
+Synapses themselves can implement retrograde feedback by:
+
+- Tracking post-synaptic response effectiveness
+- Adjusting their own weights and properties
+- Sending feedback signals to pre-synaptic neurons via callbacks
+- Implementing sophisticated plasticity rules (STDP, BCM, homeostatic scaling)
 
 ## 🏗️ Architecture Overview
 
@@ -235,13 +115,14 @@ Traditional artificial neural networks suffer from fundamental limitations that 
                               │
 ┌─────────────────────────────────────────────────────────────┐
 │                   Extracellular Matrix                      │
-│                (In Development: Coordination Layer)         │
-│  • Dynamic network structure    • Plugin architecture      │
-│  • Component lifecycle         • Event-driven communication │
+│                (Coordination Layer: ✅ Implemented)         │
+│  • Neurogenesis & synaptogenesis   • Chemical signaling    │
+│  • Component lifecycle             • Spatial organization   │
+│  • Health monitoring              • Gap junction management │
 └─────────────────────────────────────────────────────────────┘
                               │
 ┌─────────────────────────────────────────────────────────────┐
-│              Core Components (Implemented ✅)               │
+│              Core Components (✅ Implemented)               │
 │                                                             │
 │  ┌─────────────────┐    ┌─────────────────┐    ┌──────────┐│
 │  │ Temporal Neurons│    │ Synaptic       │    │Dendritic ││
@@ -249,23 +130,240 @@ Traditional artificial neural networks suffer from fundamental limitations that 
 │  │ • Autonomous    │←──→│                │←──→│          ││
 │  │ • Concurrent    │    │ • STDP Learning │    │• Multi-  ││
 │  │ • Homeostatic   │    │ • Self-pruning  │    │  mode    ││
-│  │ • Real-time     │    │ • Plasticity    │    │• Gates   ││
-│  │ • Event-driven  │    │ • Thread-safe   │    │• Biology ││
-│  │ • Scaling       │    │ • Delays        │    │• Spatial ││
+│  │ • Real-time     │    │ • Plasticity    │    │• Biology ││
+│  │ • Event-driven  │    │ • Thread-safe   │    │• Spatial ││
+│  │ • Scaling       │    │ • Delays        │    │• Temporal││
 │  └─────────────────┘    └─────────────────┘    └──────────┘│
 │                                                             │
 │  ┌─────────────────┐    ┌─────────────────┐    ┌──────────┐│
-│  │ GABAergic       │    │ Glial Cell      │    │Stateful  ││
-│  │ Networks        │    │ Monitoring      │    │Gates     ││
-│  │                 │    │                 │    │          ││
-│  │ • Fast-spiking  │    │ • State tracking│    │• Dynamic ││
-│  │ • Precise timing│    │ • Activity mon. │    │• Learning││
-│  │ • Stabilization │    │ • Processing    │    │• Context ││
-│  │ • Oscillations  │    │ • Support funcs │    │• Triggers││
-│  │ • Kinetics      │    │ • Extensible    │    │• Biology ││
+│  │ Chemical        │    │ Astrocyte       │    │Microglial││
+│  │ Modulation      │    │ Networks        │    │Health    ││
+│  │                 │    │                 │    │Monitoring││
+│  │ • Multi-ligand  │    │ • Territorial   │    │• Activity││
+│  │ • Diffusion     │    │ • Spatial query │    │• Patrol  ││
+│  │ • Concentration │    │ • Connectivity  │    │• Cleanup ││
+│  │ • Binding       │    │ • Thread-safe   │    │• Support ││
+│  │ • Modulation    │    │ • Scalable      │    │• Lifecycle││
 │  └─────────────────┘    └─────────────────┘    └──────────┘│
 └─────────────────────────────────────────────────────────────┘
 ```
+
+## Core Architecture Components
+
+### Extracellular Matrix Coordination System
+
+The central coordination layer manages all biological processes through specialized subsystems:
+
+#### **Astrocyte Network**
+- **Territorial organization** with realistic domain sizes (10-200μm)
+- **Spatial query resolution** to micrometer precision
+- **Synaptic connectivity tracking** and activity monitoring
+- **Thread-safe concurrent access** for biological scalability
+- **Species-specific variations** (human vs mouse astrocyte characteristics)
+
+#### **Microglial Health Monitoring**
+- **Real-time surveillance** of neural component health
+- **Activity-dependent assessment** with configurable sensitivity
+- **Lifecycle coordination** for neurogenesis and apoptosis
+- **Territorial patrol systems** with biological timing (100ms-2s rates)
+- **Cleanup coordination** for network maintenance
+
+#### **Chemical Modulator System**
+- **Multi-neurotransmitter support** (GABA, glutamate, dopamine, serotonin, calcium)
+- **Spatial diffusion modeling** with realistic concentration gradients
+- **Receptor binding kinetics** and competitive interactions
+- **Activity-dependent release** with threshold-based triggering
+- **Pharmacological simulation** capabilities
+
+#### **Signal Mediator (Gap Junctions)**
+- **Bidirectional electrical coupling** with configurable conductance
+- **Sub-millisecond propagation** delays (<0.1ms)
+- **Synchronization support** for network oscillations
+- **Biological conductance ranges** (0.05-1.0 nS)
+
+### Neural Components
+
+#### **Advanced Neuron Implementation**
+- **Multiple dendritic modes**: Passive, active, and biological temporal summation
+- **Homeostatic plasticity** with configurable target firing rates
+- **STDP feedback mechanisms** with biological timing windows
+- **Synaptic scaling** for network stability
+- **Custom behavior system** for research extensibility
+- **Coincidence detection** with NMDA-like voltage dependence
+
+#### **Sophisticated Synapse System**
+- **STDP-enabled plasticity** with asymmetric learning windows
+- **Spatial delay calculation** based on axonal conduction velocity
+- **Weight adaptation** with biological constraints
+- **Activity-dependent modulation** through chemical signaling
+
+## 🎯 Key Features
+
+### Biological Realism
+- **Multi-Timescale Plasticity**: STDP (ms), homeostasis (sec-min), synaptic scaling (min-hours)
+- **Leaky Integration**: Continuous membrane potential decay with biological time constants
+- **Refractory Periods**: Neurons cannot fire immediately after firing
+- **Threshold Firing**: Simple biological rule replaces complex activation functions
+- **Synaptic Delays**: Realistic transmission delays based on distance and connection type
+- **Activity-Dependent Adaptation**: Networks self-regulate and maintain stability
+
+### Dynamic Network Architecture
+- **Neurogenesis**: Create new neurons during runtime based on activity and need
+- **Synaptogenesis**: Form new connections through biological growth rules
+- **Structural Plasticity**: Automatic pruning of weak or inactive connections
+- **Runtime Connectivity**: Add/remove connections while networks are actively processing
+- **Spatial Organization**: 3D positioning with distance-based connection rules
+- **Factory System**: Biological component creation with proper integration
+
+### Neurochemical Modulation
+
+#### **Neurotransmitter Effects**
+- **GABA enhancement**: Realistic inhibitory effects reducing neural excitability
+- **Glutamate modulation**: Adjustable excitatory signaling strength and reliability
+- **Dose-dependent responses**: Chemical concentrations produce proportional effects
+
+#### **Intoxication Modeling**
+The system accurately simulates substance effects on neural circuits:
+- **Motor coordination impairment**: Progressive degradation of fine motor control
+- **Selective vulnerability**: Weak signals affected more than strong signals
+- **BAC correlation**: Effects scale realistically with blood alcohol concentration (0.05%-0.25%)
+- **Recovery patterns**: Chemical clearance enables neural function restoration
+
+#### **Validation Testing**
+- **Motor circuit testing**: Multi-neuron circuits demonstrate coordination degradation
+- **Complex cortical simulation**: 8-neuron networks with strict failure conditions
+- **Biological accuracy**: Matches known intoxication patterns in neural systems
+
+### Spatial Processing
+
+#### **3D Spatial Awareness**
+- **Distance-based delays**: Realistic axonal conduction timing
+- **Spatial organization**: Components positioned in 3D coordinate space
+- **Propagation modeling**: Variable conduction velocities (0.5-120 m/s)
+- **Biological scenarios**: Cortical circuit distance validation
+
+#### **Delay Integration System**
+- **Synaptic delays**: Base transmission delays (0.5-5ms)
+- **Spatial delays**: Distance-dependent propagation timing
+- **Combined timing**: Realistic total transmission delays
+- **Validation testing**: Comprehensive timing accuracy verification
+
+## Learning Algorithms Enabled
+
+### Spike-Timing Dependent Plasticity (STDP)
+
+Post-synaptic neurons track the timing relationship between their firing and incoming spikes. When they fire shortly after receiving an input (causality), they send positive retrograde feedback. When they fire before an input arrives (anti-causality), they send negative feedback.
+
+### Homeostatic Plasticity
+
+Post-synaptic neurons monitor their own firing rates. If they become too active or too quiet compared to their target rates, they send retrograde signals to scale all their inputs up or down proportionally, maintaining network stability.
+
+### Predictive Coding
+
+In hierarchical networks, higher-level neurons can send retrograde "prediction error" signals to lower levels, teaching them to better predict upcoming patterns and reducing overall network prediction error.
+
+### Attention and Gating
+
+Post-synaptic neurons can implement attention mechanisms by selectively sending positive retrograde feedback to inputs that are currently relevant, effectively gating information flow based on context.
+
+## Functional Benefits
+
+### Network Stability
+
+Retrograde feedback provides multiple mechanisms for maintaining stable network dynamics:
+- **Homeostatic scaling** prevents runaway excitation or silence
+- **Competitive learning** ensures balanced representation
+- **Activity regulation** maintains optimal firing rates
+
+### Adaptive Learning
+
+The bidirectional communication enables sophisticated learning:
+- **Credit assignment**: Post-synaptic neurons can "teach" their inputs about effectiveness
+- **Temporal learning**: Precise timing relationships can be learned and maintained
+- **Context sensitivity**: Learning can be modulated based on network state
+
+### Biological Realism
+
+Retrograde feedback mechanisms closely mirror real neural network operation:
+- **Developmental plasticity**: Activity-dependent refinement of connections
+- **Experience-dependent plasticity**: Learning and memory formation
+- **Homeostatic maintenance**: Long-term stability and health
+
+## Factory System for Neurogenesis and Synaptogenesis
+
+### Biological Component Creation
+
+The matrix provides factory systems that mirror biological development:
+
+#### **Neurogenesis** 
+- **RegisterNeuronType()**: Register biological neuron types (pyramidal, interneuron, etc.)
+- **CreateNeuron()**: Execute neurogenesis with complete biological integration
+- **Automatic integration**: Spatial registration, chemical wiring, health monitoring
+- **3D positioning**: Realistic spatial organization and distance-based connectivity
+
+#### **Synaptogenesis**
+- **RegisterSynapseType()**: Register synapse types (excitatory, inhibitory, modulatory)
+- **CreateSynapse()**: Form synaptic connections with biological properties
+- **Activity-dependent**: Formation based on neural activity and proximity
+- **Realistic transmission**: Delays, weights, and plasticity appropriate to synapse type
+
+### Usage Pattern
+
+```go
+// Initialize matrix environment
+matrix := extracellular.NewExtracellularMatrix(config)
+matrix.Start()
+
+// Register neuron factory
+matrix.RegisterNeuronType("cortical_pyramidal", func(id string, config types.NeuronConfig, callbacks component.NeuronCallbacks) (component.NeuralComponent, error) {
+    neuron := neuron.NewNeuron(id, config.Threshold, 0.95, 10*time.Millisecond, 1.0, 5.0, 0.2)
+    neuron.SetReceptors(config.Receptors)
+    neuron.SetCallbacks(callbacks)
+    return neuron, nil
+})
+
+// Create neuron through biological process
+neuronConfig := types.NeuronConfig{
+    NeuronType: "cortical_pyramidal",
+    Position:   types.Position3D{X: 10, Y: 10, Z: 5},
+    Receptors:  []types.LigandType{types.LigandGABA, types.LigandGlutamate},
+}
+
+neuron, err := matrix.CreateNeuron(neuronConfig)
+```
+
+## Usage Patterns
+
+### Basic Threshold Adjustment
+
+Post-synaptic neurons can adjust the excitability of their inputs by sending threshold modification signals when connections are too strong or too weak.
+
+### Release Probability Modulation
+
+Retrograde signals can adjust how readily pre-synaptic neurons release neurotransmitter, providing fine-grained control over connection strength without changing synaptic weights.
+
+### Temporal Coordination
+
+Networks can self-organize their timing through retrograde feedback, with post-synaptic neurons teaching their inputs about optimal timing relationships.
+
+### Competitive Learning
+
+Multiple pre-synaptic neurons competing for the same post-synaptic target can be regulated through retrograde feedback, ensuring that the most effective inputs are strengthened while ineffective ones are weakened.
+
+## Integration with Matrix Architecture
+
+The component-based architecture makes retrograde feedback implementation clean and efficient:
+
+- **No circular dependencies**: Feedback flows through the matrix coordination layer
+- **Flexible routing**: Electrical and chemical signals can reach appropriate targets
+- **Biological realism**: Multiple signaling modalities mirror real neural networks
+- **Performance**: Direct callback mechanisms avoid routing bottlenecks
+
+### Performance Characteristics
+- **Sub-100μs detection times** for NMDA-like mechanisms
+- **Concurrent processing** with thread-safe coordination
+- **Memory-efficient operation** under realistic loads
+- **Scalable architecture** supporting thousands of components
 
 ## 🚀 Quick Start
 
@@ -275,7 +373,7 @@ Traditional artificial neural networks suffer from fundamental limitations that 
 go get github.com/SynapticNetworks/temporal-neuron
 ```
 
-### Basic Living Neuron with Dendritic Computation
+### Basic Living Neuron
 
 ```go
 package main
@@ -284,354 +382,142 @@ import (
     "fmt"
     "time"
     "github.com/SynapticNetworks/temporal-neuron/neuron"
-    "github.com/SynapticNetworks/temporal-neuron/synapse"
+    "github.com/SynapticNetworks/temporal-neuron/types"
 )
 
 func main() {
-    // Create a living neuron with advanced dendritic integration
+    // Create a living neuron
     n := neuron.NewNeuron("cortical_neuron", 1.0, 0.95, 10*time.Millisecond, 1.0, 5.0, 0.2)
     
-    // Configure biologically realistic dendritic integration
-    bioConfig := neuron.CreateCorticalPyramidalConfig()
-    dendrites := neuron.NewBiologicalTemporalSummationMode(bioConfig)
-    n.SetDendriticIntegrationMode(dendrites)
+    // Start continuous processing - neuron is now ALIVE
+    err := n.Start()
+    if err != nil {
+        panic(err)
+    }
+    defer n.Stop()
     
-    // Start continuous processing - neuron is now ALIVE with realistic dendrites
-    go n.Run()
-    
-    // Send spatially and temporally distributed signals
-    for i := 0; i < 5; i++ {
-        msg := synapse.SynapseMessage{
-            Value:     0.3,
-            Timestamp: time.Now(),
-            SourceID:  fmt.Sprintf("dendrite_%d", i),
-        }
-        n.Receive(msg)
-        time.Sleep(2 * time.Millisecond) // Temporal distribution
+    // Send signals
+    signal := types.NeuralSignal{
+        Value:     1.5,
+        Timestamp: time.Now(),
+        SourceID:  "test_input",
+        TargetID:  n.ID(),
     }
     
-    // Neuron integrates with biological membrane dynamics
+    n.Receive(signal)
     time.Sleep(50 * time.Millisecond)
-    fmt.Printf("Neuron state: acc=%.3f, calcium=%.3f, rate=%.1f Hz\n", 
-        n.GetAccumulator(), n.GetCalciumLevel(), n.GetCurrentFiringRate())
+    
+    fmt.Printf("Neuron activity level: %.3f\n", n.GetActivityLevel())
 }
 ```
 
-### GABAergic Network with Precise Inhibitory Control
+### Matrix-Integrated Network
 
 ```go
-// Create excitatory-inhibitory network with biological timing
-excitatory := neuron.NewNeuron("pyramidal", 1.0, 0.95, 10*time.Millisecond, 1.0, 5.0, 0.1)
-interneuron := neuron.NewNeuron("fast_spiking", 0.3, 0.98, 3*time.Millisecond, 1.0, 0, 0)
+// Initialize extracellular matrix
+matrix := extracellular.NewExtracellularMatrix(extracellular.ExtracellularMatrixConfig{
+    ChemicalEnabled: true,
+    SpatialEnabled:  true,
+    UpdateInterval:  10 * time.Millisecond,
+    MaxComponents:   100,
+})
 
-// Create synapses with immediate GABAergic timing (0ms delay for biological precision)
-excToIntern := synapse.NewBasicSynapse("E→I", excitatory, interneuron,
-    synapse.CreateDefaultSTDPConfig(), synapse.CreateDefaultPruningConfig(),
-    2.0, 0*time.Millisecond) // Immediate excitation of interneuron
-
-internToExc := synapse.NewBasicSynapse("I→E", interneuron, excitatory,
-    synapse.CreateDefaultSTDPConfig(), synapse.CreateDefaultPruningConfig(),
-    -3.0, 0*time.Millisecond) // Immediate, strong inhibition
-
-// Connect network
-excitatory.AddOutputSynapse("to_intern", excToIntern)
-interneuron.AddOutputSynapse("to_exc", internToExc)
-
-// Start GABAergic network
-go excitatory.Run()
-go interneuron.Run()
-
-// Demonstrate precise inhibitory control
-for i := 0; i < 10; i++ {
-    // Strong excitatory input
-    excitatory.Receive(synapse.SynapseMessage{Value: 2.0, Timestamp: time.Now()})
-    time.Sleep(20 * time.Millisecond)
-    
-    // GABAergic feedback provides immediate stabilization
-    fmt.Printf("Cycle %d: Exc rate=%.1f Hz, Intern rate=%.1f Hz\n", 
-        i, excitatory.GetCurrentFiringRate(), interneuron.GetCurrentFiringRate())
+err := matrix.Start()
+if err != nil {
+    panic(err)
 }
-```
+defer matrix.Stop()
 
-### Synaptic Scaling and Homeostatic Learning
+// Register neuron factory
+matrix.RegisterNeuronType("cortical_neuron", func(id string, config types.NeuronConfig, callbacks component.NeuronCallbacks) (component.NeuralComponent, error) {
+    n := neuron.NewNeuron(id, config.Threshold, 0.95, 10*time.Millisecond, 1.0, 5.0, 0.2)
+    n.SetReceptors(config.Receptors)
+    n.SetCallbacks(callbacks)
+    return n, nil
+})
 
-```go
-// Create neuron with synaptic scaling enabled
-scalingNeuron := neuron.NewNeuron("scaling_neuron", 1.0, 0.95, 10*time.Millisecond, 1.0, 5.0, 0.2)
+// Create integrated neuron
+neuronConfig := types.NeuronConfig{
+    NeuronType: "cortical_neuron",
+    Threshold:  1.0,
+    Position:   types.Position3D{X: 0, Y: 0, Z: 0},
+    Receptors:  []types.LigandType{types.LigandGABA, types.LigandGlutamate},
+}
 
-// Enable homeostatic synaptic scaling
-scalingNeuron.EnableSynapticScaling(
-    1.5,               // Target effective input strength
-    0.001,             // Conservative scaling rate
-    30*time.Second,    // Biological scaling interval
-)
-
-go scalingNeuron.Run()
-
-// Create inputs with different strengths
-strongInput := 2.0
-weakInput := 0.5
-
-// Send varied input patterns
-for i := 0; i < 100; i++ {
-    // Strong input source
-    scalingNeuron.Receive(synapse.SynapseMessage{
-        Value: strongInput, SourceID: "strong_source", Timestamp: time.Now()})
-    
-    // Weak input source  
-    scalingNeuron.Receive(synapse.SynapseMessage{
-        Value: weakInput, SourceID: "weak_source", Timestamp: time.Now()})
-    
-    time.Sleep(100 * time.Millisecond)
-    
-    // Monitor synaptic scaling over time
-    if i%20 == 0 {
-        gains := scalingNeuron.GetInputGains()
-        fmt.Printf("Cycle %d: Strong gain=%.3f, Weak gain=%.3f\n", 
-            i, gains["strong_source"], gains["weak_source"])
-    }
+neuron, err := matrix.CreateNeuron(neuronConfig)
+if err != nil {
+    panic(err)
 }
 ```
 
 ## 📦 Core Packages
 
-### `/neuron` - Advanced Temporal Neuron Implementation
+### `/neuron` - Temporal Neuron Implementation
 **Status: ✅ Complete with comprehensive biological validation**
 
-Biologically realistic neurons with:
-- **Dendritic Computation**: Multiple integration modes with biological membrane dynamics
-- **Homeostatic Plasticity**: Firing rate regulation and synaptic scaling
-- **Multi-timescale Learning**: STDP, homeostasis, and synaptic scaling integration
-- **Compartmental Foundation**: Extensible architecture for multi-compartment models
-- **Real-time Processing**: Autonomous behavior with continuous adaptation
+Biologically realistic neurons with homeostatic plasticity, STDP feedback, custom behavior systems, and multi-mode dendritic integration.
 
-**Advanced Features**:
-- **Temporal Summation**: Exponential decay with membrane time constants (10-50ms)
-- **Shunting Inhibition**: Divisive inhibition with biological gain control
-- **Active Dendrites**: NMDA-like dendritic spikes and saturation effects
-- **Spatial Processing**: Distance-dependent attenuation and branch properties
-- **Coincidence Detection**: Biologically realistic temporal windows
-
-**Validation**: 400+ comprehensive tests including dendritic biology, GABAergic networks, synaptic scaling, and performance benchmarks.
-
-### `/synapse` - Advanced Synaptic Processors
+### `/synapse` - Synaptic Processors  
 **Status: ✅ Complete with biological validation**
 
-Intelligent synapses with:
-- **Spike-timing Dependent Plasticity**: Validated against experimental data
-- **Structural Plasticity**: Activity-dependent pruning with "use it or lose it"
-- **Realistic Delays**: Biologically accurate transmission timings
-- **Thread-safe Operations**: Concurrent processing without blocking
-- **GABAergic Support**: Inhibitory synapses with precise kinetics
+Intelligent synapses with STDP plasticity, structural plasticity, realistic delays, and thread-safe operations.
 
-**Performance**: 1.2M+ operations/second, 99.38% reliability under stress testing.
+### `/extracellular` - Matrix Coordination System
+**Status: ✅ Complete with factory system**
 
-### `/dendrite` - Dendritic Integration Strategies
-**Status: ✅ Complete with biological validation**
+Central coordination layer with astrocyte networks, microglial monitoring, chemical modulation, gap junction management, and neurogenesis/synaptogenesis factories.
 
-Sophisticated dendritic computation including:
-- **Multiple Integration Modes**: Passive, temporal, shunting, active dendrites
-- **Biological Membrane Dynamics**: Realistic time constants and spatial effects
-- **Stateful Gates**: Dynamic pathway modulation with learning capabilities
-- **Compartmental Foundation**: Extensible architecture for complex dendritic trees
-- **Temporal Processing**: Multi-timescale integration with coincidence detection
+### `/component` - Core Interfaces
+**Status: ✅ Complete**
 
-**Biological Validation**:
-- **Membrane Time Constants**: 10-50ms realistic values for different neuron types
-- **Spatial Decay**: Distance-dependent signal attenuation
-- **Branch Heterogeneity**: Different properties for apical, basal, and distal dendrites
-- **Temporal Summation**: Realistic integration windows and decay dynamics
+Base interfaces and component abstractions for the neural architecture.
 
-### `/glial` - Glial Cell Monitoring and Support
-**Status: ✅ Complete with basic monitoring implementation**
+### `/types` - Type Definitions  
+**Status: ✅ Complete**
 
-Biological glial cell functions including:
-- **Neural State Monitoring**: Continuous surveillance of neural activity and health
-- **Processing Phase Detection**: Real-time tracking of neural computation phases
-- **Activity Pattern Analysis**: Long-term monitoring of neural behavior patterns
-- **Support Function Coordination**: Infrastructure for metabolic and regulatory support
-- **Extensible Architecture**: Foundation for astrocyte, microglia, and oligodendrocyte models
+Core types, configurations, and message structures.
 
-**Current Implementation**:
-- **ProcessingMonitor**: Core monitoring functions shared by all glial cell types
-- **Real-time State Tracking**: Millisecond-precision activity detection
-- **Thread-safe Operations**: Concurrent monitoring of multiple neurons
-- **Biological Phase Detection**: Idle, receiving, integrating, firing, recovery phases
+## Research Applications
 
-### `/extracellular` - Extracellular Matrix (In Development)
-**Status: 🚧 Architecture defined, implementation in progress**
+### Neural Network Studies
+- Activity-dependent plasticity research
+- Network synchronization and oscillation studies
+- Developmental plasticity investigation
+- Pathological pattern recognition and analysis
 
-Coordination layer providing:
-- Dynamic network structure (neurogenesis/synaptogenesis)
-- Component registry and discovery services
-- Event-driven communication and plugin architecture
-- Spatial organization and topology management
-- Resource management and lifecycle coordination
+### Pharmacological Research
+- Drug effect simulation on neural circuits
+- Substance intoxication modeling with dose-response relationships
+- Neurotransmitter interaction studies
+- Therapeutic intervention testing
 
-### `/genome` - NetworkGenome Manager (Planned)
-**Status: 🔄 Architecture defined, implementation planned**
+### Computational Neuroscience
+- Biological realism validation against experimental data
+- Scaling studies for large network simulation
+- Performance optimization for real-time applications
+- Cross-species comparison studies
 
-Meta-network management for:
-- Network state serialization and checkpointing
-- Version control and network evolution
-- RPC interface and HTTP/REST API for remote control
-- Cross-network communication and federation
-- Experimental framework and reproducible research
+### Clinical Applications
+- Stroke recovery monitoring and prediction
+- Neurodegenerative disease progression modeling
+- Neural stimulation effectiveness assessment
+- Rehabilitation progress tracking
 
-## 🔬 Biological Validation
+## Validation and Testing
 
-### Experimental Correspondence
-Our implementation matches published neuroscience research:
+The system includes comprehensive test suites validating:
 
-- **STDP Curves**: Validated against Bi & Poo (1998) experimental data
-- **Homeostatic Timescales**: Consistent with biological regulation (Turrigiano 2008)  
-- **Synaptic Scaling**: Matches activity-dependent receptor regulation
-- **GABAergic Timing**: Research-validated 0ms delays for ±1ms synchrony windows
-- **Dendritic Integration**: Membrane time constants and spatial processing
-- **Network Dynamics**: Realistic oscillations and activity patterns
+- **Biological accuracy**: Matches experimental neuroscience data
+- **Performance characteristics**: Real-time simulation capabilities  
+- **Integration robustness**: Seamless component interaction
+- **Edge case handling**: Graceful failure and recovery
+- **Concurrent operation**: Thread-safe multi-component processing
 
-### Advanced Biological Features Validated
+Test coverage includes intoxication modeling, spatial processing, chemical signaling, retrograde feedback mechanisms, and neurogenesis/synaptogenesis.
 
-#### Dendritic Computation
-- **Membrane Time Constants**: 10ms (interneurons) to 50ms (pyramidal cells)
-- **Temporal Summation**: Coincidence detection within 5-20ms windows  
-- **Spatial Processing**: Distance-dependent signal attenuation
-- **Branch Heterogeneity**: Apical (25ms), basal (15ms), distal (30ms) time constants
-- **Exponential Decay**: Realistic PSP integration with biological accuracy
+## Contributing
 
-#### GABAergic Networks
-- **Fast-Spiking Interneurons**: 0.3 threshold for immediate response
-- **Inhibitory Timing**: 0ms delays enable precise ±1ms synchrony control
-- **Receptor Kinetics**: GABA-A (1-2ms onset) and GABA-B (200ms+ duration) 
-- **Network Stabilization**: 75% activity reduction while maintaining functionality
-- **Oscillation Support**: Gamma rhythm generation for cognitive functions
-
-#### Synaptic Scaling
-- **Activity Gating**: Calcium-dependent scaling activation (minimum thresholds)
-- **Pattern Preservation**: Multiplicative scaling maintains learned ratios
-- **Biological Timing**: 30s-10min intervals separate from STDP (ms) timescales
-- **Convergence Dynamics**: Stable approach to target effective strengths
-- **Integration**: Seamless operation with STDP and homeostatic plasticity
-
-### Comprehensive Testing
-- **400+ test cases** validate biological accuracy and performance
-- **Dendritic Biology Tests**: Membrane dynamics, temporal summation, spatial processing
-- **GABAergic Network Tests**: Timing precision, stabilization, oscillation generation  
-- **Synaptic Scaling Tests**: Convergence, pattern preservation, activity gating
-- **Integration Tests**: Multi-mechanism interaction and stability
-- **Performance Benchmarks**: Real-time capabilities under load
-
-### Research Applications
-- **Connectome Studies**: Complete C. elegans (302 neurons) simulation capability
-- **Plasticity Research**: Multi-timescale learning with biological realism
-- **Dendritic Computation**: Spatial and temporal integration studies
-- **Inhibitory Networks**: GABAergic control and oscillation research
-- **Homeostatic Mechanisms**: Activity-dependent regulation and scaling
-- **Development Studies**: Model neural growth and circuit refinement
-
-## 🧪 Applications & Use Cases
-
-### Neuroscience Research
-- **Living Connectomes**: Complete neural circuits with biological dynamics
-- **Dendritic Computation**: Spatial and temporal integration studies
-- **Inhibitory Control**: GABAergic network dynamics and stabilization
-- **Homeostatic Plasticity**: Multi-timescale learning and regulation
-- **Network Development**: Circuit growth and refinement modeling
-- **Oscillation Studies**: Gamma rhythms and cognitive binding mechanisms
-
-### AI & Machine Learning  
-- **Continuous Learning**: Networks that adapt without catastrophic forgetting
-- **Temporal Processing**: Natural handling of time-dependent patterns
-- **Spatial Computing**: Dendritic-inspired hierarchical processing
-- **Attention Mechanisms**: GABAergic control for selective processing
-- **Explainable AI**: Complete transparency of all decisions and learning
-- **Energy Efficiency**: Sparse, event-driven computation scaling with activity
-
-### Robotics & Control
-- **Adaptive Controllers**: Self-tuning systems with biological learning
-- **Sensorimotor Integration**: Real-time fusion with dendritic processing
-- **Inhibitory Control**: GABAergic stabilization for smooth operation
-- **Learning from Demonstration**: Direct encoding into neural connectivity
-- **Fault Tolerance**: Homeostatic adaptation to hardware changes
-
-### Real-Time Systems
-- **Stream Processing**: Sub-millisecond latencies with biological timing
-- **Edge Computing**: Deploy on resource-constrained devices
-- **Neuromorphic Computing**: Brain-inspired processing architectures
-- **Live Sensor Networks**: Distributed processing with spatial organization
-
-## 📊 Performance Characteristics
-
-### Validated Benchmarks
-Recent stress testing demonstrates production-ready performance:
-
-**🚀 Throughput Performance:**
-- **44,084,301 operations/second** sustained throughput (PassiveMembrane)
-- **26,940,247 operations/second** (TemporalSummation with biological membrane dynamics)
-- **6,473,834 operations/second** (ActiveDendrite with full nonlinear processing)
-- **Linear scaling** with available CPU cores across all modes
-
-**⚡ Concurrency Handling:**
-- **2000+ simultaneous operations** without blocking
-- **99.38% success rate** under extreme concurrent load
-- **Sub-millisecond average latency** (48ns-309ns depending on complexity)
-
-**💾 Resource Efficiency:**
-- **~2KB per neuron** memory footprint
-- **Efficient memory scaling** with buffer sizes up to 50,000 messages
-- **Bounded resource usage** during high-frequency activity
-
-**🧠 Biological Realism Performance:**
-- **Dendritic Integration**: 20ms membrane time constants with <1ms processing overhead
-- **GABAergic Control**: 0ms inhibitory delays with precise timing control
-- **Synaptic Scaling**: Minutes-to-hours timescales with minimal computational cost
-- **Multi-timescale Learning**: STDP, homeostasis, and scaling operating concurrently
-
-### Scalability Characteristics
-- **Memory Usage**: Linear scaling, ~2KB per neuron baseline
-- **CPU Utilization**: Automatic scaling across all available cores
-- **Network Size**: Tested up to 100K neurons, projections support 1M+
-- **Message Throughput**: >10M spike events/second processing capability
-- **Real-time Guarantees**: Deterministic response times for control applications
-- **Dendritic Complexity**: Scales with dendritic integration sophistication
-
-## 🌟 What Makes This Special
-
-### True Biological Inspiration
-Unlike other "bio-inspired" approaches that use biological metaphors for mathematical convenience, we implement actual biological mechanisms:
-- **Real Membrane Dynamics**: Exponential decay with biological time constants
-- **Actual Dendritic Integration**: Spatial and temporal summation with realistic properties
-- **Genuine GABAergic Control**: Fast-spiking interneurons with precise timing
-- **Authentic Synaptic Scaling**: Homeostatic receptor regulation preserving patterns
-- **True Multi-timescale Learning**: STDP, homeostasis, and scaling operating together
-
-### Living Computation
-Our networks are truly alive in a computational sense:
-- **Persistent Activity**: Networks maintain ongoing activity without external stimulation
-- **Autonomous Behavior**: Components make decisions based on local information
-- **Continuous Adaptation**: Learning and structural changes happen constantly
-- **Self-Organization**: Complex behaviors emerge from simple local rules
-- **Spatial Processing**: Dendritic computation with biological spatial organization
-
-### Advanced Neural Architecture
-Our implementation goes beyond traditional approaches:
-- **Compartmental Foundation**: Extensible architecture for complex neuron models
-- **Stateful Gates**: Dynamic pathway modulation with learning capabilities
-- **Multi-mode Integration**: Different dendritic strategies for different neuron types
-- **Biological Heterogeneity**: Realistic diversity in neural properties and behaviors
-- **Network-level Phenomena**: Oscillations, stabilization, and emergent dynamics
-
-### Research Platform
-Designed from the ground up for scientific research:
-- **Complete Observability**: Every parameter accessible in real-time
-- **Reproducible Experiments**: Deterministic behavior with comprehensive logging
-- **Modular Architecture**: Easy to test hypotheses and compare approaches
-- **Biological Validation**: Direct correspondence with experimental neuroscience
-- **Extensible Design**: Foundation for future biological mechanism implementation
-
-## 🤝 Contributing
-
-We welcome contributions from neuroscientists, AI researchers, and systems engineers! 
+We welcome contributions from neuroscientists, AI researchers, and systems engineers.
 
 ### Development Setup
 ```bash
@@ -641,110 +527,24 @@ go mod tidy
 go test ./...
 ```
 
-### Running Tests
-```bash
-# Quick development tests
-go test -short -v ./...
-
-# Full biological validation
-go test -v ./neuron
-go test -v ./synapse  
-go test -v ./dendrite
-
-# Specialized tests
-go test -v ./neuron -run TestDendrite
-go test -v ./neuron -run TestGABAergic
-go test -v ./neuron -run TestSynapticScaling
-
-# Performance benchmarks
-go test -bench=. ./benchmarks
-```
-
-### Contributing Guidelines
-- Follow biological realism principles in all implementations
+### Guidelines
+- Follow biological realism principles
 - Include comprehensive tests for new features
-- Maintain high performance standards and real-time capabilities
-- Document biological basis and experimental validation
+- Maintain performance standards
+- Document biological basis and validation
 - Validate against published neuroscience research
 
-## 📚 Background & Research
-
-### Theoretical Foundation
-This project builds on decades of neuroscience research and computational theory:
-
-**Biological Neuroscience:**
-- Hodgkin-Huxley models of neural membrane dynamics
-- Spike-timing dependent plasticity discoveries (Bi & Poo, 1998)
-- Homeostatic regulation mechanisms (Turrigiano, 2008)
-- Dendritic computation and spatial processing (Magee & Johnston, 1997)
-- GABAergic inhibition and network control (Somogyi & Klausberger, 2005)
-- Synaptic scaling and activity-dependent adaptation (Turrigiano & Nelson, 2004)
-
-**Computational Neuroscience:**
-- Spiking neural network theory (Maass, 1997)
-- Temporal processing and neural dynamics (Dayan & Abbott, 2001)
-- Dendritic computation models (London & Häusser, 2005)
-- Inhibitory network dynamics (Brunel & Wang, 2003)
-- Multi-timescale plasticity (Abbott & Nelson, 2000)
-
-**Systems Engineering:**
-- Concurrent and parallel processing architectures
-- Event-driven systems and message-passing paradigms
-- Real-time computing and deterministic systems
-- Distributed computing and fault tolerance
-
-### Key References
-- **Bi, G. & Poo, M. (1998)** - "Synaptic modifications in cultured hippocampal neurons"
-- **Turrigiano, G.G. (2008)** - "The self-tuning neuron: synaptic scaling of excitatory synapses"
-- **London, M. & Häusser, M. (2005)** - "Dendritic computation"
-- **Magee, J.C. & Johnston, D. (1997)** - "A synaptically controlled, associative signal for Hebbian plasticity"
-- **Somogyi, P. & Klausberger, T. (2005)** - "Defined types of cortical interneurone structure space and spike timing"
-- **Maass, W. (1997)** - "Networks of spiking neurons: the third generation of neural network models"
-- **Dayan, P. & Abbott, L.F. (2001)** - "Theoretical Neuroscience"
-
-## 📄 License
+## License
 
 This project is licensed under the **Temporal Neuron Research License (TNRL) v1.0**
 
-### License Summary
-- ✅ **Free for research, educational, and personal use**
-- ✅ **Academic institutions and universities** - unlimited use
-- ✅ **Open source research projects** - encouraged
-- ✅ **Publications and citations** - welcomed
-- ⚠️ **Commercial use requires permission** - contact for licensing
+- ✅ Free for research, educational, and personal use
+- ✅ Academic institutions and universities - unlimited use  
+- ✅ Open source research projects - encouraged
+- ⚠️ Commercial use requires permission
 
-**For commercial licensing inquiries**: [contact information]
+## Future Research Directions
 
-## 🙏 Acknowledgments
+This retrograde feedback capability transforms the temporal-neuron system from a simple feedforward network into a sophisticated, self-organizing neural architecture capable of advanced learning, adaptation, and homeostatic regulation—closely mirroring the computational power of biological neural networks.
 
-### Founding Vision
-Special recognition to **Sistemica GmbH** for conceiving this revolutionary approach to neural computation and providing the foundational vision that neural networks should truly behave like biological brains. Their commitment to advancing the field through both theoretical innovation and practical implementation made this project possible.
-
-### Scientific Foundation
-- Inspired by 4 billion years of neural evolution and the remarkable efficiency of biological computation
-- Built on Go's excellent concurrency primitives that make massive parallelism practical
-- Informed by decades of neuroscience research and the generous sharing of experimental data
-- Guided by the open-source community's commitment to advancing scientific knowledge
-- Special recognition for the computational neuroscience community's foundational work
-
-### Research Community
-We acknowledge the invaluable contributions of:
-- **Experimental neuroscientists** who discovered the biological mechanisms we model
-- **Computational researchers** who developed the theoretical frameworks we implement
-- **Open-source contributors** who advance scientific software development
-- **Academic institutions** that support fundamental research in neural computation
-- **Industry partners** who bridge research and practical applications
-
-## 📞 Contact
-
-- **Organization**: [SynapticNetworks](https://github.com/SynapticNetworks)
-- **Issues**: [GitHub Issues](https://github.com/SynapticNetworks/temporal-neuron/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/SynapticNetworks/temporal-neuron/discussions)
-- **Research Collaborations**: Open to academic partnerships and joint research
-- **Sponsorship Inquiries**: sponsors@synapticnetworks.org
-
----
-
-*Building the future of neural computation through biological inspiration.*
-
-**Temporal Neuron**: Where biology meets computation, and living networks emerge from autonomous components with sophisticated dendritic processing, precise inhibitory control, and multi-timescale homeostatic learning. Conceived by Sistemica GmbH and developed as an open platform for advancing computational neuroscience.
+Current development focuses on extending network-level behaviors and implementing additional biological mechanisms for complex neural circuit modeling.
