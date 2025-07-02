@@ -151,6 +151,8 @@ type MockMatrix struct {
 	spatialDelays    map[string]time.Duration
 	nearbyComponents []component.ComponentInfo
 
+	plasticityAdjustments []types.PlasticityAdjustment
+
 	// Error injection for testing
 	createSynapseError    error
 	deleteSynapseError    error
@@ -175,16 +177,79 @@ type SynapseCreation struct {
 	ID     string
 }
 
-func NewMockMatrix() *MockMatrix {
-	return &MockMatrix{
-		healthReports:     make([]HealthReport, 0),
-		chemicalReleases:  make([]ChemicalRelease, 0),
-		electricalSignals: make([]ElectricalSignal, 0),
-		synapseCreations:  make([]SynapseCreation, 0),
-		synapseList:       make([]types.SynapseInfo, 0),
-		spatialDelays:     make(map[string]time.Duration),
-		nearbyComponents:  make([]component.ComponentInfo, 0),
+// SetSynapseList allows tests to configure what synapses ListSynapses will return
+func (mm *MockMatrix) SetSynapseList(synapses []types.SynapseInfo) {
+	mm.mu.Lock()
+	defer mm.mu.Unlock()
+
+	// Make a deep copy to avoid external modifications
+	mm.synapseList = make([]types.SynapseInfo, len(synapses))
+	copy(mm.synapseList, synapses)
+}
+
+// GetPlasticityAdjustments returns recorded STDP adjustments for testing
+func (mm *MockMatrix) GetPlasticityAdjustments() []types.PlasticityAdjustment {
+	mm.mu.Lock()
+	defer mm.mu.Unlock()
+
+	// Return a copy to prevent external modification
+	result := make([]types.PlasticityAdjustment, len(mm.plasticityAdjustments))
+	copy(result, mm.plasticityAdjustments)
+	return result
+}
+
+// ClearPlasticityAdjustments resets the record of plasticity adjustments
+func (mm *MockMatrix) ClearPlasticityAdjustments() {
+	mm.mu.Lock()
+	defer mm.mu.Unlock()
+	mm.plasticityAdjustments = mm.plasticityAdjustments[:0]
+}
+
+// Modify the ApplyPlasticity method to record adjustments for testing
+// This is in the MockNeuronCallbacks implementation
+func (mnc *MockNeuronCallbacks) ApplyPlasticity(synapseID string, adjustment types.PlasticityAdjustment) error {
+	mnc.matrix.mu.Lock()
+	defer mnc.matrix.mu.Unlock()
+
+	if mnc.matrix.applePlasticityError != nil {
+		return mnc.matrix.applePlasticityError
 	}
+
+	// Record the adjustment for testing
+	mnc.matrix.plasticityAdjustments = append(mnc.matrix.plasticityAdjustments, adjustment)
+
+	// Find and update synapse
+	for i, synapse := range mnc.matrix.synapseList {
+		if synapse.ID == synapseID {
+			// Apply simple plasticity adjustment
+			mnc.matrix.synapseList[i].Weight += adjustment.WeightChange
+			if mnc.matrix.synapseList[i].Weight < 0 {
+				mnc.matrix.synapseList[i].Weight = 0
+			}
+			break
+		}
+	}
+	return nil
+}
+
+func NewMockMatrix() *MockMatrix {
+	m := &MockMatrix{
+		healthReports:         make([]HealthReport, 0),
+		chemicalReleases:      make([]ChemicalRelease, 0),
+		electricalSignals:     make([]ElectricalSignal, 0),
+		synapseCreations:      make([]SynapseCreation, 0),
+		synapseList:           make([]types.SynapseInfo, 0),
+		spatialDelays:         make(map[string]time.Duration),
+		nearbyComponents:      make([]component.ComponentInfo, 0),
+		plasticityAdjustments: make([]types.PlasticityAdjustment, 0),
+	}
+
+	// Make sure synapseList is initialized
+	if m.synapseList == nil {
+		m.synapseList = make([]types.SynapseInfo, 0)
+	}
+
+	return m
 }
 
 // ============================================================================
@@ -301,28 +366,6 @@ func (mnc *MockNeuronCallbacks) GetSpatialDelay(targetID string) time.Duration {
 // ============================================================================
 // ENHANCED METHODS (beyond basic interface)
 // ============================================================================
-
-func (mnc *MockNeuronCallbacks) ApplyPlasticity(synapseID string, adjustment types.PlasticityAdjustment) error {
-	mnc.matrix.mu.Lock()
-	defer mnc.matrix.mu.Unlock()
-
-	if mnc.matrix.applePlasticityError != nil {
-		return mnc.matrix.applePlasticityError
-	}
-
-	// Find and update synapse
-	for i, synapse := range mnc.matrix.synapseList {
-		if synapse.ID == synapseID {
-			// Apply simple plasticity adjustment
-			mnc.matrix.synapseList[i].Weight += adjustment.WeightChange
-			if mnc.matrix.synapseList[i].Weight < 0 {
-				mnc.matrix.synapseList[i].Weight = 0
-			}
-			break
-		}
-	}
-	return nil
-}
 
 func (mnc *MockNeuronCallbacks) GetSynapseWeight(synapseID string) (float64, error) {
 	mnc.matrix.mu.Lock()

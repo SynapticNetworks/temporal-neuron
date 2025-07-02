@@ -68,10 +68,9 @@ type Neuron struct {
 	synapticScaling *SynapticScalingState
 
 	// === ENHANCED PLASTICITY CONFIGURATION ===
-	stdpFeedbackDelay    time.Duration // 0 = disabled, >0 = enabled with delay
-	stdpLearningRate     float64       // Learning rate for STDP adjustments
-	scalingCheckInterval time.Duration // 0 = disabled, >0 = enabled with interval
-	pruningCheckInterval time.Duration // 0 = disabled, >0 = enabled with interval
+	scalingCheckInterval time.Duration        // 0 = disabled, >0 = enabled with interval
+	pruningCheckInterval time.Duration        // 0 = disabled, >0 = enabled with interval
+	stdpSystem           *STDPSignalingSystem // ADD: New STDP system
 
 	// === DENDRITIC INTEGRATION ===
 	dendrite DendriticIntegrationMode
@@ -132,6 +131,8 @@ func NewNeuron(id string, threshold float64, decayRate float64, refractoryPeriod
 	minThreshold := threshold * DENDRITE_FACTOR_THRESHOLD_MIN_RATIO // Using new constant
 	maxThreshold := threshold * DENDRITE_FACTOR_THRESHOLD_MAX_RATIO // Using new constant
 
+	stdpSystem := NewSTDPSignalingSystem(false, STDP_FEEDBACK_DELAY_DEFAULT, STDP_LEARNING_RATE_DEFAULT)
+
 	neuron := &Neuron{
 		BaseComponent:    baseComponent,
 		threshold:        threshold,
@@ -168,10 +169,9 @@ func NewNeuron(id string, threshold float64, decayRate float64, refractoryPeriod
 		synapticScaling: NewSynapticScalingState(),
 
 		// === INITIALIZE ENHANCED PLASTICITY SETTINGS ===
-		stdpFeedbackDelay:    0, // 0 means disabled
-		stdpLearningRate:     STDP_LEARNING_RATE_DEFAULT,
-		scalingCheckInterval: 0, // 0 means disabled
-		pruningCheckInterval: 0, // 0 means disabled
+		scalingCheckInterval: 0,          // 0 means disabled
+		pruningCheckInterval: 0,          // 0 means disabled
+		stdpSystem:           stdpSystem, // Initialize STDP system
 
 		// Initialize dendritic integration (default to passive)
 		dendrite: NewPassiveMembraneMode(),
@@ -424,8 +424,7 @@ func (n *Neuron) EnableSTDPFeedback(feedbackDelay time.Duration, learningRate fl
 	n.stateMutex.Lock()
 	defer n.stateMutex.Unlock()
 
-	n.stdpFeedbackDelay = feedbackDelay
-	n.stdpLearningRate = learningRate
+	n.stdpSystem.Enable(feedbackDelay, learningRate)
 
 	n.UpdateMetadata("stdp_feedback_enabled", map[string]interface{}{
 		"feedback_delay": feedbackDelay,
@@ -435,10 +434,9 @@ func (n *Neuron) EnableSTDPFeedback(feedbackDelay time.Duration, learningRate fl
 }
 
 func (n *Neuron) DisableSTDPFeedback() {
-	n.stateMutex.Lock()
-	defer n.stateMutex.Unlock()
+	// Simply forward to the STDP system
+	n.stdpSystem.Disable()
 
-	n.stdpFeedbackDelay = 0 // 0 means disabled
 	n.UpdateMetadata("stdp_feedback_disabled", time.Now())
 }
 
@@ -482,11 +480,10 @@ func (n *Neuron) DisableAutoPruning() {
 	n.UpdateMetadata("auto_pruning_disabled", time.Now())
 }
 
-// Getter methods for checking current settings
+// IsSTDPFeedbackEnabled returns whether STDP feedback is enabled
 func (n *Neuron) IsSTDPFeedbackEnabled() bool {
-	n.stateMutex.Lock()
-	defer n.stateMutex.Unlock()
-	return n.stdpFeedbackDelay > 0
+	// Simply forward to the STDP system
+	return n.stdpSystem.IsEnabled()
 }
 
 func (n *Neuron) IsAutoScalingEnabled() bool {
@@ -604,51 +601,26 @@ func (n *Neuron) ConnectToNeuron(targetNeuronID string, weight float64, synapseT
 // ENHANCED SYNAPSE MANAGEMENT METHODS
 // ============================================================================
 
-// DEADLOCK FIX: SendSTDPFeedback releases stateMutex before calling matrix callbacks
+// SendSTDPFeedback triggers STDP feedback to update synaptic weights
+// Forward this to the new DeliverFeedbackNow method
 func (n *Neuron) SendSTDPFeedback() {
-	// Get STDP parameters without holding stateMutex during callbacks
-	n.stateMutex.Lock()
-	feedbackDelay := n.stdpFeedbackDelay
-	learningRate := n.stdpLearningRate
-	myID := n.ID() // Use ID() method from BaseComponent
-	n.stateMutex.Unlock()
+	// Get my ID and the matrix callbacks
+	myID := n.ID()
+	callbacks := n.matrixCallbacks
 
-	if feedbackDelay <= 0 {
-		return // STDP feedback disabled
+	if callbacks == nil {
+		return
 	}
 
-	if n.matrixCallbacks == nil {
-		return // Callbacks not available
-	}
+	// Forward to the STDP system
+	feedbackCount := n.stdpSystem.DeliverFeedbackNow(myID, callbacks)
 
-	// *** CRITICAL FIX: All matrix callbacks happen WITHOUT holding stateMutex ***
-	// This prevents deadlock when callbacks call back to GetActivityLevel()
-
-	// Get all incoming synapses that recently contributed to firing
-	incomingDirection := types.SynapseIncoming
-	recentActivity := time.Now().Add(-feedbackDelay * 10) // STDP window
-
-	incomingSynapses := n.matrixCallbacks.ListSynapses(types.SynapseCriteria{
-		Direction:     &incomingDirection,
-		TargetID:      &myID,
-		ActivitySince: &recentActivity,
-	})
-
-	// Apply STDP to each synapse based on timing
-	for _, synapseInfo := range incomingSynapses {
-		// Calculate timing difference (simplified - would need actual spike times)
-		deltaT := n.calculateSTDPTiming(synapseInfo)
-
-		adjustment := types.PlasticityAdjustment{
-			DeltaT:       deltaT,
-			LearningRate: learningRate,
-		}
-
-		// Send plasticity feedback to synapse
-		err := n.matrixCallbacks.ApplyPlasticity(synapseInfo.ID, adjustment)
-		if err != nil {
-			n.UpdateMetadata("stdp_error", err.Error())
-		}
+	// Update metadata if feedback was delivered
+	if feedbackCount > 0 {
+		n.UpdateMetadata("stdp_feedback", map[string]interface{}{
+			"synapse_count": feedbackCount,
+			"timestamp":     time.Now(),
+		})
 	}
 }
 
@@ -656,23 +628,33 @@ func (n *Neuron) SendSTDPFeedback() {
 // CALLBACKS USED: ListSynapses, SetSynapseWeight
 // BIOLOGICAL INTERACTION: Homeostatic plasticity, synaptic scaling
 func (n *Neuron) PerformHomeostasisScaling() {
+	// Early exit if no callbacks available
 	if n.matrixCallbacks == nil {
 		return
 	}
 
 	// Calculate homeostatic scaling factor based on recent activity
-	n.stateMutex.Lock()
-	currentRate := n.calculateCurrentFiringRateUnsafe()
-	targetRate := n.homeostatic.targetFiringRate
-	n.stateMutex.Unlock()
+	// Use the activityMutex instead of stateMutex to avoid deadlocks
+	n.activityMutex.RLock()
+	currentRate := n.calculateCurrentFiringRateSafe() // Use the safe version that doesn't lock stateMutex
+	n.activityMutex.RUnlock()
+
+	// Get target rate without holding any locks
+	var targetRate float64
+	func() {
+		n.stateMutex.Lock()
+		defer n.stateMutex.Unlock()
+		targetRate = n.homeostatic.targetFiringRate
+	}()
 
 	if targetRate == 0 {
 		return // Homeostasis disabled
 	}
 
+	// Calculate scaling factor outside any locks
 	scalingFactor := n.calculateScalingFactor(currentRate, targetRate)
 
-	// Get all incoming synapses
+	// Get all incoming synapses without holding any neuron locks
 	incomingDirection := types.SynapseIncoming
 	myID := n.ID()
 
@@ -693,11 +675,21 @@ func (n *Neuron) PerformHomeostasisScaling() {
 			newWeight = SYNAPTIC_SCALING_MAX_GAIN
 		}
 
+		// Set weight without holding any neuron locks
 		err := n.matrixCallbacks.SetSynapseWeight(synapseInfo.ID, newWeight)
 		if err != nil {
 			n.UpdateMetadata("scaling_error", err.Error())
 		}
 	}
+
+	// Update metadata when done
+	n.UpdateMetadata("homeostasis_scaling_performed", map[string]interface{}{
+		"current_rate":    currentRate,
+		"target_rate":     targetRate,
+		"scaling_factor":  scalingFactor,
+		"synapses_scaled": len(incomingSynapses),
+		"timestamp":       time.Now(),
+	})
 }
 
 // PruneDysfunctionalSynapses removes weak or inactive connections
@@ -901,10 +893,20 @@ func (n *Neuron) Stop() error {
 		n.SetState(types.StateStopped)
 
 		// Signal cancellation first
-		n.cancel()
+		if n.cancel != nil {
+			n.cancel()
+		}
 
 		// Wait a moment for the goroutine to notice cancellation
 		time.Sleep(10 * time.Millisecond)
+
+		// Clear callbacks to break circular references
+		n.matrixCallbacks = nil
+
+		// Clear output callbacks
+		n.outputsMutex.Lock()
+		n.outputCallbacks = make(map[string]types.OutputCallback)
+		n.outputsMutex.Unlock()
 
 		// Close synaptic scaling with error handling
 		if n.synapticScaling != nil {
