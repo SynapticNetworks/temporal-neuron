@@ -28,6 +28,11 @@ ALL FIRING LOGIC is in firing.go
 
 This separation ensures clear responsibilities and eliminates duplication.
 
+DEADLOCK FIX:
+- Added separate activityMutex to prevent re-entrant lock deadlock
+- GetActivityLevel() now uses activityMutex instead of stateMutex
+- SendSTDPFeedback() releases stateMutex before calling matrix callbacks
+
 =================================================================================
 */
 
@@ -90,8 +95,9 @@ type Neuron struct {
 	customBehaviors *CustomBehaviors
 
 	// === THREAD SAFETY ===
-	stateMutex   sync.Mutex
-	outputsMutex sync.RWMutex
+	stateMutex    sync.Mutex   // Protects neuron state (accumulator, threshold, etc.)
+	activityMutex sync.RWMutex // DEADLOCK FIX: Separate mutex for activity calculations
+	outputsMutex  sync.RWMutex
 }
 
 // ============================================================================
@@ -280,11 +286,51 @@ func (n *Neuron) Receive(msg types.NeuralSignal) {
 	}
 }
 
-// Override GetActivityLevel from BaseComponent
+// DEADLOCK FIX: GetActivityLevel now uses separate activityMutex
 func (n *Neuron) GetActivityLevel() float64 {
+	n.activityMutex.RLock()
+	defer n.activityMutex.RUnlock()
+	return n.calculateCurrentFiringRateSafe()
+}
+
+// DEADLOCK FIX: Safe firing rate calculation that doesn't hold stateMutex
+func (n *Neuron) calculateCurrentFiringRateSafe() float64 {
+	// Get a snapshot of firing history without holding stateMutex
 	n.stateMutex.Lock()
-	defer n.stateMutex.Unlock()
-	return n.calculateCurrentFiringRateUnsafe()
+	firingHistory := make([]time.Time, len(n.homeostatic.firingHistory))
+	copy(firingHistory, n.homeostatic.firingHistory)
+	targetRate := n.homeostatic.targetFiringRate
+	activityWindow := n.homeostatic.activityWindow
+	n.stateMutex.Unlock()
+
+	if len(firingHistory) == 0 {
+		return 0.0
+	}
+
+	// Calculate rate from copied history (safe from mutations)
+	now := time.Now()
+	windowSize := activityWindow
+	if windowSize <= 0 {
+		windowSize = 10 * time.Second // Default fallback
+	}
+
+	// Count recent firings
+	recentCount := 0
+	for _, fireTime := range firingHistory {
+		if now.Sub(fireTime) <= windowSize {
+			recentCount++
+		}
+	}
+
+	// Convert to Hz
+	rate := float64(recentCount) / windowSize.Seconds()
+
+	// Apply reasonable bounds
+	if targetRate > 0 && rate > targetRate*2 {
+		rate = targetRate * 2
+	}
+
+	return rate
 }
 
 // ============================================================================
@@ -558,14 +604,13 @@ func (n *Neuron) ConnectToNeuron(targetNeuronID string, weight float64, synapseT
 // ENHANCED SYNAPSE MANAGEMENT METHODS
 // ============================================================================
 
-// SendSTDPFeedback implements spike-timing dependent plasticity
-// CALLBACKS USED: ListSynapses, ApplyPlasticity
-// BIOLOGICAL INTERACTION: Hebbian learning, synaptic strengthening/weakening
+// DEADLOCK FIX: SendSTDPFeedback releases stateMutex before calling matrix callbacks
 func (n *Neuron) SendSTDPFeedback() {
-	// Check if STDP feedback is enabled by checking if delay > 0
+	// Get STDP parameters without holding stateMutex during callbacks
 	n.stateMutex.Lock()
 	feedbackDelay := n.stdpFeedbackDelay
 	learningRate := n.stdpLearningRate
+	myID := n.ID() // Use ID() method from BaseComponent
 	n.stateMutex.Unlock()
 
 	if feedbackDelay <= 0 {
@@ -576,9 +621,11 @@ func (n *Neuron) SendSTDPFeedback() {
 		return // Callbacks not available
 	}
 
+	// *** CRITICAL FIX: All matrix callbacks happen WITHOUT holding stateMutex ***
+	// This prevents deadlock when callbacks call back to GetActivityLevel()
+
 	// Get all incoming synapses that recently contributed to firing
 	incomingDirection := types.SynapseIncoming
-	myID := n.ID()
 	recentActivity := time.Now().Add(-feedbackDelay * 10) // STDP window
 
 	incomingSynapses := n.matrixCallbacks.ListSynapses(types.SynapseCriteria{
@@ -594,7 +641,7 @@ func (n *Neuron) SendSTDPFeedback() {
 
 		adjustment := types.PlasticityAdjustment{
 			DeltaT:       deltaT,
-			LearningRate: learningRate, // Use configured learning rate
+			LearningRate: learningRate,
 		}
 
 		// Send plasticity feedback to synapse
@@ -947,7 +994,6 @@ func (n *Neuron) SetSynapseWeight(synapseID string, weight float64) error {
 // This method queues messages for delayed delivery without spawning goroutines.
 // ScheduleDelayedDelivery implements the SynapseNeuronInterface requirement
 func (n *Neuron) ScheduleDelayedDelivery(msg types.NeuralSignal, target component.MessageReceiver, delay time.Duration) {
-
 	// Use your existing axon delivery mechanism
 	ScheduleDelayedDelivery(n.deliveryQueue, msg, target, delay)
 }

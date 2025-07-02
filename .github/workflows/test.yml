@@ -39,6 +39,11 @@ jobs:
         run: go test -v -short ./synapse
         working-directory: ./
 
+        # Step 5: Run tests for extracellular matrix package
+      - name: Run extracellular matrix tests
+        run: go test -v -short ./extracellular
+        working-directory: ./
+
       # Step 5: Generate test status badge
       - name: Generate test badge
         if: always()

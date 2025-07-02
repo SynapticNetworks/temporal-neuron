@@ -20,6 +20,7 @@ These mocks implement realistic biological behaviors including:
 package extracellular
 
 import (
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -75,6 +76,8 @@ type MockNeuron struct {
 
 	// === THREAD SAFETY ===
 	mu sync.RWMutex // Protects concurrent access to neuron state
+
+	outputCallbacks map[string]types.OutputCallback
 }
 
 // =================================================================================
@@ -106,6 +109,7 @@ func NewMockNeuron(id string, pos types.Position3D, receptors []types.LigandType
 		bindingHistory:    make([]types.BindingEvent, 0),
 		callbacks:         nil, // Injected during factory creation
 		isStarted:         false,
+		outputCallbacks:   make(map[string]types.OutputCallback),
 	}
 }
 
@@ -530,7 +534,73 @@ func (mn *MockNeuron) Type() types.ComponentType {
 	return mn.componentType
 }
 
-func (mn *MockNeuron) AddOutputCallback(synapseID string, callback types.OutputCallback) {}
+func (mn *MockNeuron) AddOutputCallback(synapseID string, callback types.OutputCallback) {
+	mn.mu.Lock()
+	defer mn.mu.Unlock()
+
+	if mn.outputCallbacks == nil {
+		mn.outputCallbacks = make(map[string]types.OutputCallback)
+	}
+
+	mn.outputCallbacks[synapseID] = callback
+
+	// For testing, track connections using existing connections slice
+	for _, existing := range mn.connections {
+		if existing == synapseID {
+			return // Already tracked
+		}
+	}
+	mn.connections = append(mn.connections, synapseID)
+	mn.connectionCount = len(mn.connections)
+}
+
+func (mn *MockNeuron) RemoveOutputCallback(synapseID string) {
+	mn.mu.Lock()
+	defer mn.mu.Unlock()
+
+	delete(mn.outputCallbacks, synapseID)
+
+	// Remove from connections tracking
+	for i, conn := range mn.connections {
+		if conn == synapseID {
+			mn.connections = append(mn.connections[:i], mn.connections[i+1:]...)
+			mn.connectionCount = len(mn.connections)
+			break
+		}
+	}
+}
+
+// ADD: Method to trigger output callbacks (simulate neuron firing)
+func (mn *MockNeuron) FireAndTransmit(signal float64) {
+	mn.mu.RLock()
+	callbacks := make(map[string]types.OutputCallback)
+	for id, callback := range mn.outputCallbacks {
+		callbacks[id] = callback
+	}
+	mn.mu.RUnlock()
+
+	// Fire to all connected synapses
+	message := types.NeuralSignal{
+		Value:     signal,
+		Timestamp: time.Now(),
+		SourceID:  mn.id,
+	}
+
+	for synapseID, callback := range callbacks {
+		if err := callback.TransmitMessage(message); err != nil {
+			// Log error but continue with other synapses
+			fmt.Printf("Failed to transmit to synapse %s: %v\n", synapseID, err)
+		}
+	}
+
+	// Track firing activity using existing fields
+	mn.mu.Lock()
+	mn.activityLevel += 0.1 // Increase activity level
+	if mn.activityLevel > 1.0 {
+		mn.activityLevel = 1.0
+	}
+	mn.mu.Unlock()
+}
 
 // =================================================================================
 // ENHANCED MOCK SYNAPSE WITH FACTORY PATTERN SUPPORT

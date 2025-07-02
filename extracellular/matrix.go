@@ -1092,6 +1092,10 @@ func (ecm *ExtracellularMatrix) Start() error {
 		return nil // Already active - biological systems don't restart
 	}
 
+	if ecm.maxComponents < 0 {
+		return fmt.Errorf("invalid configuration: MaxComponents cannot be negative (%d)", ecm.maxComponents)
+	}
+
 	// Activate chemical signaling systems (neurotransmitter metabolism)
 	err := ecm.chemicalModulator.Start()
 	if err != nil {
@@ -1393,6 +1397,13 @@ func (ecm *ExtracellularMatrix) calculatePropagationDelay(distance float64) time
 //
 // This enables realistic chemical coordination between neural components.
 func (ecm *ExtracellularMatrix) ReleaseLigand(ligandType types.LigandType, sourceID string, concentration float64) error {
+	// Check if matrix is operational
+	ecm.mu.RLock()
+	if !ecm.started {
+		ecm.mu.RUnlock()
+		return fmt.Errorf("matrix not started: cannot release ligand")
+	}
+	ecm.mu.RUnlock()
 	return ecm.chemicalModulator.Release(ligandType, sourceID, concentration)
 }
 

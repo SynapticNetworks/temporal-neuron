@@ -1432,6 +1432,180 @@ func TestDendrite_ActiveDendriteMode_Debug(t *testing.T) {
 	})
 }
 
+// TestDendrite_TemporalCoincidenceIntegration validates that inputs arriving
+// close together in time summate to produce a larger effect than inputs
+// arriving far apart, a key principle of dendritic integration.
+func TestDendrite_TemporalCoincidenceIntegration(t *testing.T) {
+	t.Log("=== TESTING Temporal Coincidence Integration ===")
+
+	// --- Setup ---
+	// Use a deterministic config for predictable results
+	bioConfig := CreateTestCorticalConfig() // Uses constants for realistic values
+	activeConfig := ActiveDendriteConfig{
+		MaxSynapticEffect:       3.0,                                      // High saturation to not interfere
+		ShuntingStrength:        0.0,                                      // Disable shunting for clarity
+		DendriticSpikeThreshold: 2.0,                                      // Spike triggers if integrated current > 2.0 pA
+		NMDASpikeAmplitude:      DENDRITE_CURRENT_SPIKE_AMPLITUDE_DEFAULT, // Spike adds 1.0 pA
+		VoltageThreshold:        DENDRITE_VOLTAGE_SPIKE_THRESHOLD_LENIENT, // Ensure voltage is not a limiting factor
+	}
+
+	// --- Scenario 1: Single Sub-Threshold Input ---
+	t.Run("SingleInput_NoSpike", func(t *testing.T) {
+		mode := NewActiveDendriteMode(activeConfig, bioConfig)
+		subThresholdSignal := types.NeuralSignal{
+			Value:                1.5, // Below the 2.0 pA spike threshold
+			Timestamp:            time.Now(),
+			SourceID:             "proximal",
+			NeurotransmitterType: types.LigandGlutamate,
+		}
+
+		mode.Handle(subThresholdSignal)
+		result := mode.Process(MembraneSnapshot{Accumulator: -30.0}) // Voltage is permissive
+
+		if result == nil {
+			t.Fatal("Expected a result from processing")
+		}
+		if result.DendriticSpike {
+			t.Errorf("A single sub-threshold input (%.1f pA) should not trigger a spike (threshold %.1f pA)", subThresholdSignal.Value, activeConfig.DendriticSpikeThreshold)
+		}
+		t.Logf("✓ Single input (%.1f pA) correctly resulted in no spike. Net current: %.3f pA", subThresholdSignal.Value, result.NetCurrent)
+	})
+
+	// --- Scenario 2: Coincident (Synchronous) Inputs ---
+	t.Run("CoincidentInputs_TriggerSpike", func(t *testing.T) {
+		mode := NewActiveDendriteMode(activeConfig, bioConfig)
+		now := time.Now()
+		signal1 := types.NeuralSignal{Value: 1.5, Timestamp: now, SourceID: "proximal", NeurotransmitterType: types.LigandGlutamate}
+		signal2 := types.NeuralSignal{Value: 1.5, Timestamp: now.Add(2 * time.Millisecond), SourceID: "basal", NeurotransmitterType: types.LigandGlutamate} // Arrives 2ms later
+
+		mode.Handle(signal1)
+		mode.Handle(signal2)
+		result := mode.Process(MembraneSnapshot{Accumulator: -30.0})
+
+		if result == nil {
+			t.Fatal("Expected a result from processing")
+		}
+		if !result.DendriticSpike {
+			t.Errorf("Two coincident sub-threshold inputs should summate and trigger a spike")
+		}
+		t.Logf("✓ Coincident inputs correctly triggered a spike. Net current: %.3f pA", result.NetCurrent)
+	})
+
+	// --- Scenario 3: Asynchronous Inputs ---
+	t.Run("AsynchronousInputs_NoSpike", func(t *testing.T) {
+		mode := NewActiveDendriteMode(activeConfig, bioConfig)
+		now := time.Now()
+		signal1 := types.NeuralSignal{Value: 1.5, Timestamp: now, SourceID: "proximal", NeurotransmitterType: types.LigandGlutamate}
+		// This signal arrives 50ms later, allowing the first signal to decay significantly
+		signal2 := types.NeuralSignal{Value: 1.5, Timestamp: now.Add(50 * time.Millisecond), SourceID: "basal", NeurotransmitterType: types.LigandGlutamate}
+
+		mode.Handle(signal1)
+		mode.Handle(signal2)
+		result := mode.Process(MembraneSnapshot{Accumulator: -30.0})
+
+		if result == nil {
+			t.Fatal("Expected a result from processing")
+		}
+		if result.DendriticSpike {
+			t.Errorf("Asynchronous inputs should not trigger a spike due to temporal decay")
+		}
+		t.Logf("✓ Asynchronous inputs correctly resulted in no spike. Net current: %.3f pA", result.NetCurrent)
+	})
+}
+
+// TestDendrite_ChannelDynamicsDuringSpike validates that voltage-gated ion channels
+// behave correctly during the rapid voltage transient of a dendritic spike.
+func TestDendrite_ChannelDynamicsDuringSpike(t *testing.T) {
+	t.Log("=== TESTING Ion Channel Dynamics During a Dendritic Spike ===")
+
+	// --- Setup ---
+	// 1. Create realistic Nav and Kv channels. We need direct access to them.
+	navChannel := NewRealisticNavChannel("spike_nav")
+	kvChannel := NewRealisticKvChannel("spike_kv")
+
+	// 2. Create an Active Dendrite configured to reliably generate a spike.
+	bioConfig := CreateTestCorticalConfig()
+	activeConfig := ActiveDendriteConfig{
+		DendriticSpikeThreshold: 1.5, // Lower threshold for easy triggering
+		NMDASpikeAmplitude:      1.0,
+		VoltageThreshold:        DENDRITE_VOLTAGE_SPIKE_THRESHOLD_LENIENT,
+	}
+	mode := NewActiveDendriteMode(activeConfig, bioConfig)
+
+	// 3. Add the channels to the dendrite's processing chain.
+	mode.AddChannel(navChannel)
+	mode.AddChannel(kvChannel)
+
+	// --- Trigger a Dendritic Spike ---
+	// Send a strong signal to ensure the current threshold is crossed.
+	spikeTriggerSignal := types.NeuralSignal{
+		Value:                2.0,
+		SourceID:             "proximal", // CRITICAL FIX: Specify proximal to avoid spatial decay
+		NeurotransmitterType: types.LigandGlutamate,
+	}
+	mode.Handle(spikeTriggerSignal)
+	result := mode.Process(MembraneSnapshot{Accumulator: -30.0}) // Permissive voltage
+
+	if result == nil || !result.DendriticSpike {
+		t.Fatal("Test setup failed: Dendritic spike was not triggered as expected.")
+	}
+	t.Logf("✓ Dendritic spike successfully triggered.")
+
+	// --- Simulate the Spike's Voltage Trajectory and Probe Channels ---
+	// This models the rapid voltage change of the spike itself.
+	spikeVoltageTrajectory := []float64{
+		-30.0, // Start of rise
+		0.0,   // Rising phase
+		20.0,  // Peak of spike
+		0.0,   // Falling phase
+		-30.0, // Falling phase
+		-60.0, // Afterhyperpolarization
+		-70.0, // Return to rest
+	}
+
+	t.Log("Probing channel conductance through the spike voltage trajectory:")
+	navConductances := make([]float64, len(spikeVoltageTrajectory))
+	kvConductances := make([]float64, len(spikeVoltageTrajectory))
+
+	for i, voltage := range spikeVoltageTrajectory {
+		// Manually update the channel gates with the new voltage for 1ms.
+		// We call updateGating directly to simulate the channel's response
+		// to the spike's fast voltage change.
+		navChannel.updateGating(voltage, 1*time.Millisecond)
+		kvChannel.updateGating(voltage, 1*time.Millisecond)
+
+		navConductances[i] = navChannel.GetState().Conductance
+		kvConductances[i] = kvChannel.GetState().Conductance
+
+		t.Logf("  Step %d (Vm=%.1f mV): Nav Cond = %.3f, Kv Cond = %.3f", i, voltage, navConductances[i], kvConductances[i])
+	}
+
+	// --- Assert Correct Dynamic Behavior ---
+	// 1. Find the peak conductance for each channel.
+	navPeakConductance, navPeakIndex := findPeak(navConductances)
+	kvPeakConductance, kvPeakIndex := findPeak(kvConductances)
+
+	t.Logf("Analysis: Nav peak conductance %.3f at step %d. Kv peak conductance %.3f at step %d.",
+		navPeakConductance, navPeakIndex, kvPeakConductance, kvPeakIndex)
+
+	// 2. Assert Nav channel behavior: fast activation and inactivation.
+	if navPeakIndex > 2 {
+		t.Errorf("Nav channel should activate very early in the spike, but peaked at step %d", navPeakIndex)
+	}
+	// Check for inactivation: conductance at the end should be much lower than the peak.
+	if navConductances[len(navConductances)-1] > navPeakConductance*0.5 {
+		t.Error("Nav channel should be significantly inactivated by the end of the spike.")
+	}
+	t.Log("✓ Nav channel showed expected fast activation and subsequent inactivation.")
+
+	// 3. Assert Kv channel behavior: delayed rectification.
+	// The Kv peak should occur AFTER the Nav peak.
+	if kvPeakIndex <= navPeakIndex {
+		t.Errorf("Kv channel (delayed rectifier) should peak after the Nav channel. Nav peak: %d, Kv peak: %d", navPeakIndex, kvPeakIndex)
+	}
+	t.Log("✓ Kv channel showed expected delayed rectification, peaking after the Nav channel.")
+}
+
 // ============================================================================
 // Performance and Benchmarking Tests
 // ============================================================================

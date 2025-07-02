@@ -1134,7 +1134,17 @@ func NewActiveDendriteMode(config ActiveDendriteConfig, bioConfig BiologicalConf
 // Handle processes incoming synaptic messages through ion channels and buffers for integration.
 // For ActiveDendriteMode, we need to preserve the original input information for coincidence detection.
 func (m *ActiveDendriteMode) Handle(msg types.NeuralSignal) *IntegratedPotential {
-	now := time.Now()
+	var arrivalTime time.Time
+
+	// THIS IS THE CRITICAL SAFEGUARD
+	if msg.Timestamp.IsZero() {
+		// If a signal has no timestamp, use the current time.
+		// This protects older tests that may not set a timestamp.
+		arrivalTime = time.Now()
+	} else {
+		// Otherwise, respect the timestamp from the signal.
+		arrivalTime = msg.Timestamp
+	}
 
 	// === ION CHANNEL PROCESSING CHAIN ===
 	currentMsg := &msg
@@ -1161,7 +1171,7 @@ func (m *ActiveDendriteMode) Handle(msg types.NeuralSignal) *IntegratedPotential
 	// Create timestamped input with biological modifications
 	input := TimestampedInput{
 		Message:         *currentMsg,
-		ArrivalTime:     now,
+		ArrivalTime:     arrivalTime,
 		DecayFactor:     spatialWeight,
 		ChannelCurrents: channelCurrents,
 	}

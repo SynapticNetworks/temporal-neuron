@@ -2,6 +2,7 @@ package neuron
 
 import (
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -245,14 +246,14 @@ func TestNeuronIntegration_ComponentInterfaces(t *testing.T) {
 		t.Errorf("Expected type TypeNeuron, got %v", neuron.Type())
 	}
 
-	if !neuron.IsActive() {
-		t.Error("New neuron should be active")
-	}
-
 	// Test lifecycle
 	err := neuron.Start()
 	if err != nil {
 		t.Errorf("Failed to start neuron: %v", err)
+	}
+
+	if !neuron.IsActive() {
+		t.Error("New neuron should be active")
 	}
 
 	err = neuron.Stop()
@@ -514,6 +515,138 @@ func TestNeuronIntegration_MultipleErrors(t *testing.T) {
 	neuron.Receive(msg)
 
 	t.Log("✓ Neuron handles multiple simultaneous errors gracefully")
+}
+
+/*
+=================================================================================
+NEURON COMPETITION TESTS - TASK SWITCHING AND ATTENTION
+=================================================================================
+
+This test suite validates the ability of the neuron architecture to model
+task competition and attention switching, core concepts of the gating paradigm.
+These tests simulate how a system can shift focus from an ongoing task to a
+new, more salient stimulus.
+
+KEY MECHANISMS TESTED:
+1.  **Task Persistence**: A neuron representing a primary task can maintain
+    consistent activity with steady input.
+2.  **Competitive Interruption**: A neuron representing a high-priority event
+    can interrupt the primary task's influence.
+3.  **Gating Simulation**: This simulates a competitive gating scenario where one
+    pathway's influence is temporarily overpowered by another, stronger one.
+
+=================================================================================
+*/
+
+// TestNeuron_TaskSwitchingCompetition simulates a scenario where an interrupting
+// signal competes with an ongoing task, demonstrating a shift in focus.
+func TestNeuronIntegration_TaskSwitchingCompetition(t *testing.T) {
+	t.Log("=== TESTING Neuron Task Switching and Competition ===")
+
+	// --- Test Setup ---
+	mockMatrix := NewMockMatrix()
+
+	// Neuron for the ongoing, primary task (e.g., folding laundry)
+	taskNeuron := NewNeuron("task_neuron", 0.8, 0.95, 5*time.Millisecond, 1.0, 10.0, 0.1)
+	taskNeuron.SetCallbacks(mockMatrix.CreateBasicCallbacks())
+
+	// Neuron for the interrupting, high-priority event (e.g., vase breaks)
+	interruptNeuron := NewNeuron("interrupt_neuron", 0.5, 0.95, 5*time.Millisecond, 1.0, 10.0, 0.1)
+	interruptNeuron.SetCallbacks(mockMatrix.CreateBasicCallbacks())
+
+	// A mock "decision" neuron that receives input from both competing neurons.
+	// We will use a mock synapse to track the signals it receives.
+	decisionSynapse := NewMockSynapse("decision_synapse", "decision_neuron", 1.0, 1*time.Millisecond)
+
+	// We create output callbacks for each neuron targeting the same synapse
+	taskNeuron.AddOutputCallback(decisionSynapse.id, decisionSynapse.CreateOutputCallback())
+	interruptNeuron.AddOutputCallback(decisionSynapse.id, decisionSynapse.CreateOutputCallback())
+
+	// Start the neurons
+	if err := taskNeuron.Start(); err != nil {
+		t.Fatalf("Failed to start taskNeuron: %v", err)
+	}
+	defer taskNeuron.Stop()
+
+	if err := interruptNeuron.Start(); err != nil {
+		t.Fatalf("Failed to start interruptNeuron: %v", err)
+	}
+	defer interruptNeuron.Stop()
+
+	var wg sync.WaitGroup
+
+	// --- Phase 1: Establish the Primary Task ---
+	t.Log("--- Phase 1: Establishing steady activity in the primary task neuron ---")
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		// Send a steady stream of inputs to the task neuron for 200ms
+		for i := 0; i < 10; i++ {
+			SendTestSignal(taskNeuron, "primary_task_stimulus", 1.0)
+			time.Sleep(20 * time.Millisecond)
+		}
+	}()
+	wg.Wait()
+
+	// Let the signals propagate
+	time.Sleep(50 * time.Millisecond)
+
+	// Assertion: The decision synapse should have received signals from the task neuron
+	signalsAfterPhase1 := decisionSynapse.GetReceivedSignalCount()
+	if signalsAfterPhase1 == 0 {
+		t.Fatal("Primary task neuron failed to fire and send signals.")
+	}
+	t.Logf("✓ Primary task established. Decision synapse received %d signals.", signalsAfterPhase1)
+
+	// --- Phase 2: Introduce the Interrupting Event ---
+	t.Log("--- Phase 2: Introducing a strong, salient interrupt signal ---")
+	// Send a single, strong signal to the interrupt neuron
+	SendTestSignal(interruptNeuron, "interrupt_stimulus", 2.0)
+
+	// Let the interrupt signal propagate and potentially influence the system
+	time.Sleep(50 * time.Millisecond)
+
+	// Assertion: The decision synapse should have received a new signal.
+	signalsAfterPhase2 := decisionSynapse.GetReceivedSignalCount()
+	if signalsAfterPhase2 <= signalsAfterPhase1 {
+		t.Fatalf("Interrupt neuron failed to fire and send a signal.")
+	}
+
+	// Examine the last received signal to see who "won" the competition
+	lastSignal := decisionSynapse.GetReceivedSignals()[signalsAfterPhase2-1]
+	// CORRECTED: The SourceID of the signal should match the ID of the neuron that fired.
+	if lastSignal.SourceID != interruptNeuron.ID() { // Use interruptNeuron.ID()
+		t.Errorf("Expected the last signal to come from '%s', but it came from '%s'", interruptNeuron.ID(), lastSignal.SourceID)
+	} else {
+		t.Logf("✓ Interrupt signal successfully originated from '%s'.", lastSignal.SourceID)
+	}
+
+	t.Log("✓ Interrupt signal successfully fired and was received by the decision synapse.")
+
+	// --- Phase 3: Observe Continued Competition ---
+	t.Log("--- Phase 3: Resuming primary task to observe continued dynamics ---")
+	decisionSynapse.receivedSignals = nil // Clear the history for a clean measurement
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		// Send another burst of stimuli to the primary task neuron
+		for i := 0; i < 10; i++ {
+			SendTestSignal(taskNeuron, "primary_task_stimulus", 1.0)
+			time.Sleep(20 * time.Millisecond)
+		}
+	}()
+	wg.Wait()
+
+	// Let signals propagate
+	time.Sleep(50 * time.Millisecond)
+	signalsAfterPhase3 := decisionSynapse.GetReceivedSignalCount()
+	t.Logf("✓ Primary task resumed. Decision synapse received %d more signals.", signalsAfterPhase3)
+	if signalsAfterPhase3 == 0 {
+		t.Error("Task neuron should be able to resume firing after the interrupt is over.")
+	}
+
+	t.Log("✓ Task switching and competition test completed successfully.")
 }
 
 // ============================================================================

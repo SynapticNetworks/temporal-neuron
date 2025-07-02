@@ -69,8 +69,14 @@ func TestMatrixBiologyChemicalKinetics(t *testing.T) {
 	})
 	defer matrix.Stop()
 
+	// Start the matrix before attempting chemical operations
+	err := matrix.Start()
+	if err != nil {
+		t.Fatalf("Failed to start matrix: %v", err)
+	}
+
 	// Start chemical modulator for neurotransmitter tracking
-	err := matrix.chemicalModulator.Start()
+	err = matrix.chemicalModulator.Start()
 	if err != nil {
 		t.Fatalf("Failed to start chemical modulator: %v", err)
 	}
@@ -808,6 +814,11 @@ func TestMatrixBiologyMetabolicConstraints(t *testing.T) {
 		MaxComponents:   200,
 	})
 	defer matrix.Stop()
+	// Start the matrix before attempting chemical operations
+	err := matrix.Start()
+	if err != nil {
+		t.Fatalf("Failed to start matrix: %v", err)
+	}
 
 	// === TEST COMPONENT DENSITY LIMITS ===
 	t.Log("\n--- Testing Component Density Constraints ---")

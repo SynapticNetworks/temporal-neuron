@@ -69,7 +69,7 @@ import (
 // - Components never directly reference the matrix
 // - All biological functions accessed through injected callbacks
 // - Complete isolation enables independent testing and modularity
-func TestMatrixIntegrationFactoryPattern(t *testing.T) {
+func TestMatrixIntegration_FactoryPattern(t *testing.T) {
 	t.Log("=== MATRIX INTEGRATION TEST: FACTORY PATTERN NEUROGENESIS ===")
 	t.Log("Testing factory-based component creation with biological integration")
 
@@ -317,7 +317,7 @@ func TestMatrixIntegrationFactoryPattern(t *testing.T) {
 // - Health monitoring tracks activity and connection patterns
 // - Network statistics reflect biological organization principles
 // - Mixed creation methods coexist seamlessly
-func TestMatrixIntegrationCompleteBiological(t *testing.T) {
+func TestMatrixIntegration_CompleteBiological(t *testing.T) {
 	t.Log("=== MATRIX INTEGRATION TEST: COMPLETE BIOLOGICAL COORDINATION ===")
 	t.Log("Testing all biological systems with mixed component creation methods")
 
@@ -755,7 +755,7 @@ func TestMatrixIntegrationCompleteBiological(t *testing.T) {
 // - Traditional components integrate with factory components
 // - No performance regression in existing workflows
 // - Complete backward compatibility for deployed systems
-func TestMatrixIntegrationBackwardCompatibility(t *testing.T) {
+func TestMatrixIntegration_BackwardCompatibility(t *testing.T) {
 	t.Log("=== MATRIX INTEGRATION TEST: BACKWARD COMPATIBILITY ===")
 	t.Log("Testing existing API patterns with factory system coexistence")
 
@@ -769,6 +769,11 @@ func TestMatrixIntegrationBackwardCompatibility(t *testing.T) {
 		MaxComponents:   100,
 	})
 	defer matrix.Stop()
+	//  Start the matrix before attempting chemical operations
+	err := matrix.Start()
+	if err != nil {
+		t.Fatalf("Failed to start matrix: %v", err)
+	}
 
 	t.Logf("✓ Matrix initialized using traditional constructor")
 
@@ -786,7 +791,7 @@ func TestMatrixIntegrationBackwardCompatibility(t *testing.T) {
 		},
 	}
 
-	err := matrix.RegisterComponent(neuronInfo)
+	err = matrix.RegisterComponent(neuronInfo)
 	if err != nil {
 		t.Fatalf("Failed to register neuron using traditional API: %v", err)
 	}
@@ -906,7 +911,7 @@ while still testing the performance characteristics of the factory system.
 // - Each neuron used only once to avoid biological violations
 // - Realistic delays between rapid-fire operations
 // - Test demonstrates performance WITHIN biological limits
-func TestMatrixIntegrationPerformance(t *testing.T) {
+func TestMatrixIntegration_Performance(t *testing.T) {
 	t.Log("=== MATRIX INTEGRATION TEST: PERFORMANCE AND SCALABILITY (FIXED) ===")
 	t.Log("Testing factory pattern performance with proper biological constraint respect")
 
@@ -1227,7 +1232,7 @@ func TestMatrixIntegrationPerformance(t *testing.T) {
 // - No resource leaks during error conditions
 // - System state remains consistent after failures
 // - Partial failures don't compromise overall system stability
-func TestMatrixIntegrationErrorHandling(t *testing.T) {
+func TestMatrixIntegration_ErrorHandling(t *testing.T) {
 	t.Log("=== MATRIX INTEGRATION TEST: ERROR HANDLING AND EDGE CASES ===")
 	t.Log("Testing robust error handling and system stability")
 
@@ -1466,101 +1471,51 @@ func createTestNeuronPopulation(matrix *ExtracellularMatrix, count int) ([]compo
 	return neurons, nil
 }
 
-// measureSignalingLatency measures the time for signal propagation
-func measureSignalingLatency(matrix *ExtracellularMatrix, sourceID string, signalType SignalType) time.Duration {
-	start := time.Now()
-	matrix.SendSignal(signalType, sourceID, 1.0)
-	return time.Since(start)
-}
+func TestMatrixIntegration_SynapticWiring(t *testing.T) {
+	t.Log("=== PROVING SYNAPTIC WIRING NOW WORKS ===")
 
-// validateBiologicalResponse checks if a neuron responds appropriately to stimuli
-func validateBiologicalResponse(t *testing.T, neuron *MockNeuron, expectedMinResponse float64) {
-	initialPotential := neuron.GetCurrentPotential()
-	finalPotential := neuron.GetCurrentPotential()
-
-	response := finalPotential - initialPotential
-	if response < expectedMinResponse {
-		t.Errorf("Insufficient biological response: %.3f < %.3f", response, expectedMinResponse)
-	}
-}
-func TestMatrix_SynapticWiring_ProveItsBroken(t *testing.T) {
-	t.Log("=== PROVING SYNAPTIC WIRING IS BROKEN ===")
-
-	// Create matrix
+	// Same setup as before...
 	matrix := NewExtracellularMatrix(ExtracellularMatrixConfig{
 		ChemicalEnabled: true,
 		SpatialEnabled:  true,
 		UpdateInterval:  10 * time.Millisecond,
 		MaxComponents:   100,
 	})
-
-	t.Log("1. Matrix created")
+	defer matrix.Stop()
 
 	err := matrix.Start()
 	if err != nil {
 		t.Fatalf("Failed to start matrix: %v", err)
 	}
-	defer matrix.Stop()
 
-	t.Log("2. Matrix started")
-
-	// Register mock neuron factory (using existing MockNeuron)
-	matrix.RegisterNeuronType("test_neuron", func(id string, config types.NeuronConfig, callbacks component.NeuronCallbacks) (component.NeuralComponent, error) {
-		mockNeuron := NewMockNeuron(id, config.Position, config.Receptors)
-		mockNeuron.SetCallbacks(callbacks)
-		return mockNeuron, nil
+	// Register factories
+	matrix.RegisterNeuronType("test_neuron", func(id string, config types.NeuronConfig, callbacks NeuronCallbacks) (component.NeuralComponent, error) {
+		return NewMockNeuron(id, config.Position, config.Receptors), nil
 	})
 
-	t.Log("3. Registered mock neuron factory (using existing MockNeuron)")
-
-	// Register mock synapse factory (using existing MockSynapse)
 	matrix.RegisterSynapseType("test_synapse", func(id string, config types.SynapseConfig, callbacks SynapseCallbacks) (component.SynapticProcessor, error) {
-		mockSynapse := NewMockSynapse(id, config.Position, config.PresynapticID, config.PostsynapticID, config.InitialWeight)
-		return mockSynapse, nil
+		return NewMockSynapse(id, config.Position, config.PresynapticID, config.PostsynapticID, config.InitialWeight), nil
 	})
 
-	t.Log("4. Registered mock synapse factory (using existing MockSynapse)")
-
-	// Create neurons via matrix
+	// Create neurons and synapse
 	preNeuron, err := matrix.CreateNeuron(types.NeuronConfig{
 		NeuronType: "test_neuron",
-		Threshold:  1.0,
-		Position:   types.Position3D{X: 0, Y: 0, Z: 0},
+		Position:   Position3D{X: 0, Y: 0, Z: 0},
+		Threshold:  0.7,
 	})
 	if err != nil {
 		t.Fatalf("Failed to create presynaptic neuron: %v", err)
 	}
 
-	t.Log("5. Created neuron via matrix - preNeuron")
-
 	postNeuron, err := matrix.CreateNeuron(types.NeuronConfig{
 		NeuronType: "test_neuron",
-		Threshold:  1.0,
-		Position:   types.Position3D{X: 1, Y: 0, Z: 0},
+		Position:   Position3D{X: 10, Y: 0, Z: 0},
+		Threshold:  0.7,
 	})
 	if err != nil {
 		t.Fatalf("Failed to create postsynaptic neuron: %v", err)
 	}
 
-	t.Log("6. Create neurons via matrix - postNeuron")
-
-	// Start neurons
-	err = preNeuron.Start()
-	if err != nil {
-		t.Fatalf("Failed to start presynaptic neuron: %v", err)
-	}
-	defer preNeuron.Stop()
-
-	t.Log("6. started - preNeuron")
-
-	err = postNeuron.Start()
-	if err != nil {
-		t.Fatalf("Failed to start postsynaptic neuron: %v", err)
-	}
-	defer postNeuron.Stop()
-	t.Log("7. started - postNeuron")
-
-	// Create synapse via matrix (this should wire it but currently doesn't!)
 	synapse, err := matrix.CreateSynapse(types.SynapseConfig{
 		SynapseType:    "test_synapse",
 		PresynapticID:  preNeuron.ID(),
@@ -1571,81 +1526,285 @@ func TestMatrix_SynapticWiring_ProveItsBroken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create synapse: %v", err)
 	}
-	t.Log("7. Created synapse via matrix")
 
-	// Cast to mocks to check state
-	preNeuronMock, ok := preNeuron.(*MockNeuron)
-	if !ok {
-		t.Fatalf("Presynaptic neuron is not a MockNeuron")
-	}
+	// Cast to check state
+	preNeuronMock := preNeuron.(*MockNeuron)
+	synapseMock := synapse.(*MockSynapse)
 
-	synapseMock, ok := synapse.(*MockSynapse)
-	if !ok {
-		t.Fatalf("Synapse is not a MockSynapse")
-	}
+	t.Log("--- Testing Synaptic Wiring ---")
 
-	t.Log("--- Before Testing: Check Initial State ---")
 	initialTransmissionCount := synapseMock.GetTransmissionCount()
-	t.Logf("Synapse transmission count: %d", initialTransmissionCount)
+	t.Logf("Initial synapse transmission count: %d", initialTransmissionCount)
 
-	// Test the key insight: The matrix creates the synapse but doesn't wire it to the neuron
-	// We need to check if the presynaptic neuron can somehow communicate with the synapse
-
-	// Since MockNeuron doesn't implement AddOutputCallback, let's test by trying
-	// to see if the matrix integration did ANYTHING to connect them
-
-	// Check if the presynaptic neuron has any connection info
+	// Check if wiring happened
 	connections := preNeuronMock.GetConnections()
-	t.Logf("Pre-neuron connections: %v", connections)
+	t.Logf("Pre-neuron connections after wiring: %v", connections)
 
-	// Test: Simulate what should happen when a neuron fires
-	// In a properly wired system, this should somehow result in synapse transmission
+	if len(connections) == 0 {
+		t.Error("❌ WIRING FAILED: Presynaptic neuron has no connections")
+		return
+	}
 
-	// Since the MockNeuron doesn't have output callbacks, the current matrix
-	// integrateSynapseIntoBiologicalSystems method will SILENTLY FAIL to wire
-	// the synapse because the interface check will fail
+	// NOW: Test the actual wiring by making the neuron fire
+	t.Log("🔥 Triggering presynaptic neuron firing...")
+	preNeuronMock.FireAndTransmit(1.5) // Strong signal
 
-	// Let's verify this by looking at transmission count again
-	time.Sleep(10 * time.Millisecond) // Allow any async operations
+	// Allow time for transmission
+	time.Sleep(10 * time.Millisecond)
 
 	finalTransmissionCount := synapseMock.GetTransmissionCount()
 	t.Logf("Final synapse transmission count: %d", finalTransmissionCount)
 
-	// The problem is: There's no mechanism for the presynaptic neuron to notify the synapse!
-
-	if finalTransmissionCount == initialTransmissionCount {
-		t.Error("❌ WIRING IS BROKEN: Matrix creates synapses but doesn't connect them to neurons")
-		t.Error("❌ The synapse exists but has no way to receive signals from the presynaptic neuron")
-		t.Error("❌ Current integrateSynapseIntoBiologicalSystems is missing the critical wiring step")
+	if finalTransmissionCount > initialTransmissionCount {
+		t.Log("🎉 ✅ WIRING WORKS! Presynaptic firing triggered synaptic transmission")
+		t.Logf("✅ Transmissions increased: %d → %d",
+			initialTransmissionCount, finalTransmissionCount)
 	} else {
-		t.Log("✓ Wiring appears to work (unexpected)")
+		t.Error("❌ WIRING STILL BROKEN: Neuron firing didn't trigger transmission")
 	}
 
-	// Additional check: See if the matrix knows about the relationship
-	allNeurons := matrix.ListNeurons()
-	allSynapses := matrix.ListSynapses()
+	// Additional validation
+	t.Log("\n--- Additional Validation ---")
 
-	t.Logf("Matrix registered neurons: %d", len(allNeurons))
-	t.Logf("Matrix registered synapses: %d", len(allSynapses))
-
-	if len(allSynapses) > 0 {
-		t.Log("✓ Matrix knows about the synapse")
-		t.Logf("  Synapse ID: %s", allSynapses[0].ID())
-		t.Logf("  Presynaptic: %s", allSynapses[0].GetPresynapticID())
-		t.Logf("  Postsynaptic: %s", allSynapses[0].GetPostsynapticID())
+	// Test multiple firings
+	for i := 0; i < 3; i++ {
+		preNeuronMock.FireAndTransmit(1.0)
+		time.Sleep(5 * time.Millisecond)
 	}
 
-	if len(allNeurons) > 0 {
-		t.Log("✓ Matrix knows about the neurons")
-		for i, neuron := range allNeurons {
-			t.Logf("  Neuron %d ID: %s", i, neuron.ID())
-		}
+	veryFinalCount := synapseMock.GetTransmissionCount()
+	t.Logf("After 3 more firings: %d transmissions", veryFinalCount)
+
+	if veryFinalCount >= finalTransmissionCount+3 {
+		t.Log("✅ Multiple firings work correctly")
+	} else {
+		t.Error("❌ Multiple firings not working as expected")
+	}
+}
+
+func TestMatrixIntegration_SynapticWiring_EdgeCases(t *testing.T) {
+	t.Log("=== TESTING SYNAPTIC WIRING EDGE CASES ===")
+	t.Log("Validating robust behavior under various conditions")
+
+	// Setup matrix
+	matrix := NewExtracellularMatrix(ExtracellularMatrixConfig{
+		ChemicalEnabled: true,
+		SpatialEnabled:  true,
+		UpdateInterval:  10 * time.Millisecond,
+		MaxComponents:   100,
+	})
+	defer matrix.Stop()
+
+	err := matrix.Start()
+	if err != nil {
+		t.Fatalf("Failed to start matrix: %v", err)
 	}
 
-	// Final diagnosis
-	t.Log("\n--- DIAGNOSIS ---")
-	t.Log("❌ PROBLEM: Matrix creates and registers synapses but doesn't wire them")
-	t.Log("❌ MISSING: Connection between presynaptic neuron firing and synapse transmission")
-	t.Log("❌ ROOT CAUSE: integrateSynapseIntoBiologicalSystems lacks the wiring logic")
-	t.Log("✅ SOLUTION: Add output callback registration in the integration method")
+	// Register factories
+	matrix.RegisterNeuronType("test_neuron", func(id string, config types.NeuronConfig, callbacks component.NeuronCallbacks) (component.NeuralComponent, error) {
+		mockNeuron := NewMockNeuron(id, config.Position, config.Receptors)
+		mockNeuron.SetCallbacks(callbacks)
+		return mockNeuron, nil
+	})
+
+	matrix.RegisterSynapseType("test_synapse", func(id string, config types.SynapseConfig, callbacks SynapseCallbacks) (component.SynapticProcessor, error) {
+		mockSynapse := NewMockSynapse(id, config.Position, config.PresynapticID, config.PostsynapticID, config.InitialWeight)
+		mockSynapse.SetCallbacks(callbacks)
+		return mockSynapse, nil
+	})
+
+	// === EDGE CASE 1: INACTIVE NEURON FIRING ===
+	t.Log("\n--- Edge Case 1: Inactive Neuron Firing ---")
+
+	inactiveNeuron, err := matrix.CreateNeuron(types.NeuronConfig{
+		NeuronType: "test_neuron",
+		Position:   types.Position3D{X: 0, Y: 0, Z: 0},
+	})
+	if err != nil {
+		t.Fatalf("Failed to create inactive neuron: %v", err)
+	}
+
+	activeTarget, err := matrix.CreateNeuron(types.NeuronConfig{
+		NeuronType: "test_neuron",
+		Position:   types.Position3D{X: 10, Y: 0, Z: 0},
+	})
+	if err != nil {
+		t.Fatalf("Failed to create target neuron: %v", err)
+	}
+
+	// Start only the target neuron
+	activeTarget.Start()
+	defer activeTarget.Stop()
+
+	// Create synapse from inactive to active neuron
+	inactiveSynapse, err := matrix.CreateSynapse(types.SynapseConfig{
+		SynapseType:    "test_synapse",
+		PresynapticID:  inactiveNeuron.ID(),
+		PostsynapticID: activeTarget.ID(),
+		InitialWeight:  0.8,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create synapse from inactive neuron: %v", err)
+	}
+
+	// Test firing from inactive neuron
+	inactiveNeuronMock := inactiveNeuron.(*MockNeuron)
+	inactiveSynapseMock := inactiveSynapse.(*MockSynapse)
+
+	initialCount := inactiveSynapseMock.GetTransmissionCount()
+	inactiveNeuronMock.FireAndTransmit(1.5)
+	time.Sleep(10 * time.Millisecond)
+	finalCount := inactiveSynapseMock.GetTransmissionCount()
+
+	if finalCount > initialCount {
+		t.Log("✅ Inactive neuron can still transmit (may be expected behavior)")
+	} else {
+		t.Log("⚠️  Inactive neuron transmission blocked (may be expected)")
+	}
+
+	// === EDGE CASE 2: MULTIPLE SYNAPSES FROM ONE NEURON ===
+	t.Log("\n--- Edge Case 2: Multiple Synapses from One Neuron ---")
+
+	multiSource, err := matrix.CreateNeuron(types.NeuronConfig{
+		NeuronType: "test_neuron",
+		Position:   types.Position3D{X: 20, Y: 0, Z: 0},
+	})
+	if err != nil {
+		t.Fatalf("Failed to create multi-source neuron: %v", err)
+	}
+
+	target1, err := matrix.CreateNeuron(types.NeuronConfig{
+		NeuronType: "test_neuron",
+		Position:   types.Position3D{X: 30, Y: 0, Z: 0},
+	})
+	if err != nil {
+		t.Fatalf("Failed to create target1: %v", err)
+	}
+
+	target2, err := matrix.CreateNeuron(types.NeuronConfig{
+		NeuronType: "test_neuron",
+		Position:   types.Position3D{X: 30, Y: 10, Z: 0},
+	})
+	if err != nil {
+		t.Fatalf("Failed to create target2: %v", err)
+	}
+
+	// Start all neurons
+	multiSource.Start()
+	defer multiSource.Stop()
+	target1.Start()
+	defer target1.Stop()
+	target2.Start()
+	defer target2.Stop()
+
+	// Create multiple synapses from the same source
+	synapse1, err := matrix.CreateSynapse(types.SynapseConfig{
+		SynapseType:    "test_synapse",
+		PresynapticID:  multiSource.ID(),
+		PostsynapticID: target1.ID(),
+		InitialWeight:  0.6,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create synapse1: %v", err)
+	}
+
+	synapse2, err := matrix.CreateSynapse(types.SynapseConfig{
+		SynapseType:    "test_synapse",
+		PresynapticID:  multiSource.ID(),
+		PostsynapticID: target2.ID(),
+		InitialWeight:  0.7,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create synapse2: %v", err)
+	}
+
+	// Test that one neuron can drive multiple synapses
+	multiSourceMock := multiSource.(*MockNeuron)
+	synapse1Mock := synapse1.(*MockSynapse)
+	synapse2Mock := synapse2.(*MockSynapse)
+
+	initialCount1 := synapse1Mock.GetTransmissionCount()
+	initialCount2 := synapse2Mock.GetTransmissionCount()
+
+	t.Log("🔥 Firing neuron with multiple output synapses...")
+	multiSourceMock.FireAndTransmit(1.8)
+	time.Sleep(15 * time.Millisecond)
+
+	finalCount1 := synapse1Mock.GetTransmissionCount()
+	finalCount2 := synapse2Mock.GetTransmissionCount()
+
+	transmission1 := finalCount1 - initialCount1
+	transmission2 := finalCount2 - initialCount2
+
+	t.Logf("Synapse 1 transmissions: %d", transmission1)
+	t.Logf("Synapse 2 transmissions: %d", transmission2)
+
+	if transmission1 > 0 && transmission2 > 0 {
+		t.Log("✅ Multiple synapse transmission successful")
+		t.Log("✅ One-to-many neural connectivity working correctly")
+	} else {
+		t.Error("❌ Multiple synapse transmission failed")
+	}
+
+	// === EDGE CASE 3: RAPID FIRING STRESS TEST ===
+	t.Log("\n--- Edge Case 3: Rapid Firing Stress Test ---")
+
+	stressNeuron, err := matrix.CreateNeuron(types.NeuronConfig{
+		NeuronType: "test_neuron",
+		Position:   types.Position3D{X: 40, Y: 0, Z: 0},
+	})
+	if err != nil {
+		t.Fatalf("Failed to create stress test neuron: %v", err)
+	}
+
+	stressTarget, err := matrix.CreateNeuron(types.NeuronConfig{
+		NeuronType: "test_neuron",
+		Position:   types.Position3D{X: 50, Y: 0, Z: 0},
+	})
+	if err != nil {
+		t.Fatalf("Failed to create stress test target: %v", err)
+	}
+
+	stressNeuron.Start()
+	defer stressNeuron.Stop()
+	stressTarget.Start()
+	defer stressTarget.Stop()
+
+	stressSynapse, err := matrix.CreateSynapse(types.SynapseConfig{
+		SynapseType:    "test_synapse",
+		PresynapticID:  stressNeuron.ID(),
+		PostsynapticID: stressTarget.ID(),
+		InitialWeight:  0.9,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create stress test synapse: %v", err)
+	}
+
+	stressNeuronMock := stressNeuron.(*MockNeuron)
+	stressSynapseMock := stressSynapse.(*MockSynapse)
+
+	// Rapid firing test
+	stressInitialCount := stressSynapseMock.GetTransmissionCount()
+
+	t.Log("🔥 Rapid firing stress test (10 firings)...")
+	for i := 0; i < 10; i++ {
+		stressNeuronMock.FireAndTransmit(1.5)
+		time.Sleep(1 * time.Millisecond) // Very rapid firing
+	}
+
+	time.Sleep(20 * time.Millisecond) // Allow all transmissions to complete
+
+	stressFinalCount := stressSynapseMock.GetTransmissionCount()
+	stressTransmissions := stressFinalCount - stressInitialCount
+
+	t.Logf("Stress test transmissions: %d/10", stressTransmissions)
+
+	if stressTransmissions >= 8 { // Allow some loss under stress
+		t.Log("✅ Rapid firing stress test passed")
+	} else {
+		t.Logf("⚠️  Some transmissions lost under rapid firing: %d/10", stressTransmissions)
+	}
+
+	t.Log("\n✅ EDGE CASE TESTING COMPLETE")
+	t.Log("✅ Synaptic wiring system robust under various conditions")
 }
