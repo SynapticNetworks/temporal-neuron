@@ -51,6 +51,12 @@ type BasicSynapse struct {
 	stdpConfig    types.PlasticityConfig // Configuration for spike-timing dependent plasticity
 	pruningConfig PruningConfig          // Configuration for structural plasticity (pruning)
 
+	// === ELIGIBILITY TRACE ===
+	// These fields implement biological eligibility trace for reinforcement learning
+	eligibilityTrace     float64       // Current eligibility value (decays over time)
+	eligibilityTimestamp time.Time     // When eligibility was last updated
+	eligibilityDecay     time.Duration // Time constant for eligibility decay
+
 	// === ACTIVITY TRACKING ===
 	// These track the synapse's recent activity for plasticity and pruning decisions
 	lastPlasticityEvent time.Time // Tracks the last time STDP was applied
@@ -135,6 +141,11 @@ func NewBasicSynapseWithMatrix(id string, pre component.MessageScheduler, post c
 		stdpConfig:    stdpConfig,
 		pruningConfig: pruningConfig,
 
+		// Initialize eligibility trace mechanism
+		eligibilityTrace:     0.0,
+		eligibilityTimestamp: time.Now(),
+		eligibilityDecay:     500 * time.Millisecond, // Default 500ms decay time
+
 		// Activity tracking
 		lastPlasticityEvent: time.Now(),
 		lastTransmission:    time.Now(),
@@ -185,6 +196,9 @@ func (s *BasicSynapse) Transmit(signalValue float64) {
 	// Update last transmission time for pruning and plasticity decisions
 	s.mutex.Lock()
 	s.lastTransmission = time.Now()
+
+	// Create a small positive eligibility trace for pre-synaptic activity
+	s.updateEligibilityTrace(0.2)
 	s.mutex.Unlock()
 
 	// === MESSAGE CREATION ===
@@ -259,11 +273,19 @@ func (s *BasicSynapse) ApplyPlasticity(adjustment types.PlasticityAdjustment) {
 	}
 
 	// Calculate the weight change based on spike timing
-	change := calculateSTDPWeightChange(adjustment.DeltaT, s.stdpConfig)
-	newWeight := s.weight + change
+	stdpContribution := calculateSTDPWeightChange(adjustment.DeltaT, s.stdpConfig)
 
-	// Enforce the weight boundaries defined in the configuration.
-	// This prevents runaway strengthening or complete elimination of synapses.
+	// Update eligibility trace based on STDP contribution
+	s.updateEligibilityTrace(stdpContribution)
+
+	// Apply immediate weight change (smaller effect without modulation)
+	modulationFactor := 0.5 // Default factor for non-modulated plasticity
+
+	// Calculate weight change
+	weightDelta := s.stdpConfig.LearningRate * stdpContribution * modulationFactor
+
+	// Apply the weight change with boundary enforcement
+	newWeight := s.weight + weightDelta
 	if newWeight < s.stdpConfig.MinWeight {
 		newWeight = s.stdpConfig.MinWeight
 	} else if newWeight > s.stdpConfig.MaxWeight {
@@ -273,6 +295,99 @@ func (s *BasicSynapse) ApplyPlasticity(adjustment types.PlasticityAdjustment) {
 	// Apply the weight change and update tracking
 	s.weight = newWeight
 	s.lastPlasticityEvent = time.Now()
+}
+
+// updateEligibilityTrace updates the eligibility trace with a new contribution
+// while handling decay of the existing trace
+func (s *BasicSynapse) updateEligibilityTrace(contribution float64) {
+	now := time.Now()
+
+	// Calculate decay since last update
+	elapsed := now.Sub(s.eligibilityTimestamp)
+	decayFactor := math.Exp(-float64(elapsed) / float64(s.eligibilityDecay))
+
+	// Decay existing trace and add new contribution
+	s.eligibilityTrace = s.eligibilityTrace*decayFactor + contribution
+	s.eligibilityTimestamp = now
+}
+
+// ProcessNeuromodulation handles dopamine or other neuromodulatory signals
+// that modify synaptic strength based on eligibility traces
+func (s *BasicSynapse) ProcessNeuromodulation(ligandType types.LigandType, concentration float64) float64 {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	// Get current eligibility trace with decay
+	elapsed := time.Since(s.eligibilityTimestamp)
+	decayFactor := math.Exp(-float64(elapsed) / float64(s.eligibilityDecay))
+	currentEligibility := s.eligibilityTrace * decayFactor
+
+	// Skip processing if eligibility is too small
+	if math.Abs(currentEligibility) < 0.01 {
+		return 0.0
+	}
+
+	// Process differently based on neuromodulator type
+	var modulationFactor float64
+	switch ligandType {
+	case types.LigandDopamine:
+		// Dopamine signifies reward - positive modulation
+		// Subtract baseline dopamine (typically ~1.0) to get reward prediction error
+		rpe := concentration - 1.0
+		modulationFactor = rpe
+	case types.LigandSerotonin:
+		// Serotonin can have complex effects - simplify for now
+		modulationFactor = concentration * 0.5
+	default:
+		// Other neuromodulators - minor effect
+		modulationFactor = concentration * 0.2
+	}
+
+	// Calculate weight change based on eligibility and modulation
+	// This is the three-factor learning rule:
+	// Δw = learning_rate * eligibility_trace * modulation
+	weightDelta := s.stdpConfig.LearningRate * currentEligibility * modulationFactor
+
+	// Apply the weight change with boundary enforcement
+	oldWeight := s.weight
+	s.weight += weightDelta
+
+	if s.weight < s.stdpConfig.MinWeight {
+		s.weight = s.stdpConfig.MinWeight
+	} else if s.weight > s.stdpConfig.MaxWeight {
+		s.weight = s.stdpConfig.MaxWeight
+	}
+
+	// Record plasticity event
+	s.lastPlasticityEvent = time.Now()
+
+	// Return actual weight change
+	return s.weight - oldWeight
+}
+
+// GetEligibilityTrace returns the current eligibility trace value
+// with decay applied since the last update
+func (s *BasicSynapse) GetEligibilityTrace() float64 {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+
+	// Calculate decay since last update
+	elapsed := time.Since(s.eligibilityTimestamp)
+	decayFactor := math.Exp(-float64(elapsed) / float64(s.eligibilityDecay))
+
+	return s.eligibilityTrace * decayFactor
+}
+
+// SetEligibilityDecay configures the time constant for eligibility trace decay
+func (s *BasicSynapse) SetEligibilityDecay(decay time.Duration) {
+	if decay <= 0 {
+		return // Invalid decay time
+	}
+
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	s.eligibilityDecay = decay
 }
 
 // ShouldPrune determines if a synapse is a candidate for removal.
