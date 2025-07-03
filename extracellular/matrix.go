@@ -1159,6 +1159,13 @@ func (ecm *ExtracellularMatrix) Start() error {
 //
 // This ensures clean shutdown without leaving hanging processes or corrupted state.
 func (ecm *ExtracellularMatrix) Stop() error {
+	// First signal that we're shutting down, WITHOUT holding the mutex
+	ecm.cancel() // Cancel any ongoing operations
+
+	// Give goroutines a moment to notice cancellation
+	time.Sleep(20 * time.Millisecond)
+
+	// Now acquire lock to update state
 	ecm.mu.Lock()
 	defer ecm.mu.Unlock()
 
@@ -1166,7 +1173,10 @@ func (ecm *ExtracellularMatrix) Stop() error {
 		return nil // Already inactive
 	}
 
-	// Deactivate all neural components in reverse activation order
+	// Deactivate all neural components WITHOUT holding the main mutex
+	// to prevent deadlock if neurons try to call back to the matrix
+	ecm.mu.Unlock() // Temporarily release lock
+
 	for _, neuron := range ecm.neurons {
 		neuron.Stop()
 	}
@@ -1174,8 +1184,9 @@ func (ecm *ExtracellularMatrix) Stop() error {
 	// Shutdown chemical signaling systems
 	ecm.chemicalModulator.Stop()
 
-	// Signal coordination shutdown
-	ecm.cancel()
+	// Reacquire lock to update final state
+	ecm.mu.Lock()
+
 	ecm.started = false
 	return nil
 }
