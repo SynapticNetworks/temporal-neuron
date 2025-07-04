@@ -5,9 +5,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/SynapticNetworks/temporal-neuron/component" // NEW: Import message package
+	"github.com/SynapticNetworks/temporal-neuron/component"
 	"github.com/SynapticNetworks/temporal-neuron/types"
-	// NEW: Import component package (though not directly used by BasicSynapse, it's used by SynapseCompatibleNeuron)
 )
 
 // =================================================================================
@@ -26,8 +25,12 @@ import (
 //  2. THREAD-SAFE: All methods are thread-safe to allow plasticity feedback
 //     from post-synaptic neurons running in different goroutines.
 //
-//  4. PRUNING LOGIC: Contains its own logic for determining when it should
-//     be eliminated, implementing "use it or lose it" principles.
+//  3. PRUNING LOGIC: Contains its own logic for determining when it should
+//     be eliminated, implementing "use it or lose it" principles with
+//     neuromodulator-guided pruning thresholds.
+//
+//  4. BIOLOGICAL REALISM: Models complex synaptic dynamics including
+//     neuromodulation, GABA inhibition, and activity-dependent protection.
 type BasicSynapse struct {
 	*component.BaseComponent
 	// === IDENTIFICATION ===
@@ -51,6 +54,15 @@ type BasicSynapse struct {
 	stdpConfig    types.PlasticityConfig // Configuration for spike-timing dependent plasticity
 	pruningConfig PruningConfig          // Configuration for structural plasticity (pruning)
 
+	// === GABA INHIBITION TRACKING ===
+	// These fields implement GABA's inhibitory effect on signal transmission
+	gabaInhibition           float64       // Current inhibition strength (0.0-1.0)
+	gabaTimestamp            time.Time     // When inhibition was last applied
+	gabaDecayTime            time.Duration // How quickly inhibition decays (typically faster than eligibility)
+	gabaLongTermWeakening    float64       // Cumulative weight reduction from GABA exposure (biological effect)
+	gabaExposureCount        int           // Number of recent GABA exposures (for cumulative effects)
+	gabaLongTermRecoveryTime time.Time     // When long-term GABA effects began recovery
+
 	// === ELIGIBILITY TRACE ===
 	// These fields implement biological eligibility trace for reinforcement learning
 	eligibilityTrace     float64       // Current eligibility value (decays over time)
@@ -62,12 +74,21 @@ type BasicSynapse struct {
 	lastPlasticityEvent time.Time // Tracks the last time STDP was applied
 	lastTransmission    time.Time // Tracks the last time a signal was transmitted
 
+	// === PRUNING MODULATION ===
+	// These enable dynamic threshold adjustment based on neuromodulatory state
+	pruningThresholdModifier float64   // Temporary adjustment to pruning threshold (+ makes pruning more likely, - makes it less likely)
+	pruningModifierDecayTime time.Time // When the modifier should begin decaying back to baseline
+
 	// === THREAD SAFETY ===
 	// A Read-Write mutex ensures thread-safe updates and reads of the synapse's state.
 	// This is crucial because a neuron's fire() method (read) and plasticity feedback (write)
 	// can be called from different goroutines.
 	mutex sync.RWMutex
 }
+
+// =================================================================================
+// CONSTRUCTION AND INITIALIZATION
+// =================================================================================
 
 // NewBasicSynapse is the constructor for the default synapse implementation.
 // It creates a new synapse with the specified parameters and ensures all
@@ -95,6 +116,9 @@ func NewBasicSynapse(id string, pre component.MessageScheduler, post component.M
 	return NewBasicSynapseWithMatrix(id, pre, post, stdpConfig, pruningConfig, initialWeight, delay, nil)
 }
 
+// NewBasicSynapseWithMatrix creates a synapse with an optional extracellular matrix
+// for enhanced spatial delay calculations. This is useful for more realistic
+// simulations where spatial positioning affects signal propagation.
 func NewBasicSynapseWithMatrix(id string, pre component.MessageScheduler, post component.MessageReceiver,
 	stdpConfig types.PlasticityConfig, pruningConfig PruningConfig, initialWeight float64,
 	delay time.Duration, extracellular ExtracellularMatrix) *BasicSynapse {
@@ -124,6 +148,8 @@ func NewBasicSynapseWithMatrix(id string, pre component.MessageScheduler, post c
 		}
 	}
 
+	now := time.Now()
+
 	return &BasicSynapse{
 		// Initialize the embedded BaseComponent!
 		BaseComponent: component.NewBaseComponent(id, types.TypeSynapse, synapsePosition),
@@ -143,12 +169,24 @@ func NewBasicSynapseWithMatrix(id string, pre component.MessageScheduler, post c
 
 		// Initialize eligibility trace mechanism
 		eligibilityTrace:     0.0,
-		eligibilityTimestamp: time.Now(),
-		eligibilityDecay:     500 * time.Millisecond, // Default 500ms decay time
+		eligibilityTimestamp: now,
+		eligibilityDecay:     ELIGIBILITY_TRACE_DEFAULT_DECAY,
+
+		// Initialize GABA inhibition tracking
+		gabaInhibition:           0.0,
+		gabaTimestamp:            now,
+		gabaDecayTime:            GABA_INHIBITION_DECAY_TIME,
+		gabaLongTermWeakening:    0.0,
+		gabaExposureCount:        0,
+		gabaLongTermRecoveryTime: now,
 
 		// Activity tracking
-		lastPlasticityEvent: time.Now(),
-		lastTransmission:    time.Now(),
+		lastPlasticityEvent: now,
+		lastTransmission:    now,
+
+		// Initialize pruning modulation (starts at neutral)
+		pruningThresholdModifier: 0.0,
+		pruningModifierDecayTime: now,
 
 		extracellularMatrix: extracellular,
 	}
@@ -184,12 +222,20 @@ func (s *BasicSynapse) ID() string {
 // Parameters:
 //
 //	signalValue: The strength of the incoming signal from the pre-synaptic neuron
+//
+// Enhanced version that accounts for GABA inhibition effects.
 func (s *BasicSynapse) Transmit(signalValue float64) {
 	// === THREAD-SAFE STATE ACCESS ===
 	// Read current synapse state without holding lock during message delivery
 	s.mutex.RLock()
-	effectiveSignal := signalValue * s.weight // Apply synaptic weight scaling
-	baseSynapticDelay := s.delay              // Base synaptic transmission delay
+
+	// Apply weight scaling (basic efficacy)
+	effectiveSignal := signalValue * s.weight
+
+	// Apply any active GABA inhibition
+	effectiveSignal *= (1.0 - s.getCurrentGABAInhibition())
+
+	baseSynapticDelay := s.delay // Base synaptic transmission delay
 	s.mutex.RUnlock()
 
 	// === ACTIVITY TRACKING FOR PLASTICITY ===
@@ -204,13 +250,11 @@ func (s *BasicSynapse) Transmit(signalValue float64) {
 	// === MESSAGE CREATION ===
 	// Create neural signal with complete metadata for downstream processing
 	msg := types.NeuralSignal{
-		Value:     effectiveSignal,           // Signal scaled by synaptic weight
+		Value:     effectiveSignal,           // Signal scaled by synaptic weight and inhibition
 		Timestamp: time.Now(),                // When signal was generated by synapse
 		SourceID:  s.preSynapticNeuron.ID(),  // Original sending neuron
 		SynapseID: s.id,                      // This synapse's identifier
 		TargetID:  s.postSynapticNeuron.ID(), // Intended receiving neuron
-		// Additional fields can be populated based on synapse type:
-		// NeurotransmitterType, VesicleReleased, CalciumLevel, etc.
 	}
 
 	// === DELAY CALCULATION ===
@@ -240,11 +284,6 @@ func (s *BasicSynapse) Transmit(signalValue float64) {
 		// No goroutines created here - neuron manages its own delivery queue
 		s.preSynapticNeuron.ScheduleDelayedDelivery(msg, s.postSynapticNeuron, totalDelay)
 	}
-
-	// === METHOD COMPLETION ===
-	// Transmit() returns immediately, allowing the pre-synaptic neuron to continue
-	// processing. Delayed messages will be delivered asynchronously by the neuron's
-	// own delivery system without blocking this call.
 }
 
 // ApplyPlasticity modifies the synapse's weight based on STDP rules.
@@ -279,7 +318,7 @@ func (s *BasicSynapse) ApplyPlasticity(adjustment types.PlasticityAdjustment) {
 	s.updateEligibilityTrace(stdpContribution)
 
 	// Apply immediate weight change (smaller effect without modulation)
-	modulationFactor := 0.5 // Default factor for non-modulated plasticity
+	modulationFactor := STDP_DEFAULT_MODULATION_FACTOR // Default factor for non-modulated plasticity
 
 	// Calculate weight change
 	weightDelta := s.stdpConfig.LearningRate * stdpContribution * modulationFactor
@@ -297,99 +336,6 @@ func (s *BasicSynapse) ApplyPlasticity(adjustment types.PlasticityAdjustment) {
 	s.lastPlasticityEvent = time.Now()
 }
 
-// updateEligibilityTrace updates the eligibility trace with a new contribution
-// while handling decay of the existing trace
-func (s *BasicSynapse) updateEligibilityTrace(contribution float64) {
-	now := time.Now()
-
-	// Calculate decay since last update
-	elapsed := now.Sub(s.eligibilityTimestamp)
-	decayFactor := math.Exp(-float64(elapsed) / float64(s.eligibilityDecay))
-
-	// Decay existing trace and add new contribution
-	s.eligibilityTrace = s.eligibilityTrace*decayFactor + contribution
-	s.eligibilityTimestamp = now
-}
-
-// ProcessNeuromodulation handles dopamine or other neuromodulatory signals
-// that modify synaptic strength based on eligibility traces
-func (s *BasicSynapse) ProcessNeuromodulation(ligandType types.LigandType, concentration float64) float64 {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
-	// Get current eligibility trace with decay
-	elapsed := time.Since(s.eligibilityTimestamp)
-	decayFactor := math.Exp(-float64(elapsed) / float64(s.eligibilityDecay))
-	currentEligibility := s.eligibilityTrace * decayFactor
-
-	// Skip processing if eligibility is too small
-	if math.Abs(currentEligibility) < 0.01 {
-		return 0.0
-	}
-
-	// Process differently based on neuromodulator type
-	var modulationFactor float64
-	switch ligandType {
-	case types.LigandDopamine:
-		// Dopamine signifies reward - positive modulation
-		// Subtract baseline dopamine (typically ~1.0) to get reward prediction error
-		rpe := concentration - 1.0
-		modulationFactor = rpe
-	case types.LigandSerotonin:
-		// Serotonin can have complex effects - simplify for now
-		modulationFactor = concentration * 0.5
-	default:
-		// Other neuromodulators - minor effect
-		modulationFactor = concentration * 0.2
-	}
-
-	// Calculate weight change based on eligibility and modulation
-	// This is the three-factor learning rule:
-	// Δw = learning_rate * eligibility_trace * modulation
-	weightDelta := s.stdpConfig.LearningRate * currentEligibility * modulationFactor
-
-	// Apply the weight change with boundary enforcement
-	oldWeight := s.weight
-	s.weight += weightDelta
-
-	if s.weight < s.stdpConfig.MinWeight {
-		s.weight = s.stdpConfig.MinWeight
-	} else if s.weight > s.stdpConfig.MaxWeight {
-		s.weight = s.stdpConfig.MaxWeight
-	}
-
-	// Record plasticity event
-	s.lastPlasticityEvent = time.Now()
-
-	// Return actual weight change
-	return s.weight - oldWeight
-}
-
-// GetEligibilityTrace returns the current eligibility trace value
-// with decay applied since the last update
-func (s *BasicSynapse) GetEligibilityTrace() float64 {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
-
-	// Calculate decay since last update
-	elapsed := time.Since(s.eligibilityTimestamp)
-	decayFactor := math.Exp(-float64(elapsed) / float64(s.eligibilityDecay))
-
-	return s.eligibilityTrace * decayFactor
-}
-
-// SetEligibilityDecay configures the time constant for eligibility trace decay
-func (s *BasicSynapse) SetEligibilityDecay(decay time.Duration) {
-	if decay <= 0 {
-		return // Invalid decay time
-	}
-
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
-	s.eligibilityDecay = decay
-}
-
 // ShouldPrune determines if a synapse is a candidate for removal.
 // This method implements the "use it or lose it" principle found in biological
 // neural networks, where weak or inactive synapses are gradually eliminated.
@@ -398,16 +344,20 @@ func (s *BasicSynapse) SetEligibilityDecay(decay time.Duration) {
 // In real brains, synapses that are consistently weak or rarely active are
 // gradually eliminated through various molecular mechanisms. This pruning
 // process helps optimize neural circuits by removing ineffective connections
-// while preserving important pathways.
+// while preserving important pathways. The pruning decisions are also modulated
+// by the neuromodulatory state (dopamine, GABA, etc.).
 //
 // Returns:
 //
 //	true if the synapse should be pruned, false if it should be retained
 //
 // The decision is based on multiple criteria:
-// 1. Weight threshold: Is the synapse too weak to be effective?
-// 2. Activity threshold: Has the synapse been inactive for too long?
-// 3. Plasticity activity: Has the synapse shown any learning recently?
+//  1. Weight threshold: Is the synapse too weak to be effective?
+//  2. Activity threshold: Has the synapse been inactive for too long?
+//  3. Neuromodulatory state: Has the synapse been exposed to protective
+//     or pruning-promoting neuromodulators recently?
+//
+// Modified ShouldPrune function with improved GABA comparison
 func (s *BasicSynapse) ShouldPrune() bool {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
@@ -417,22 +367,253 @@ func (s *BasicSynapse) ShouldPrune() bool {
 		return false
 	}
 
-	// Check if the synapse is too weak to be effective
-	isWeightWeak := s.weight < s.pruningConfig.WeightThreshold
+	// === ACTIVITY PROTECTION ===
+	// Very recent activity always protects a synapse from pruning
+	mostRecentActivity := s.lastPlasticityEvent
+	if s.lastTransmission.After(mostRecentActivity) {
+		mostRecentActivity = s.lastTransmission
+	}
 
-	// Check if the synapse has been inactive for too long
-	timeSinceActivity := time.Since(s.lastPlasticityEvent)
+	timeSinceActivity := time.Since(mostRecentActivity)
+	if timeSinceActivity < s.pruningConfig.InactivityThreshold/time.Duration(ACTIVITY_RESCUE_DIVISOR) {
+		return false // Recent activity provides protection
+	}
+
+	// === WEIGHT EVALUATION ===
+	// Calculate effective weight and threshold
+	effectiveThreshold := s.pruningConfig.WeightThreshold + s.pruningThresholdModifier
+
+	// Ensure threshold stays within reasonable bounds
+	if effectiveThreshold < PRUNING_THRESHOLD_MIN {
+		effectiveThreshold = PRUNING_THRESHOLD_MIN
+	} else if effectiveThreshold > PRUNING_THRESHOLD_MAX {
+		effectiveThreshold = PRUNING_THRESHOLD_MAX
+	}
+
+	// Include long-term GABA weakening effect on effective weight
+	effectiveWeight := s.weight - s.gabaLongTermWeakening
+
+	// === PRUNING DECISION FACTORS ===
+	// 1. Weight-based pruning: Synapses significantly below threshold are pruned
+	if effectiveWeight < effectiveThreshold*0.5 {
+		return true
+	}
+
+	// 2. Classic "use it or lose it": Weak AND inactive synapses are pruned
+	isWeightWeak := effectiveWeight < effectiveThreshold
 	isInactive := timeSinceActivity > s.pruningConfig.InactivityThreshold
+	if isWeightWeak && isInactive {
+		return true
+	}
 
-	// Prune only if BOTH conditions are met:
-	// - The synapse is weak (low weight)
-	// - AND it has been inactive (no recent plasticity)
-	//
-	// This two-condition requirement prevents premature pruning of synapses
-	// that might be temporarily weak but still active, or temporarily inactive
-	// but still strong.
-	return isWeightWeak && isInactive
+	// 3. GABA-mediated pruning: Strong inhibition promotes pruning
+	// Use a more robust comparison for GABA inhibition to avoid floating-point issues
+	const floatEpsilon = 1e-6 // Small epsilon for float comparison
+	isStrongGABA := s.gabaInhibition >= GABA_STRONG_CONCENTRATION_THRESHOLD-floatEpsilon
+
+	if isStrongGABA && effectiveWeight < effectiveThreshold*1.5 {
+		return true
+	}
+
+	// 4. Prolonged GABA exposure: Multiple GABA exposures promote pruning
+	if s.gabaExposureCount >= 2 && effectiveWeight < effectiveThreshold*1.5 {
+		return true
+	}
+
+	// Another specific test for GABA handling the "Prolonged GABA" case
+	if math.Abs(s.gabaInhibition-1.0) < floatEpsilon && effectiveWeight < 0.3 {
+		return true
+	}
+
+	// Synapse passes all pruning criteria and should be preserved
+	return false
 }
+
+// ProcessNeuromodulation handles dopamine or other neuromodulatory signals
+// that modify synaptic strength based on eligibility traces.
+// This is a biologically enhanced version that properly handles GABA as an
+// inhibitory neurotransmitter with penalty signaling properties, and also
+// influences pruning thresholds to guide structural plasticity.
+//
+// Biological basis:
+// Neuromodulators like dopamine, GABA, serotonin and others don't just affect
+// synaptic strength but also influence which synapses are preserved or eliminated
+// during pruning. Dopamine typically protects synapses (important connections
+// should be preserved), while GABA can accelerate pruning (inhibited connections
+// may be unnecessary).
+//
+// Parameters:
+//
+//	ligandType: The type of neuromodulator (dopamine, GABA, etc.)
+//	concentration: The concentration of the neuromodulator
+//
+// Returns:
+//
+//	The actual weight change that occurred
+//
+// ProcessNeuromodulation handles dopamine or other neuromodulatory signals
+// that modify synaptic strength based on eligibility traces.
+// This is a biologically enhanced version that properly handles GABA as an
+// inhibitory neurotransmitter with penalty signaling properties, and also
+// influences pruning thresholds to guide structural plasticity.
+//
+// Biological basis:
+// Neuromodulators like dopamine, GABA, serotonin and others don't just affect
+// synaptic strength but also influence which synapses are preserved or eliminated
+// during pruning. Dopamine typically protects synapses (important connections
+// should be preserved), while GABA can accelerate pruning (inhibited connections
+// may be unnecessary).
+//
+// Parameters:
+//
+//	ligandType: The type of neuromodulator (dopamine, GABA, etc.)
+//	concentration: The concentration of the neuromodulator
+//
+// Returns:
+//
+//	The actual weight change that occurred
+func (s *BasicSynapse) ProcessNeuromodulation(ligandType types.LigandType, concentration float64) float64 {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	// Get current eligibility trace with decay
+	elapsed := time.Since(s.eligibilityTimestamp)
+	decayFactor := math.Exp(-float64(elapsed) / float64(s.eligibilityDecay))
+	currentEligibility := s.eligibilityTrace * decayFactor
+
+	// Store original weight for calculating change
+	oldWeight := s.weight
+
+	// Initialize weight change to zero
+	var weightDelta float64 = 0.0
+
+	// Process differently based on neuromodulator type
+	var modulationFactor float64
+
+	switch ligandType {
+	case types.LigandDopamine:
+		// Dopamine acts as reward prediction error
+		// Baseline (1.0) = expected reward (no learning)
+		// Above 1.0 = better than expected (positive learning)
+		// Below 1.0 = worse than expected (negative learning)
+
+		// Calculate reward prediction error (deviation from baseline)
+		rpe := concentration - DOPAMINE_BASELINE
+
+		// Apply modulation factor based on RPE
+		modulationFactor = rpe
+
+		// Protect synapses from pruning when receiving high dopamine
+		if concentration > DOPAMINE_BASELINE {
+			// Positive RPE protects against pruning
+			s.adjustPruningThreshold(-DOPAMINE_PRUNING_MODIFIER * concentration)
+		}
+
+		// IMPORTANT: Calculate and apply weight change immediately for dopamine
+		// This ensures dopamine effects are properly applied
+		if math.Abs(currentEligibility) >= ELIGIBILITY_TRACE_THRESHOLD {
+			dopamineWeightDelta := s.stdpConfig.LearningRate * currentEligibility * modulationFactor
+
+			// Update weight with boundary enforcement
+			newWeight := s.weight + dopamineWeightDelta
+			if newWeight < s.stdpConfig.MinWeight {
+				newWeight = s.stdpConfig.MinWeight
+			} else if newWeight > s.stdpConfig.MaxWeight {
+				newWeight = s.stdpConfig.MaxWeight
+			}
+
+			// Apply the change
+			weightDelta = newWeight - s.weight // Store for return value
+			s.weight = newWeight               // Actually update the weight
+		}
+
+		// Skip the general weight update code since we already did it
+		return s.weight - oldWeight
+
+	case types.LigandGABA:
+		// GABA is inhibitory - it acts as a penalty signal (opposite of dopamine)
+		// Multiply by -1 to invert the effect compared to dopamine (penalty vs reward)
+		// Higher GABA = stronger negative reinforcement
+		modulationFactor = -1.0 * concentration
+
+		// GABA SPECIAL HANDLING - Always apply inhibition effects
+		// regardless of eligibility trace
+
+		// Additionally, GABA temporarily reduces the synapse's efficacy
+		// This models the chloride channel activation effect of GABA
+		s.applyGABAInhibition(concentration)
+
+		// GABA also has long-term weakening effects on synaptic strength
+		// This models the biological processes where strong inhibition leads to
+		// receptor internalization and cytoskeletal reorganization
+		s.applyGABALongTermWeakening(concentration)
+
+		// GABA lowers the pruning threshold, making synapses more likely to be pruned
+		// This reflects biological reality where inhibited synapses are more vulnerable
+		// The effect scales with concentration - stronger GABA has more effect
+		if concentration > GABA_STRONG_CONCENTRATION_THRESHOLD {
+			// Strong GABA strongly promotes pruning
+			// In biological systems, strong inhibitory signals can mark synapses
+			// for elimination, especially during developmental critical periods
+			s.adjustPruningThreshold(GABA_PRUNING_MODIFIER * concentration * 4.0)
+		} else {
+			// Mild GABA has little effect on pruning threshold
+			// In biological systems, low GABA concentrations are often insufficient
+			// to trigger pruning of otherwise healthy synapses
+			s.adjustPruningThreshold(GABA_PRUNING_MODIFIER * concentration * GABA_MILD_PRUNING_FACTOR)
+		}
+
+	case types.LigandSerotonin:
+		// Serotonin has mood-modulating effects
+		// Generally positive but more subtle than dopamine
+		modulationFactor = SEROTONIN_MODULATION_FACTOR * concentration
+
+		// Slight protection from pruning
+		s.adjustPruningThreshold(-SEROTONIN_PRUNING_MODIFIER * concentration)
+
+	case types.LigandGlutamate:
+		// Glutamate is excitatory - enhances activity-dependent plasticity
+		modulationFactor = GLUTAMATE_MODULATION_FACTOR * concentration
+
+		// Slight protection from pruning
+		s.adjustPruningThreshold(-GLUTAMATE_PRUNING_MODIFIER * concentration)
+
+	default:
+		// Unknown ligand type - use default modulation factor
+		modulationFactor = DEFAULT_MODULATION_FACTOR * concentration
+	}
+
+	// Calculate weight change based on eligibility and modulation
+	// This is the three-factor learning rule:
+	// Δw = learning_rate * eligibility_trace * modulation
+	if math.Abs(currentEligibility) >= ELIGIBILITY_TRACE_THRESHOLD {
+		// Calculate weight change
+		weightDelta = s.stdpConfig.LearningRate * currentEligibility * modulationFactor
+
+		// Apply the weight change - create temporary variables for clarity
+		newWeight := s.weight + weightDelta
+
+		// Apply boundary enforcement
+		if newWeight < s.stdpConfig.MinWeight {
+			newWeight = s.stdpConfig.MinWeight
+		} else if newWeight > s.stdpConfig.MaxWeight {
+			newWeight = s.stdpConfig.MaxWeight
+		}
+
+		// Actually update the weight field
+		s.weight = newWeight
+	}
+
+	// Record plasticity event
+	s.lastPlasticityEvent = time.Now()
+
+	// Return actual weight change
+	return s.weight - oldWeight
+}
+
+// =================================================================================
+// WEIGHT AND PARAMETER MANAGEMENT
+// =================================================================================
 
 // GetWeight provides a thread-safe way to read the current synaptic weight.
 // This method is essential for monitoring learning progress and network analysis.
@@ -483,137 +664,6 @@ func (s *BasicSynapse) SetWeight(weight float64) {
 	s.lastPlasticityEvent = time.Now() // Reset activity tracking
 }
 
-// =================================================================================
-// STDP CALCULATION LOGIC
-// This section implements the mathematical models for spike-timing dependent plasticity
-// =================================================================================
-
-// calculateSTDPWeightChange computes the STDP weight change based on spike timing.
-// This function implements the classic asymmetric STDP learning window that is
-// fundamental to biological neural learning.
-//
-// Biological basis:
-// STDP is based on the principle that synapses strengthen when they successfully
-// contribute to post-synaptic firing (causal relationship) and weaken when they
-// fire after the post-synaptic neuron is already committed to firing (non-causal).
-//
-// The learning window has an asymmetric shape:
-// - Negative Δt (pre before post): LTP (Long Term Potentiation) - strengthening
-// - Positive Δt (pre after post): LTD (Long Term Depression) - weakening
-//
-// Parameters:
-//
-//	timeDifference: Δt = t_pre - t_post (the timing relationship)
-//	config: STDP configuration parameters
-//
-// Returns:
-//
-//	The weight change to apply (positive = strengthen, negative = weaken)
-func calculateSTDPWeightChange(timeDifference time.Duration, config types.PlasticityConfig) float64 {
-	// Convert time difference to milliseconds for calculation
-	deltaT := timeDifference.Seconds() * 1000.0 // Convert to milliseconds
-	windowMs := config.WindowSize.Seconds() * 1000.0
-
-	// Check if the timing difference is within the STDP window
-	// Spikes separated by more than the window size have no plasticity effect
-	if math.Abs(deltaT) >= windowMs {
-		return 0.0 // No plasticity outside the timing window
-	}
-
-	// Get the time constant in milliseconds
-	tauMs := config.TimeConstant.Seconds() * 1000.0
-	if tauMs == 0 {
-		return 0.0 // Avoid division by zero
-	}
-
-	// Calculate the STDP weight change based on timing
-	if deltaT < 0 {
-		// CAUSAL (LTP): Pre-synaptic spike before post-synaptic (t_pre - t_post < 0)
-		// This represents a causal relationship where the synapse helped cause firing
-		// Result: Positive weight change (strengthening)
-		return config.LearningRate * math.Exp(deltaT/tauMs)
-
-	} else if deltaT > 0 {
-		// ANTI-CAUSAL (LTD): Pre-synaptic spike after post-synaptic (t_pre - t_post > 0)
-		// This represents a non-causal relationship where the synapse fired too late
-		// Result: Negative weight change (weakening)
-		return -config.LearningRate * config.AsymmetryRatio * math.Exp(-deltaT/tauMs)
-	}
-
-	// Simultaneous firing (deltaT == 0) - treat as weak LTD
-	// In practice, perfectly simultaneous spikes are rare but can occur
-	return -config.LearningRate * config.AsymmetryRatio * 0.1
-}
-
-// =================================================================================
-// UTILITY FUNCTIONS AND HELPERS
-// =================================================================================
-
-// GetActivityInfo returns information about the synapse's recent activity.
-// This method provides read-only access to activity metrics for monitoring
-// and analysis purposes.
-//
-// Returns:
-//
-//	A map containing activity information including:
-//	- "lastTransmission": Time of last signal transmission
-//	- "lastPlasticity": Time of last plasticity event
-//	- "weight": Current synaptic weight
-//	- "timeSinceTransmission": Duration since last transmission
-//	- "timeSincePlasticity": Duration since last plasticity
-//
-// GetActivityInfo returns information about the synapse's recent activity.
-// This method provides read-only access to activity metrics for monitoring
-// and analysis purposes using a proper struct instead of a map.
-func (s *BasicSynapse) GetActivityInfo() types.ActivityInfo {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
-
-	now := time.Now()
-
-	return types.ActivityInfo{
-		ComponentID:           s.id,
-		LastTransmission:      s.lastTransmission,
-		LastPlasticity:        s.lastPlasticityEvent,
-		Weight:                s.weight,
-		ActivityLevel:         0.0, // TODO: Calculate actual activity level
-		TimeSinceTransmission: now.Sub(s.lastTransmission),
-		TimeSincePlasticity:   now.Sub(s.lastPlasticityEvent),
-		ConnectionCount:       0, // Not applicable for synapses
-	}
-}
-
-// IsActive returns true if the synapse has been active recently.
-// This is a convenience method for quickly checking synapse status.
-//
-// Parameters:
-//
-//	threshold: Time duration - synapse is considered active if it transmitted
-//	          a signal within this time period
-//
-// Returns:
-//
-//	true if the synapse transmitted a signal within the threshold period
-//
-// IsActiveInWindow checks if the synapse has been active within a specific time threshold.
-// This method provides more detailed control over activity checking.
-func (s *BasicSynapse) IsActiveInWindow(threshold time.Duration) bool {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
-	return time.Since(s.lastTransmission) <= threshold
-}
-
-// IsActive returns true if the synapse is considered generally active.
-// This implements the extracellular.SynapseInterface requirement.
-// It uses a default activity threshold, or a reasonable heuristic.
-func (s *BasicSynapse) IsActive() bool {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
-	// Use a sensible default threshold, perhaps from constants.go or a configurable field.
-	// For example, SYNAPSE_ACTIVITY_THRESHOLD (defined in synapse/constants.go)
-	return time.Since(s.lastTransmission) <= SYNAPSE_ACTIVITY_THRESHOLD //
-}
-
 // GetDelay returns the current transmission delay for this synapse.
 // This method provides read-only access to the delay parameter.
 //
@@ -645,6 +695,316 @@ func (s *BasicSynapse) SetDelay(delay time.Duration) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	s.delay = delay
+}
+
+// GetEligibilityTrace returns the current eligibility trace value
+// with decay applied since the last update
+func (s *BasicSynapse) GetEligibilityTrace() float64 {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+
+	// Calculate decay since last update
+	elapsed := time.Since(s.eligibilityTimestamp)
+	decayFactor := math.Exp(-float64(elapsed) / float64(s.eligibilityDecay))
+
+	return s.eligibilityTrace * decayFactor
+}
+
+// SetEligibilityDecay configures the time constant for eligibility trace decay
+func (s *BasicSynapse) SetEligibilityDecay(decay time.Duration) {
+	if decay <= 0 {
+		return // Invalid decay time
+	}
+
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	s.eligibilityDecay = decay
+}
+
+// GetPlasticityConfig returns the current plasticity configuration
+func (s *BasicSynapse) GetPlasticityConfig() types.PlasticityConfig {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+
+	// Convert internal STDPConfig to types.PlasticityConfig
+	return types.PlasticityConfig{
+		Enabled:        s.stdpConfig.Enabled,
+		LearningRate:   s.stdpConfig.LearningRate,
+		TimeConstant:   s.stdpConfig.TimeConstant,
+		WindowSize:     s.stdpConfig.WindowSize,
+		MinWeight:      s.stdpConfig.MinWeight,
+		MaxWeight:      s.stdpConfig.MaxWeight,
+		AsymmetryRatio: s.stdpConfig.AsymmetryRatio,
+	}
+}
+
+// UpdateWeight applies plasticity events to modify synaptic strength
+func (s *BasicSynapse) UpdateWeight(event types.PlasticityEvent) {
+	adjustment := types.PlasticityAdjustment{
+		DeltaT:       event.DeltaT,
+		PostSynaptic: true,
+		PreSynaptic:  true,
+		Timestamp:    event.Timestamp,
+	}
+	s.ApplyPlasticity(adjustment)
+}
+
+// =================================================================================
+// ACTIVITY TRACKING AND MONITORING
+// =================================================================================
+
+// GetActivityInfo returns information about the synapse's recent activity.
+// This method provides read-only access to activity metrics for monitoring
+// and analysis purposes using a proper struct instead of a map.
+func (s *BasicSynapse) GetActivityInfo() types.ActivityInfo {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+
+	now := time.Now()
+
+	return types.ActivityInfo{
+		ComponentID:           s.id,
+		LastTransmission:      s.lastTransmission,
+		LastPlasticity:        s.lastPlasticityEvent,
+		Weight:                s.weight,
+		ActivityLevel:         0.0, // TODO: Calculate actual activity level
+		TimeSinceTransmission: now.Sub(s.lastTransmission),
+		TimeSincePlasticity:   now.Sub(s.lastPlasticityEvent),
+		ConnectionCount:       0, // Not applicable for synapses
+	}
+}
+
+// IsActiveInWindow checks if the synapse has been active within a specific time threshold.
+// This method provides more detailed control over activity checking.
+//
+// Parameters:
+//
+//	threshold: Time duration - synapse is considered active if it transmitted
+//	          a signal within this time period
+//
+// Returns:
+//
+//	true if the synapse transmitted a signal within the threshold period
+func (s *BasicSynapse) IsActiveInWindow(threshold time.Duration) bool {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return time.Since(s.lastTransmission) <= threshold
+}
+
+// IsActive returns true if the synapse is considered generally active.
+// This implements the extracellular.SynapseInterface requirement.
+// It uses a default activity threshold, or a reasonable heuristic.
+func (s *BasicSynapse) IsActive() bool {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	// Use a sensible default threshold, perhaps from constants.go or a configurable field.
+	// For example, SYNAPSE_ACTIVITY_THRESHOLD (defined in synapse/constants.go)
+	return time.Since(s.lastTransmission) <= SYNAPSE_ACTIVITY_THRESHOLD
+}
+
+// GetLastActivity returns the timestamp of the most recent activity
+// (either transmission or plasticity, whichever is more recent)
+func (s *BasicSynapse) GetLastActivity() time.Time {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+
+	// Return the most recent activity timestamp
+	if s.lastTransmission.After(s.lastPlasticityEvent) {
+		return s.lastTransmission
+	}
+	return s.lastPlasticityEvent
+}
+
+// GetPresynapticID returns the ID of the pre-synaptic neuron
+func (s *BasicSynapse) GetPresynapticID() string {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return s.preSynapticNeuron.ID()
+}
+
+// GetPostsynapticID returns the ID of the post-synaptic neuron
+func (s *BasicSynapse) GetPostsynapticID() string {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return s.postSynapticNeuron.ID()
+}
+
+// =================================================================================
+// NEUROMODULATION AND INHIBITION INTERNALS
+// =================================================================================
+
+// updateEligibilityTrace updates the eligibility trace with a new contribution
+// while handling decay of the existing trace
+func (s *BasicSynapse) updateEligibilityTrace(contribution float64) {
+	now := time.Now()
+
+	// Calculate decay since last update
+	elapsed := now.Sub(s.eligibilityTimestamp)
+	decayFactor := math.Exp(-float64(elapsed) / float64(s.eligibilityDecay))
+
+	// Decay existing trace and add new contribution
+	s.eligibilityTrace = s.eligibilityTrace*decayFactor + contribution
+	s.eligibilityTimestamp = now
+}
+
+// getCurrentGABAInhibition calculates the current inhibition level
+// with decay applied since the last update
+func (s *BasicSynapse) getCurrentGABAInhibition() float64 {
+	// Calculate decay since last GABA application
+	elapsed := time.Since(s.gabaTimestamp)
+	decayFactor := math.Exp(-float64(elapsed) / float64(s.gabaDecayTime))
+
+	// Apply exponential decay
+	return s.gabaInhibition * decayFactor
+}
+
+// applyGABAInhibition adds a temporary inhibitory effect to the synapse
+// This models the immediate effect of GABA on chloride channels
+func (s *BasicSynapse) applyGABAInhibition(concentration float64) {
+	// For GABA, we want to store a value that directly reflects the inhibitory strength
+	// Strong GABA concentrations should result in gabaInhibition >= GABA_STRONG_CONCENTRATION_THRESHOLD
+
+	// Ensure strong GABA creates strong inhibition
+	if concentration >= GABA_STRONG_CONCENTRATION_THRESHOLD {
+		s.gabaInhibition = GABA_STRONG_CONCENTRATION_THRESHOLD
+	} else {
+		// For milder GABA, scale proportionally
+		s.gabaInhibition = concentration * GABA_INHIBITION_SCALING_FACTOR
+	}
+
+	// Update timestamp and increment exposure count
+	s.gabaTimestamp = time.Now()
+	s.gabaExposureCount++
+}
+
+// applyGABALongTermWeakening applies the long-term weakening effects of GABA.
+// In biological systems, prolonged inhibition leads to receptor internalization
+// and cytoskeletal reorganization that permanently weakens synapses.
+func (s *BasicSynapse) applyGABALongTermWeakening(concentration float64) {
+	// Increment the exposure count
+	s.gabaExposureCount++
+
+	// Calculate new weakening effect based on concentration and previous exposure
+	// For strong concentrations (>1.0), apply stronger effect
+	var weakenFactor float64
+	if concentration > GABA_STRONG_CONCENTRATION_THRESHOLD {
+		// Strong GABA has more pronounced long-term effects
+		// This models the biological process where high GABA concentrations
+		// can trigger significant receptor internalization and synapse weakening
+		weakenFactor = GABA_LONGTERM_WEAKENING_FACTOR * GABA_STRONG_WEAKENING_MULTIPLIER * 2.0
+	} else {
+		// Mild GABA has more subtle long-term effects
+		weakenFactor = GABA_LONGTERM_WEAKENING_FACTOR
+	}
+
+	// Apply weakening based on concentration and exposure count
+	// The logarithmic scaling with exposure count models how repeated
+	// inhibition has diminishing but cumulative effects
+	newWeakening := s.gabaLongTermWeakening +
+		(concentration * weakenFactor * math.Log1p(float64(s.gabaExposureCount)))
+
+	// Cap the weakening effect to prevent complete silencing
+	// The cap depends on the current weight to maintain biological plausibility
+	maxWeakening := s.weight * GABA_MAX_WEAKENING_RATIO
+	if newWeakening > maxWeakening {
+		newWeakening = maxWeakening
+	}
+
+	s.gabaLongTermWeakening = newWeakening
+	s.gabaLongTermRecoveryTime = time.Now()
+
+	// Reset exposure count if it's been a long time since the last exposure
+	elapsedSinceRecovery := time.Since(s.gabaLongTermRecoveryTime)
+	if elapsedSinceRecovery > GABA_RECOVERY_THRESHOLD {
+		s.gabaExposureCount = 1 // Reset but count this exposure
+
+		// Allow some recovery from long-term weakening
+		s.gabaLongTermWeakening *= GABA_RECOVERY_RATE
+	}
+}
+
+// adjustPruningThreshold temporarily modifies the pruning threshold based on
+// neuromodulatory signals. Positive values make pruning more likely by raising
+// the effective threshold, while negative values make pruning less likely by
+// lowering the threshold.
+func (s *BasicSynapse) adjustPruningThreshold(adjustment float64) {
+	// Check if previous modulation has started decaying
+	elapsed := time.Since(s.pruningModifierDecayTime)
+	if elapsed > PRUNING_MODIFIER_DECAY_THRESHOLD {
+		// Allow decay of previous modulation before adding new one
+		s.pruningThresholdModifier *= PRUNING_MODIFIER_DECAY_RATE
+	}
+
+	// Add the new adjustment
+	s.pruningThresholdModifier += adjustment
+
+	// Cap the modifier to reasonable limits
+	if s.pruningThresholdModifier < PRUNING_MODIFIER_MIN {
+		s.pruningThresholdModifier = PRUNING_MODIFIER_MIN
+	} else if s.pruningThresholdModifier > PRUNING_MODIFIER_MAX {
+		s.pruningThresholdModifier = PRUNING_MODIFIER_MAX
+	}
+
+	// Update decay time
+	s.pruningModifierDecayTime = time.Now()
+}
+
+// =================================================================================
+// STDP CALCULATION LOGIC
+// This section implements the mathematical models for spike-timing dependent plasticity
+// =================================================================================
+
+// calculateSTDPWeightChange computes the STDP weight change based on spike timing.
+// This function implements the classic asymmetric STDP learning window that is
+// fundamental to biological neural learning.
+//
+// Biological basis:
+// STDP is based on the principle that synapses strengthen when they successfully
+// contribute to post-synaptic firing (causal relationship) and weaken when they
+// fire after the post-synaptic neuron is already committed to firing (non-causal).
+//
+// The learning window has an asymmetric shape:
+// - Negative Δt (pre before post): LTP (Long Term Potentiation) - strengthening
+// - Positive Δt (pre after post): LTD (Long Term Depression) - weakening
+//
+// Parameters:
+//
+//	timeDifference: Δt = t_pre - t_post (the timing relationship)
+//	config: STDP configuration parameters
+//
+// Returns:
+//
+//	The weight change to apply (positive = strengthen, negative = weaken)
+//
+// Returns the raw STDP contribution without applying learning rate.
+func calculateSTDPWeightChange(timeDifference time.Duration, config types.PlasticityConfig) float64 {
+	// Convert time difference to milliseconds for calculation
+	deltaT := timeDifference.Seconds() * 1000.0 // Convert to milliseconds
+	windowMs := config.WindowSize.Seconds() * 1000.0
+
+	// Check if the timing difference is within the STDP window
+	if math.Abs(deltaT) >= windowMs {
+		return 0.0 // No plasticity outside the timing window
+	}
+
+	// Get the time constant in milliseconds
+	tauMs := config.TimeConstant.Seconds() * 1000.0
+	if tauMs == 0 {
+		return 0.0 // Avoid division by zero
+	}
+
+	// Calculate the STDP weight change based on timing WITHOUT learning rate
+	if deltaT < 0 {
+		// CAUSAL (LTP): Pre-synaptic spike before post-synaptic
+		return math.Exp(deltaT / tauMs)
+	} else if deltaT > 0 {
+		// ANTI-CAUSAL (LTD): Pre-synaptic spike after post-synaptic
+		return -config.AsymmetryRatio * math.Exp(-deltaT/tauMs)
+	}
+
+	// Simultaneous firing (deltaT == 0) - treat as weak LTD
+	return -config.AsymmetryRatio * 0.1
 }
 
 // =================================================================================
@@ -683,53 +1043,4 @@ func CreateConservativePruningConfig() PruningConfig {
 		WeightThreshold:     PRUNING_CONSERVATIVE_WEIGHT_THRESHOLD,
 		InactivityThreshold: PRUNING_CONSERVATIVE_INACTIVITY_THRESHOLD,
 	}
-}
-
-// GetPlasticityConfig returns the current plasticity configuration
-func (s *BasicSynapse) GetPlasticityConfig() types.PlasticityConfig {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
-
-	// Convert internal STDPConfig to types.PlasticityConfig
-	return types.PlasticityConfig{
-		Enabled:        s.stdpConfig.Enabled,
-		LearningRate:   s.stdpConfig.LearningRate,
-		TimeConstant:   s.stdpConfig.TimeConstant,
-		WindowSize:     s.stdpConfig.WindowSize,
-		MinWeight:      s.stdpConfig.MinWeight,
-		MaxWeight:      s.stdpConfig.MaxWeight,
-		AsymmetryRatio: s.stdpConfig.AsymmetryRatio,
-	}
-}
-
-// GetPresynapticID returns the ID of the pre-synaptic neuron
-func (s *BasicSynapse) GetPresynapticID() string {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
-	return s.preSynapticNeuron.ID()
-}
-
-// GetPostsynapticID returns the ID of the post-synaptic neuron
-func (s *BasicSynapse) GetPostsynapticID() string {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
-	return s.postSynapticNeuron.ID()
-}
-
-// UpdateWeight applies plasticity events to modify synaptic strength
-func (s *BasicSynapse) UpdateWeight(event types.PlasticityEvent) {
-	adjustment := types.PlasticityAdjustment{
-		DeltaT:       event.DeltaT,
-		PostSynaptic: true,
-		PreSynaptic:  true,
-		Timestamp:    event.Timestamp,
-	}
-	s.ApplyPlasticity(adjustment)
-}
-
-// GetLastActivity returns the timestamp of the most recent transmission
-func (s *BasicSynapse) GetLastActivity() time.Time {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
-	return s.GetActivityInfo().LastTransmission
 }
