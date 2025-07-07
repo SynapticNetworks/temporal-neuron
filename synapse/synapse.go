@@ -311,19 +311,32 @@ func (s *BasicSynapse) ApplyPlasticity(adjustment types.PlasticityAdjustment) {
 		return
 	}
 
+	// Debug output - print the raw adjustment
+	//fmt.Printf("PLASTICITY ADJUST: Synapse %s, DeltaT=%v (ns=%d)\n",s.id, adjustment.DeltaT, adjustment.DeltaT.Nanoseconds())
+
 	// Calculate the weight change based on spike timing
 	stdpContribution := calculateSTDPWeightChange(adjustment.DeltaT, s.stdpConfig)
 
-	// Update eligibility trace based on STDP contribution
-	s.updateEligibilityTrace(stdpContribution)
+	// Debug output - print the contribution
+	//fmt.Printf("PLASTICITY RESULT: Synapse %s, contribution=%.6f\n", s.id, stdpContribution)
 
 	// Apply immediate weight change (smaller effect without modulation)
 	modulationFactor := STDP_DEFAULT_MODULATION_FACTOR // Default factor for non-modulated plasticity
 
+	// Use the learning rate from the adjustment if provided, otherwise use the config's rate
+	learningRate := s.stdpConfig.LearningRate
+	if adjustment.LearningRate > 0 {
+		learningRate = adjustment.LearningRate
+	}
+
 	// Calculate weight change
-	weightDelta := s.stdpConfig.LearningRate * stdpContribution * modulationFactor
+	weightDelta := learningRate * stdpContribution * modulationFactor
+
+	// Debug output - print the weight delta
+	//fmt.Printf("PLASTICITY WEIGHT: Synapse %s, delta=%.6f (LR=%.4f, mod=%.2f)\n",	s.id, weightDelta, adjustment.LearningRate, modulationFactor)
 
 	// Apply the weight change with boundary enforcement
+	// oldWeight := s.weight
 	newWeight := s.weight + weightDelta
 	if newWeight < s.stdpConfig.MinWeight {
 		newWeight = s.stdpConfig.MinWeight
@@ -331,9 +344,28 @@ func (s *BasicSynapse) ApplyPlasticity(adjustment types.PlasticityAdjustment) {
 		newWeight = s.stdpConfig.MaxWeight
 	}
 
+	// Debug output - print the weight change
+	// fmt.Printf("PLASTICITY FINAL: Synapse %s, weight %.6f → %.6f (change: %+.6f)\n", s.id, oldWeight, newWeight, newWeight-oldWeight)
+
 	// Apply the weight change and update tracking
 	s.weight = newWeight
 	s.lastPlasticityEvent = time.Now()
+
+	// Update eligibility trace for future neuromodulation
+	s.eligibilityTrace = stdpContribution
+	s.eligibilityTimestamp = time.Now()
+}
+
+// calculateWeightDelta calculates a weight change consistently
+// between different plasticity mechanisms
+func (s *BasicSynapse) calculateWeightDelta(contribution float64, learningRateOverride float64) float64 {
+	// Use override learning rate if provided, otherwise use config
+	learningRate := s.stdpConfig.LearningRate
+	if learningRateOverride > 0 {
+		learningRate = learningRateOverride
+	}
+
+	return learningRate * contribution * STDP_DEFAULT_MODULATION_FACTOR
 }
 
 // ShouldPrune determines if a synapse is a candidate for removal.
@@ -743,9 +775,11 @@ func (s *BasicSynapse) GetPlasticityConfig() types.PlasticityConfig {
 func (s *BasicSynapse) UpdateWeight(event types.PlasticityEvent) {
 	adjustment := types.PlasticityAdjustment{
 		DeltaT:       event.DeltaT,
+		LearningRate: event.Strength, // This is the key change
 		PostSynaptic: true,
 		PreSynaptic:  true,
 		Timestamp:    event.Timestamp,
+		EventType:    event.EventType,
 	}
 	s.ApplyPlasticity(adjustment)
 }
@@ -979,31 +1013,38 @@ func (s *BasicSynapse) adjustPruningThreshold(adjustment float64) {
 //
 // Returns the raw STDP contribution without applying learning rate.
 func calculateSTDPWeightChange(timeDifference time.Duration, config types.PlasticityConfig) float64 {
-	// Convert time difference to milliseconds for calculation
-	deltaT := timeDifference.Seconds() * 1000.0 // Convert to milliseconds
-	windowMs := config.WindowSize.Seconds() * 1000.0
+	// Manual calculation from nanoseconds to milliseconds
+	// Use direct nanosecond value to avoid potential issues with Duration conversion
+	deltaTNs := timeDifference.Nanoseconds()
+	deltaTMs := float64(deltaTNs) / float64(time.Millisecond.Nanoseconds())
+
+	// Debug print
+	//fmt.Printf("STDP CALC: timeDifference=%v, nanoseconds=%d, deltaTMs=%.6f\n", timeDifference, deltaTNs, deltaTMs)
+
+	windowMs := float64(config.WindowSize.Nanoseconds()) / float64(time.Millisecond.Nanoseconds())
 
 	// Check if the timing difference is within the STDP window
-	if math.Abs(deltaT) >= windowMs {
+	if math.Abs(deltaTMs) >= windowMs {
 		return 0.0 // No plasticity outside the timing window
 	}
 
 	// Get the time constant in milliseconds
-	tauMs := config.TimeConstant.Seconds() * 1000.0
+	tauMs := float64(config.TimeConstant.Nanoseconds()) / float64(time.Millisecond.Nanoseconds())
 	if tauMs == 0 {
 		return 0.0 // Avoid division by zero
 	}
 
 	// Calculate the STDP weight change based on timing WITHOUT learning rate
-	if deltaT < 0 {
+	if deltaTMs < 0 {
 		// CAUSAL (LTP): Pre-synaptic spike before post-synaptic
-		return math.Exp(deltaT / tauMs)
-	} else if deltaT > 0 {
+		// Use absolute value for exponent to get a positive value
+		return math.Exp(deltaTMs / tauMs)
+	} else if deltaTMs > 0 {
 		// ANTI-CAUSAL (LTD): Pre-synaptic spike after post-synaptic
-		return -config.AsymmetryRatio * math.Exp(-deltaT/tauMs)
+		return -config.AsymmetryRatio * math.Exp(-deltaTMs/tauMs)
 	}
 
-	// Simultaneous firing (deltaT == 0) - treat as weak LTD
+	// Simultaneous firing (deltaTMs == 0) - treat as weak LTD
 	return -config.AsymmetryRatio * 0.1
 }
 
