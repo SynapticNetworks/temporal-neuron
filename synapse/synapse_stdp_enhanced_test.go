@@ -337,7 +337,10 @@ func TestEnhancedSTDP_BidirectionalPlasticity(t *testing.T) {
 
 		// Apply STDP events
 		for i := 0; i < tc.repetitions; i++ {
-			adjustment := types.PlasticityAdjustment{DeltaT: timing}
+			adjustment := types.PlasticityAdjustment{
+				DeltaT:       timing,
+				LearningRate: stdpConfig.LearningRate, // Actually use the learning rate from config
+			}
 			synapse.ApplyPlasticity(adjustment)
 
 			// Record weight at intervals
@@ -387,7 +390,10 @@ func TestEnhancedSTDP_BidirectionalPlasticity(t *testing.T) {
 
 	// Apply 100 LTP events
 	for i := 1; i <= 100; i++ {
-		adjustment := types.PlasticityAdjustment{DeltaT: timingLTP}
+		adjustment := types.PlasticityAdjustment{
+			DeltaT:       timingLTP,
+			LearningRate: stdpConfig.LearningRate, // Use the same learning rate from config
+		}
 		synapse.ApplyPlasticity(adjustment)
 
 		// Log at intervals
@@ -411,7 +417,10 @@ func TestEnhancedSTDP_BidirectionalPlasticity(t *testing.T) {
 
 	// Apply 100 LTD events
 	for i := 1; i <= 100; i++ {
-		adjustment := types.PlasticityAdjustment{DeltaT: timingLTD}
+		adjustment := types.PlasticityAdjustment{
+			DeltaT:       timingLTD,
+			LearningRate: stdpConfig.LearningRate, // Use the same learning rate from config
+		}
 		synapse.ApplyPlasticity(adjustment)
 
 		// Log at intervals
@@ -440,7 +449,10 @@ func TestEnhancedSTDP_BidirectionalPlasticity(t *testing.T) {
 	for i := 1; i <= 50; i += 5 {
 		// Apply 5 LTP events
 		for j := 0; j < 5; j++ {
-			adjustment := types.PlasticityAdjustment{DeltaT: -10 * time.Millisecond}
+			adjustment := types.PlasticityAdjustment{
+				DeltaT:       -10 * time.Millisecond,
+				LearningRate: stdpConfig.LearningRate, // Use the same learning rate from config
+			}
 			synapse.ApplyPlasticity(adjustment)
 		}
 
@@ -464,7 +476,10 @@ func TestEnhancedSTDP_BidirectionalPlasticity(t *testing.T) {
 	for i := 1; i <= 50; i += 5 {
 		// Apply 5 LTD events
 		for j := 0; j < 5; j++ {
-			adjustment := types.PlasticityAdjustment{DeltaT: 10 * time.Millisecond}
+			adjustment := types.PlasticityAdjustment{
+				DeltaT:       10 * time.Millisecond,
+				LearningRate: stdpConfig.LearningRate, // Use the same learning rate from config
+			}
 			synapse.ApplyPlasticity(adjustment)
 		}
 

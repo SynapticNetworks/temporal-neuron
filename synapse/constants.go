@@ -105,6 +105,21 @@ const (
 	DEFAULT_MODULATION_FACTOR float64 = 0.2 // Base modulation factor for unspecified neuromodulators
 )
 
+// GABA_STDP constants define how GABA affects the STDP learning curve
+const (
+	// Time constant for decay of GABA's effect on STDP
+	GABA_STDP_MODULATION_DECAY_TIME time.Duration = 200 * time.Millisecond
+
+	// Maximum narrowing of STDP window by GABA (as a fraction)
+	GABA_STDP_MAX_WINDOW_NARROWING float64 = 0.7
+
+	// Maximum increase in STDP asymmetry by GABA
+	GABA_STDP_MAX_ASYMMETRY_INCREASE float64 = 0.5
+
+	// Scaling factor for GABA concentration to STDP modulation
+	GABA_STDP_MODULATION_SCALING float64 = 0.3
+)
+
 // ELIGIBILITY_TRACE_CONSTANTS defines constants for eligibility trace mechanisms
 // which are essential for reinforcement learning in biological systems
 const (

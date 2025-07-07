@@ -11,6 +11,81 @@ import (
 	"github.com/SynapticNetworks/temporal-neuron/types"
 )
 
+// TestSTDPSignal_DeltaTSignConvention verifies the sign convention is consistent
+func TestSTDPSignal_DeltaTSignConvention(t *testing.T) {
+	// Create system
+	stdp := NewSTDPSignalingSystem(true, 10*time.Millisecond, 0.1)
+
+	// Create mock callbacks that will record the adjustments
+	mock := NewMockSTDPCallbacks()
+
+	// Set up test synapses with clear timings
+	postSpikeTime := time.Now()
+	preSpikeTimeBefore := postSpikeTime.Add(-10 * time.Millisecond) // Pre before Post
+	preSpikeTimeAfter := postSpikeTime.Add(10 * time.Millisecond)   // Post before Pre
+
+	testSynapses := []types.SynapseInfo{
+		{
+			ID:           "pre_before_post", // Should produce negative deltaT
+			SourceID:     "source1",
+			TargetID:     "target_neuron",
+			Weight:       0.5,
+			LastActivity: preSpikeTimeBefore,
+		},
+		{
+			ID:           "post_before_pre", // Should produce positive deltaT
+			SourceID:     "source2",
+			TargetID:     "target_neuron",
+			Weight:       0.5,
+			LastActivity: preSpikeTimeAfter,
+		},
+	}
+	mock.SetSynapses(testSynapses)
+
+	// Force feedback delivery now
+	feedbackCount := stdp.DeliverFeedbackNow("target_neuron", mock)
+	if feedbackCount != 2 {
+		t.Fatalf("Expected 2 synapses to receive feedback, got %d", feedbackCount)
+	}
+
+	// Get the adjustments from the mock
+	adjustments := mock.GetAdjustments()
+	if len(adjustments) != 2 {
+		t.Fatalf("Expected 2 adjustments, got %d", len(adjustments))
+	}
+
+	// Map adjustments by synapse ID for checking
+	adjustmentMap := make(map[string]types.PlasticityAdjustment)
+	for _, adj := range adjustments {
+		// We need to identify which adjustment is for which synapse
+		// Since we can't easily track this directly, we'll use the deltaT value
+		// Negative deltaT should be for pre_before_post, positive for post_before_pre
+		if adj.DeltaT < 0 {
+			adjustmentMap["pre_before_post"] = adj
+		} else {
+			adjustmentMap["post_before_pre"] = adj
+		}
+	}
+
+	// Verify sign conventions
+	preDeltaT, preOk := adjustmentMap["pre_before_post"].DeltaT, adjustmentMap["pre_before_post"].DeltaT != 0
+	postDeltaT, postOk := adjustmentMap["post_before_pre"].DeltaT, adjustmentMap["post_before_pre"].DeltaT != 0
+
+	t.Logf("Pre-before-Post deltaT: %v (found: %v)", preDeltaT, preOk)
+	t.Logf("Post-before-Pre deltaT: %v (found: %v)", postDeltaT, postOk)
+
+	// Check for sign inversions or missing adjustments
+	if !preOk || preDeltaT >= 0 {
+		t.Errorf("Pre-before-Post should have negative deltaT, got %v (found: %v)",
+			preDeltaT, preOk)
+	}
+
+	if !postOk || postDeltaT <= 0 {
+		t.Errorf("Post-before-Pre should have positive deltaT, got %v (found: %v)",
+			postDeltaT, postOk)
+	}
+}
+
 // TestSTDPSignaling_BasicFunctionality tests the basic operations of the STDP signaling system
 func TestSTDPSignaling_BasicFunctionality(t *testing.T) {
 	// Create a new STDP signaling system

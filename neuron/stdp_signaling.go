@@ -109,18 +109,37 @@ func (s *STDPSignalingSystem) CheckAndDeliverFeedback(neuronID string, callbacks
 		return false
 	}
 
-	// Save what we need and reset scheduled time
-	// executeTime := s.scheduledTime
-	learningRate := s.learningRate
-	s.scheduledTime = time.Time{} // Reset immediately while holding lock
-
+	// Reset scheduled time while holding the lock
+	s.scheduledTime = time.Time{}
 	s.mutex.Unlock()
 
-	// Deliver STDP feedback by triggering ApplyPlasticity on each incoming synapse
-	incomingDirection := types.SynapseIncoming
-	targetID := neuronID
+	// Call the shared implementation
+	feedbackCount := s.processSTDPFeedback(neuronID, callbacks)
+	return feedbackCount > 0
+}
+
+// DeliverFeedbackNow forces immediate STDP feedback delivery
+// This is useful for testing and direct control
+// Returns the number of synapses that received feedback
+// Fixed version of DeliverFeedbackNow to correct deltaT sign issue
+func (s *STDPSignalingSystem) DeliverFeedbackNow(neuronID string, callbacks component.NeuronCallbacks) int {
+	return s.processSTDPFeedback(neuronID, callbacks)
+}
+
+// processSTDPFeedback is the core implementation that both functions will use
+func (s *STDPSignalingSystem) processSTDPFeedback(neuronID string, callbacks component.NeuronCallbacks) int {
+	s.mutex.Lock()
+	// Quick exit conditions
+	if !s.enabled || callbacks == nil {
+		s.mutex.Unlock()
+		return 0
+	}
+	learningRate := s.learningRate
+	s.mutex.Unlock()
 
 	// Get all incoming synapses to this neuron
+	incomingDirection := types.SynapseIncoming
+	targetID := neuronID
 	synapses := callbacks.ListSynapses(types.SynapseCriteria{
 		TargetID:  &targetID,
 		Direction: &incomingDirection,
@@ -128,12 +147,35 @@ func (s *STDPSignalingSystem) CheckAndDeliverFeedback(neuronID string, callbacks
 
 	// Current time is the post-synaptic spike time
 	postSpikeTime := time.Now()
-
-	// Process each synapse
 	feedbackCount := 0
+
 	for _, synapse := range synapses {
-		// Calculate timing difference (negative for causal, positive for anti-causal)
+		// Skip synapses with invalid LastActivity
+		if synapse.LastActivity.IsZero() {
+			// fmt.Printf("STDP DEBUG: Skipping synapse %s with zero LastActivity\n", synapse.ID)
+			continue
+		}
+
+		// Calculate timing difference
 		deltaT := synapse.LastActivity.Sub(postSpikeTime)
+
+		// Skip synapses with zero deltaT
+		if deltaT == 0 {
+			//fmt.Printf("STDP DEBUG: Skipping synapse %s with zero deltaT\n", synapse.ID)
+			continue
+		}
+
+		// If deltaT is very close to zero but not exactly zero, ensure it's at least 1 nanosecond
+		if deltaT > -time.Nanosecond && deltaT < time.Nanosecond {
+			if deltaT >= 0 {
+				deltaT = time.Nanosecond // Ensure positive but non-zero
+			} else {
+				deltaT = -time.Nanosecond // Ensure negative but non-zero
+			}
+		}
+
+		// Debug the values before creating the adjustment
+		// fmt.Printf("STDP DEBUG: Synapse %s, LastActivity=%v, postSpikeTime=%v, deltaT=%v (ns=%d)\n",synapse.ID, synapse.LastActivity, postSpikeTime, deltaT, deltaT.Nanoseconds())
 
 		// Create plasticity adjustment
 		adjustment := types.PlasticityAdjustment{
@@ -145,66 +187,15 @@ func (s *STDPSignalingSystem) CheckAndDeliverFeedback(neuronID string, callbacks
 			EventType:    types.PlasticitySTDP,
 		}
 
-		// Deliver feedback by applying plasticity
+		// Debug the adjustment struct right after creation
+		//fmt.Printf("STDP DEBUG: Created adjustment with DeltaT=%v (ns=%d), LR=%.4f\n",adjustment.DeltaT, adjustment.DeltaT.Nanoseconds(), adjustment.LearningRate)
+
+		// Apply plasticity
 		err := callbacks.ApplyPlasticity(synapse.ID, adjustment)
 		if err == nil {
 			feedbackCount++
-		}
-	}
-
-	// Update statistics
-	if feedbackCount > 0 {
-		s.mutex.Lock()
-		s.lastFeedback = postSpikeTime
-		s.totalFeedbackEvents++
-		s.mutex.Unlock()
-	}
-
-	return feedbackCount > 0
-}
-
-// DeliverFeedbackNow forces immediate STDP feedback delivery
-// This is useful for testing and direct control
-// Returns the number of synapses that received feedback
-func (s *STDPSignalingSystem) DeliverFeedbackNow(neuronID string, callbacks component.NeuronCallbacks) int {
-	s.mutex.Lock()
-
-	// Quick exit conditions
-	if !s.enabled || callbacks == nil {
-		s.mutex.Unlock()
-		return 0
-	}
-
-	learningRate := s.learningRate
-	s.mutex.Unlock()
-
-	// Same implementation as in CheckAndDeliverFeedback
-	incomingDirection := types.SynapseIncoming
-	targetID := neuronID
-
-	synapses := callbacks.ListSynapses(types.SynapseCriteria{
-		TargetID:  &targetID,
-		Direction: &incomingDirection,
-	})
-
-	postSpikeTime := time.Now()
-	feedbackCount := 0
-
-	for _, synapse := range synapses {
-		deltaT := synapse.LastActivity.Sub(postSpikeTime)
-
-		adjustment := types.PlasticityAdjustment{
-			DeltaT:       deltaT,
-			LearningRate: learningRate,
-			PostSynaptic: true,
-			PreSynaptic:  true,
-			Timestamp:    postSpikeTime,
-			EventType:    types.PlasticitySTDP,
-		}
-
-		err := callbacks.ApplyPlasticity(synapse.ID, adjustment)
-		if err == nil {
-			feedbackCount++
+		} else {
+			//fmt.Printf("STDP DEBUG: Error applying plasticity: %v\n", err)
 		}
 	}
 

@@ -63,6 +63,13 @@ type BasicSynapse struct {
 	gabaExposureCount        int           // Number of recent GABA exposures (for cumulative effects)
 	gabaLongTermRecoveryTime time.Time     // When long-term GABA effects began recovery
 
+	// Fields for GABA STDP modulation
+	gabaSTDPModulation      float64       // Strength of GABA's effect on STDP (0.0-1.0)
+	gabaSTDPTimestamp       time.Time     // When GABA STDP modulation was last updated
+	gabaSTDPDecayTime       time.Duration // How quickly GABA's effect on STDP decays
+	stdpWindowNarrowing     float64       // How much GABA narrows the STDP window (0.0-1.0)
+	stdpAsymmetryModulation float64       // How much GABA changes LTP/LTD balance
+
 	// === ELIGIBILITY TRACE ===
 	// These fields implement biological eligibility trace for reinforcement learning
 	eligibilityTrace     float64       // Current eligibility value (decays over time)
@@ -179,6 +186,13 @@ func NewBasicSynapseWithMatrix(id string, pre component.MessageScheduler, post c
 		gabaLongTermWeakening:    0.0,
 		gabaExposureCount:        0,
 		gabaLongTermRecoveryTime: now,
+
+		// Initialize GABA STDP modulation
+		gabaSTDPModulation:      0.0,
+		gabaSTDPTimestamp:       now,
+		gabaSTDPDecayTime:       GABA_STDP_MODULATION_DECAY_TIME,
+		stdpWindowNarrowing:     0.0,
+		stdpAsymmetryModulation: 0.0,
 
 		// Activity tracking
 		lastPlasticityEvent: now,
@@ -311,32 +325,31 @@ func (s *BasicSynapse) ApplyPlasticity(adjustment types.PlasticityAdjustment) {
 		return
 	}
 
-	// Debug output - print the raw adjustment
-	//fmt.Printf("PLASTICITY ADJUST: Synapse %s, DeltaT=%v (ns=%d)\n",s.id, adjustment.DeltaT, adjustment.DeltaT.Nanoseconds())
-
+	// Use the modulated STDP calculation that considers GABA effects
 	// Calculate the weight change based on spike timing
-	stdpContribution := calculateSTDPWeightChange(adjustment.DeltaT, s.stdpConfig)
-
-	// Debug output - print the contribution
-	//fmt.Printf("PLASTICITY RESULT: Synapse %s, contribution=%.6f\n", s.id, stdpContribution)
+	stdpContribution := s.calculateModulatedSTDPWeightChange(adjustment.DeltaT, s.stdpConfig)
 
 	// Apply immediate weight change (smaller effect without modulation)
 	modulationFactor := STDP_DEFAULT_MODULATION_FACTOR // Default factor for non-modulated plasticity
 
-	// Use the learning rate from the adjustment if provided, otherwise use the config's rate
-	learningRate := s.stdpConfig.LearningRate
-	if adjustment.LearningRate > 0 {
+	// Handle learning rate - explicitly check if adjustment.LearningRate is zero
+	var learningRate float64
+	if adjustment.LearningRate == 0 {
+		// If explicitly set to zero, use zero (no weight change)
+		learningRate = 0
+	} else if adjustment.LearningRate > 0 {
+		// If provided in the adjustment, use that
 		learningRate = adjustment.LearningRate
+	} else {
+		// Otherwise use the config's learning rate
+		learningRate = s.stdpConfig.LearningRate
 	}
 
 	// Calculate weight change
 	weightDelta := learningRate * stdpContribution * modulationFactor
 
-	// Debug output - print the weight delta
-	//fmt.Printf("PLASTICITY WEIGHT: Synapse %s, delta=%.6f (LR=%.4f, mod=%.2f)\n",	s.id, weightDelta, adjustment.LearningRate, modulationFactor)
-
 	// Apply the weight change with boundary enforcement
-	// oldWeight := s.weight
+	//oldWeight := s.weight
 	newWeight := s.weight + weightDelta
 	if newWeight < s.stdpConfig.MinWeight {
 		newWeight = s.stdpConfig.MinWeight
@@ -344,15 +357,17 @@ func (s *BasicSynapse) ApplyPlasticity(adjustment types.PlasticityAdjustment) {
 		newWeight = s.stdpConfig.MaxWeight
 	}
 
-	// Debug output - print the weight change
-	// fmt.Printf("PLASTICITY FINAL: Synapse %s, weight %.6f → %.6f (change: %+.6f)\n", s.id, oldWeight, newWeight, newWeight-oldWeight)
-
 	// Apply the weight change and update tracking
 	s.weight = newWeight
 	s.lastPlasticityEvent = time.Now()
 
 	// Update eligibility trace for future neuromodulation
-	s.eligibilityTrace = stdpContribution
+	// Calculate decay for existing trace
+	elapsed := time.Since(s.eligibilityTimestamp)
+	decayFactor := math.Exp(-float64(elapsed) / float64(s.eligibilityDecay))
+
+	// Accumulate the trace - apply decay to existing and add new contribution
+	s.eligibilityTrace = s.eligibilityTrace*decayFactor + stdpContribution
 	s.eligibilityTimestamp = time.Now()
 }
 
@@ -579,6 +594,9 @@ func (s *BasicSynapse) ProcessNeuromodulation(ligandType types.LigandType, conce
 		// This models the biological processes where strong inhibition leads to
 		// receptor internalization and cytoskeletal reorganization
 		s.applyGABALongTermWeakening(concentration)
+
+		// Additionally, set GABA's effect on STDP
+		s.updateGABASTDPModulation(concentration)
 
 		// GABA lowers the pruning threshold, making synapses more likely to be pruned
 		// This reflects biological reality where inhibited synapses are more vulnerable
@@ -956,6 +974,71 @@ func (s *BasicSynapse) applyGABALongTermWeakening(concentration float64) {
 		// Allow some recovery from long-term weakening
 		s.gabaLongTermWeakening *= GABA_RECOVERY_RATE
 	}
+}
+
+// updateGABASTDPModulation sets GABA's modulatory effect on STDP
+func (s *BasicSynapse) updateGABASTDPModulation(concentration float64) {
+	// Calculate decay since last update
+	elapsed := time.Since(s.gabaSTDPTimestamp)
+	decayFactor := math.Exp(-float64(elapsed) / float64(s.gabaSTDPDecayTime))
+
+	// Decay existing modulation and add new contribution
+	s.gabaSTDPModulation = s.gabaSTDPModulation*decayFactor +
+		concentration*GABA_STDP_MODULATION_SCALING
+
+	// Cap modulation to prevent excessive effects
+	if s.gabaSTDPModulation > 1.0 {
+		s.gabaSTDPModulation = 1.0
+	}
+
+	// Update timestamp
+	s.gabaSTDPTimestamp = time.Now()
+
+	// Calculate specific STDP effects
+	s.stdpWindowNarrowing = s.gabaSTDPModulation * GABA_STDP_MAX_WINDOW_NARROWING
+	s.stdpAsymmetryModulation = s.gabaSTDPModulation * GABA_STDP_MAX_ASYMMETRY_INCREASE
+}
+
+// getCurrentGABASTDPModulation returns the current GABA STDP modulation with decay
+func (s *BasicSynapse) getCurrentGABASTDPModulation() (modulation, windowNarrowing, asymmetryModulation float64) {
+	// Calculate decay since last update
+	elapsed := time.Since(s.gabaSTDPTimestamp)
+	decayFactor := math.Exp(-float64(elapsed) / float64(s.gabaSTDPDecayTime))
+
+	// Apply decay to current modulation
+	currentModulation := s.gabaSTDPModulation * decayFactor
+
+	// Calculate derived effects
+	currentWindowNarrowing := s.stdpWindowNarrowing * decayFactor
+	currentAsymmetryModulation := s.stdpAsymmetryModulation * decayFactor
+
+	return currentModulation, currentWindowNarrowing, currentAsymmetryModulation
+}
+
+// calculateModulatedSTDPWeightChange applies GABA modulation to STDP calculation
+func (s *BasicSynapse) calculateModulatedSTDPWeightChange(timeDifference time.Duration, config types.PlasticityConfig) float64 {
+	// Get current GABA STDP modulation
+	_, windowNarrowing, asymmetryModulation := s.getCurrentGABASTDPModulation()
+
+	// Create a modified config with GABA effects
+	modifiedConfig := config
+
+	// Apply window narrowing effect of GABA to the time constant
+	// This effectively narrows the STDP window
+	originalTimeConstantNs := config.TimeConstant.Nanoseconds()
+	modifiedTimeConstantNs := int64(float64(originalTimeConstantNs) * (1.0 - windowNarrowing))
+	modifiedConfig.TimeConstant = time.Duration(modifiedTimeConstantNs)
+
+	// Apply window narrowing to the window size
+	originalWindowSizeNs := config.WindowSize.Nanoseconds()
+	modifiedWindowSizeNs := int64(float64(originalWindowSizeNs) * (1.0 - windowNarrowing))
+	modifiedConfig.WindowSize = time.Duration(modifiedWindowSizeNs)
+
+	// Apply asymmetry modulation
+	modifiedConfig.AsymmetryRatio = config.AsymmetryRatio * (1.0 + asymmetryModulation)
+
+	// Call the package-level function with modified config
+	return calculateSTDPWeightChange(timeDifference, modifiedConfig)
 }
 
 // adjustPruningThreshold temporarily modifies the pruning threshold based on

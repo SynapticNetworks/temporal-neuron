@@ -999,3 +999,10 @@ func (n *Neuron) ScheduleDelayedDelivery(msg types.NeuralSignal, target componen
 	// Use your existing axon delivery mechanism
 	ScheduleDelayedDelivery(n.deliveryQueue, msg, target, delay)
 }
+
+// SetLastFireTime sets the neuron's last fire time (for testing)
+func (n *Neuron) SetLastFireTime(t time.Time) {
+	n.stateMutex.Lock()
+	defer n.stateMutex.Unlock()
+	n.lastFireTime = t
+}

@@ -569,6 +569,8 @@ func (cb *matrixNeuronCallbacks) DeleteSynapse(synapseID string) error {
 
 // === SYNAPTIC DISCOVERY AND CONNECTIVITY ANALYSIS ===
 // Models how neurons maintain awareness of their synaptic connections
+// === SYNAPTIC DISCOVERY AND CONNECTIVITY ANALYSIS ===
+// Models how neurons maintain awareness of their synaptic connections
 func (cb *matrixNeuronCallbacks) ListSynapses(criteria types.SynapseCriteria) []types.SynapseInfo {
 	var synapseInfos []types.SynapseInfo
 
@@ -583,20 +585,34 @@ func (cb *matrixNeuronCallbacks) ListSynapses(criteria types.SynapseCriteria) []
 		if criteria.TargetID != nil && synapse.GetPostsynapticID() != *criteria.TargetID {
 			continue
 		}
-
-		// Check if this synapse involves our neuron
-		if synapse.GetPresynapticID() == cb.neuronID || synapse.GetPostsynapticID() == cb.neuronID {
-			synapseInfo := types.SynapseInfo{
-				ID:          synapse.ID(),
-				SourceID:    synapse.GetPresynapticID(),
-				TargetID:    synapse.GetPostsynapticID(),
-				Weight:      synapse.GetWeight(),
-				Position:    synapse.Position(),
-				IsActive:    synapse.IsActive(),
-				SynapseType: "standard", // Default type
+		if criteria.Direction != nil {
+			direction := *criteria.Direction
+			if direction == types.SynapseIncoming && synapse.GetPostsynapticID() != cb.neuronID {
+				continue
 			}
-			synapseInfos = append(synapseInfos, synapseInfo)
+			if direction == types.SynapseOutgoing && synapse.GetPresynapticID() != cb.neuronID {
+				continue
+			}
 		}
+
+		// Create synapse info with LastActivity from ActivityInfo
+		lastActivity := time.Time{} // Default zero time
+
+		// Get last activity time from the synapse if it supports the interface
+		if activityProvider, ok := synapse.(interface{ GetActivityInfo() types.ActivityInfo }); ok {
+			activityInfo := activityProvider.GetActivityInfo()
+			lastActivity = activityInfo.LastTransmission
+		}
+
+		synapseInfo := types.SynapseInfo{
+			ID:           synapse.ID(),
+			SourceID:     synapse.GetPresynapticID(),
+			TargetID:     synapse.GetPostsynapticID(),
+			Weight:       synapse.GetWeight(),
+			LastActivity: lastActivity,
+		}
+
+		synapseInfos = append(synapseInfos, synapseInfo)
 	}
 
 	return synapseInfos
@@ -675,11 +691,15 @@ func (cb *matrixNeuronCallbacks) ApplyPlasticity(synapseID string, adjustment ty
 
 	// Convert to PlasticityEvent and use existing UpdateWeight method
 	plasticityEvent := types.PlasticityEvent{
-		EventType: types.PlasticitySTDP, // or determine from adjustment.PlasticityType
+		EventType: types.PlasticitySTDP, // or determine from adjustment.EventType
 		Timestamp: adjustment.Timestamp,
-		Strength:  adjustment.WeightChange, // assuming this field exists
+		Strength:  adjustment.LearningRate, // Use LearningRate as strength
 		SourceID:  synapseID,
+		DeltaT:    adjustment.DeltaT, // CRITICAL: Transfer the DeltaT value
 	}
+
+	// Debug log to verify the DeltaT is preserved
+	// fmt.Printf("MATRIX CALLBACK: Converting adjustment with DeltaT=%v to event with DeltaT=%v\n",adjustment.DeltaT, plasticityEvent.DeltaT)
 
 	synapse.UpdateWeight(plasticityEvent)
 	return nil

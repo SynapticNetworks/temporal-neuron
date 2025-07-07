@@ -34,6 +34,7 @@ These tests validate that the synapse implementation correctly models:
 package synapse
 
 import (
+	"math"
 	"reflect"
 	"testing"
 	"time"
@@ -749,6 +750,90 @@ func TestSynapse_PruningWithGABA(t *testing.T) {
 
 			if shouldPrune != tc.expectPruning {
 				t.Errorf("Expected ShouldPrune()=%v, got %v", tc.expectPruning, shouldPrune)
+			}
+		})
+	}
+}
+
+func TestSynapse_ApplyPlasticity(t *testing.T) {
+	// Create a simple synapse with known configuration
+	syn := NewBasicSynapse(
+		"test_synapse",
+		nil, // No need for real neurons in this test
+		nil,
+		types.PlasticityConfig{
+			Enabled:        true,
+			LearningRate:   0.01, // Base learning rate in config
+			TimeConstant:   20 * time.Millisecond,
+			WindowSize:     100 * time.Millisecond,
+			MinWeight:      0.0,
+			MaxWeight:      1.0,
+			AsymmetryRatio: 1.2,
+		},
+		CreateDefaultPruningConfig(),
+		0.5, // Initial weight
+		0,   // No delay
+	)
+
+	// Create test cases with different deltaT and learning rate values
+	testCases := []struct {
+		name         string
+		deltaT       time.Duration
+		learningRate float64
+		expectChange string // "increase", "decrease", or "none"
+	}{
+		{"LTP Strong", -10 * time.Millisecond, 0.1, "increase"},
+		{"LTP Weak", -10 * time.Millisecond, 0.01, "increase"},
+		{"LTD Strong", 10 * time.Millisecond, 0.1, "decrease"},
+		{"LTD Weak", 10 * time.Millisecond, 0.01, "decrease"},
+		{"Zero DeltaT", 0, 0.1, "decrease"}, // Usually small depression
+		{"Zero LearningRate", -10 * time.Millisecond, 0.0, "none"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Reset weight before each test
+			syn.SetWeight(0.5)
+			initialWeight := syn.GetWeight()
+
+			// Create adjustment
+			adjustment := types.PlasticityAdjustment{
+				DeltaT:       tc.deltaT,
+				LearningRate: tc.learningRate,
+				PostSynaptic: true,
+				PreSynaptic:  true,
+				Timestamp:    time.Now(),
+				EventType:    types.PlasticitySTDP,
+			}
+
+			// Log the adjustment details
+			t.Logf("Applying adjustment: deltaT=%v, learningRate=%.4f",
+				adjustment.DeltaT, adjustment.LearningRate)
+
+			// Apply plasticity directly
+			syn.ApplyPlasticity(adjustment)
+
+			// Check the result
+			finalWeight := syn.GetWeight()
+			change := finalWeight - initialWeight
+
+			t.Logf("Weight: %.4f → %.4f (change: %+.4f)",
+				initialWeight, finalWeight, change)
+
+			// Verify the expected direction of change
+			switch tc.expectChange {
+			case "increase":
+				if change <= 0 {
+					t.Errorf("Expected weight increase, got %+.4f", change)
+				}
+			case "decrease":
+				if change >= 0 {
+					t.Errorf("Expected weight decrease, got %+.4f", change)
+				}
+			case "none":
+				if math.Abs(change) > 0.0001 {
+					t.Errorf("Expected no weight change, got %+.4f", change)
+				}
 			}
 		})
 	}
