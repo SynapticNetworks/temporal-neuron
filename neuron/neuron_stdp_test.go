@@ -81,9 +81,33 @@ func TestSTDPNeuronBasic_BasicFunctionality(t *testing.T) {
 	// Setup our mock to return this synapse when ListSynapses is called
 	mockMatrix.SetSynapseList([]types.SynapseInfo{causalSynapse})
 
-	// Simulate a post-synaptic spike now (by calling SendSTDPFeedback)
-	// This should strengthen the synapse because pre fired before post
+	// CRITICAL FIX: Get the mock synapse and record a pre-spike with proper timing
+	synObj, err := mockCallbacks.GetSynapse("causal_synapse")
+	if err != nil {
+		t.Logf("Warning: Couldn't get synapse: %v", err)
+	} else {
+		// Record pre-spike on the synapse to establish spike history
+		if recorder, ok := synObj.(interface{ RecordPreSpike(time.Time) }); ok {
+			preTime := time.Now().Add(-5 * time.Millisecond)
+			recorder.RecordPreSpike(preTime)
+			t.Logf("Recorded pre-spike at %v (5ms ago) for causal test", preTime)
+		} else {
+			t.Logf("Warning: Synapse doesn't support RecordPreSpike")
+		}
+	}
+
+	// Simulate neuron firing (which records a post-spike at current time)
+	t.Log("Triggering neuron firing to create post-spike")
+	SendTestSignal(neuron, "causal_test_trigger", 2.0) // Strong signal to ensure firing
+
+	// Allow time for firing to register
+	time.Sleep(10 * time.Millisecond)
+
+	// Now manually trigger STDP (this would normally happen automatically after the delay)
 	neuron.SendSTDPFeedback()
+
+	// Wait for STDP processing to complete
+	time.Sleep(20 * time.Millisecond)
 
 	// Check if plasticity was applied in the right direction
 	adjustments := mockMatrix.GetPlasticityAdjustments()
@@ -117,9 +141,33 @@ func TestSTDPNeuronBasic_BasicFunctionality(t *testing.T) {
 	// Update our mock to return this synapse
 	mockMatrix.SetSynapseList([]types.SynapseInfo{antiCausalSynapse})
 
-	// Simulate a post-synaptic spike now
-	// This should weaken the synapse because post fired before pre
+	// Record a post-spike at current time, then a pre-spike 15ms later
+	// First, manually record firing to establish post-spike
+	neuron.Receive(types.NeuralSignal{
+		Value:     2.0,
+		Timestamp: time.Now(),
+		SourceID:  "test",
+		TargetID:  neuron.ID(),
+	})
+
+	// Allow time for post-spike to register
+	time.Sleep(5 * time.Millisecond)
+
+	// Record the pre-spike 15ms after post-spike
+	synObj, err = mockCallbacks.GetSynapse("anticausal_synapse")
+	if err == nil {
+		if recorder, ok := synObj.(interface{ RecordPreSpike(time.Time) }); ok {
+			preTime := time.Now().Add(10 * time.Millisecond) // 15ms after post-spike
+			recorder.RecordPreSpike(preTime)
+			t.Logf("Recorded pre-spike at %v for anti-causal test", preTime)
+		}
+	}
+
+	// Explicitly trigger STDP
 	neuron.SendSTDPFeedback()
+
+	// Wait for STDP processing to complete
+	time.Sleep(20 * time.Millisecond)
 
 	// Check if plasticity was applied in the right direction
 	adjustments = mockMatrix.GetPlasticityAdjustments()
@@ -181,8 +229,27 @@ func TestSTDPNeuronBasic_LearningRateEffects(t *testing.T) {
 		// Setup our mock
 		mockMatrix.SetSynapseList([]types.SynapseInfo{testSynapse})
 
+		// CRITICAL FIX: Record pre-spike on the synapse to establish spike history
+		synObj, err := mockCallbacks.GetSynapse("test_synapse")
+		if err == nil {
+			if recorder, ok := synObj.(interface{ RecordPreSpike(time.Time) }); ok {
+				preTime := time.Now().Add(-5 * time.Millisecond)
+				recorder.RecordPreSpike(preTime)
+				t.Logf("Recorded pre-spike at %v for learning rate test", preTime)
+			}
+		}
+
+		// Trigger neuron firing to establish post-spike
+		SendTestSignal(neuron, "rate_test_trigger", 2.0)
+
+		// Wait for firing to register
+		time.Sleep(10 * time.Millisecond)
+
 		// Trigger STDP
 		neuron.SendSTDPFeedback()
+
+		// Wait for STDP processing
+		time.Sleep(20 * time.Millisecond)
 
 		// Check the learning rate in the adjustment
 		adjustments := mockMatrix.GetPlasticityAdjustments()
@@ -264,8 +331,36 @@ func TestSTDPNeuronBasic_TimingCurve(t *testing.T) {
 		mockMatrix.ClearPlasticityAdjustments()
 		mockMatrix.SetSynapseList([]types.SynapseInfo{testSynapse})
 
+		// CRITICAL FIX: Record pre-spike on the synapse with proper timing
+		synObj, err := mockCallbacks.GetSynapse("timing_test_synapse")
+		if err == nil {
+			if recorder, ok := synObj.(interface{ RecordPreSpike(time.Time) }); ok {
+				recorder.RecordPreSpike(lastActivity)
+				t.Logf("Recorded pre-spike at %v for deltaT = %v test", lastActivity, deltaT)
+			}
+		}
+
+		// Record post-spike now (or create it by triggering neuron to fire)
+		// For negative deltaT (pre before post), trigger neuron firing now
+		// For positive deltaT (post before pre), we need to record post-spike first
+
+		// Create post-spike at current time
+		if deltaT >= 0 {
+			// For post-before-pre (positive deltaT), directly stimulate neuron
+			SendTestSignal(neuron, "curve_test_trigger", 2.0)
+		} else {
+			// For pre-before-post (negative deltaT), fire the neuron to create post-spike
+			SendTestSignal(neuron, "curve_test_trigger", 2.0)
+		}
+
+		// Allow time for firing
+		time.Sleep(10 * time.Millisecond)
+
 		// Trigger STDP
 		neuron.SendSTDPFeedback()
+
+		// Wait for STDP processing
+		time.Sleep(20 * time.Millisecond)
 
 		// Check adjustment
 		adjustments := mockMatrix.GetPlasticityAdjustments()
@@ -329,6 +424,20 @@ func TestSTDPNeuronBasic_DisableEnable(t *testing.T) {
 
 	mockMatrix.SetSynapseList([]types.SynapseInfo{testSynapse})
 
+	// CRITICAL FIX: Record pre-spike on the synapse
+	synObj, err := mockCallbacks.GetSynapse("toggle_test_synapse")
+	if err == nil {
+		if recorder, ok := synObj.(interface{ RecordPreSpike(time.Time) }); ok {
+			preTime := time.Now().Add(-5 * time.Millisecond)
+			recorder.RecordPreSpike(preTime)
+			t.Log("Recorded pre-spike for toggle test")
+		}
+	}
+
+	// Create post-spike by firing the neuron
+	SendTestSignal(neuron, "toggle_test_trigger", 2.0)
+	time.Sleep(10 * time.Millisecond)
+
 	// Test 1: STDP disabled by default
 	t.Log("Testing with STDP disabled (default)")
 	neuron.SendSTDPFeedback()
@@ -351,8 +460,21 @@ func TestSTDPNeuronBasic_DisableEnable(t *testing.T) {
 	// Clear previous adjustments
 	mockMatrix.ClearPlasticityAdjustments()
 
+	// Record a new set of spikes to ensure valid timing
+	if recorder, ok := synObj.(interface{ RecordPreSpike(time.Time) }); ok {
+		preTime := time.Now().Add(-5 * time.Millisecond)
+		recorder.RecordPreSpike(preTime)
+	}
+
+	// Fire neuron again for post-spike
+	SendTestSignal(neuron, "toggle_test_trigger2", 2.0)
+	time.Sleep(10 * time.Millisecond)
+
 	// Trigger STDP
 	neuron.SendSTDPFeedback()
+
+	// Wait for processing
+	time.Sleep(20 * time.Millisecond)
 
 	// Should have adjustments now
 	adjustments = mockMatrix.GetPlasticityAdjustments()
@@ -418,6 +540,16 @@ func TestSTDPNeuronBasic_ScheduledFeedback(t *testing.T) {
 
 	mockMatrix.SetSynapseList([]types.SynapseInfo{testSynapse})
 
+	// CRITICAL FIX: Record pre-spike on the synapse
+	synObj, err := mockCallbacks.GetSynapse("schedule_test_synapse")
+	if err == nil {
+		if recorder, ok := synObj.(interface{ RecordPreSpike(time.Time) }); ok {
+			preTime := time.Now().Add(-5 * time.Millisecond)
+			recorder.RecordPreSpike(preTime)
+			t.Logf("Recorded pre-spike at %v for scheduled feedback test", preTime)
+		}
+	}
+
 	// Start the neuron
 	neuron.Start()
 	defer neuron.Stop()
@@ -436,7 +568,7 @@ func TestSTDPNeuronBasic_ScheduledFeedback(t *testing.T) {
 	// Wait a bit to allow for firing processing
 	time.Sleep(10 * time.Millisecond)
 
-	// No STDP adjustments yet (before the delay expires)
+	// No STDP adjustments yet - too early
 	initialAdjustments := mockMatrix.GetPlasticityAdjustments()
 	initialCount := len(initialAdjustments)
 
@@ -508,6 +640,21 @@ func TestSTDPNeuronBasic_ConcurrentAccess(t *testing.T) {
 		},
 	}
 	mockMatrix.SetSynapseList(testSynapses)
+
+	// CRITICAL FIX: Record pre-spikes on the synapses
+	for _, synInfo := range testSynapses {
+		synObj, err := mockCallbacks.GetSynapse(synInfo.ID)
+		if err == nil {
+			if recorder, ok := synObj.(interface{ RecordPreSpike(time.Time) }); ok {
+				recorder.RecordPreSpike(synInfo.LastActivity)
+				t.Logf("Recorded pre-spike for %s at %v", synInfo.ID, synInfo.LastActivity)
+			}
+		}
+	}
+
+	// Create post-spike by firing the neuron
+	SendTestSignal(neuron, "concurrent_test_trigger", 2.0)
+	time.Sleep(10 * time.Millisecond)
 
 	// Test concurrent STDP calls
 	const numGoroutines = 5
@@ -602,6 +749,16 @@ func TestSTDPNeuronBasic_STDPandActivity(t *testing.T) {
 
 	mockMatrix.SetSynapseList([]types.SynapseInfo{testSynapse})
 
+	// CRITICAL FIX: Record pre-spike on the synapse
+	synObj, err := activityReadingCallbacks.GetSynapse("activity_test_synapse")
+	if err == nil {
+		if recorder, ok := synObj.(interface{ RecordPreSpike(time.Time) }); ok {
+			preTime := time.Now().Add(-5 * time.Millisecond)
+			recorder.RecordPreSpike(preTime)
+			t.Log("Recorded pre-spike for activity test")
+		}
+	}
+
 	// Read activity before STDP
 	beforeActivity := neuron.GetActivityLevel()
 
@@ -622,6 +779,9 @@ func TestSTDPNeuronBasic_STDPandActivity(t *testing.T) {
 	// Manually trigger STDP (would normally happen via scheduledSTDPFeedback)
 	t.Log("Triggering STDP feedback (should cause activity reads)")
 	neuron.SendSTDPFeedback()
+
+	// Wait for STDP processing
+	time.Sleep(20 * time.Millisecond)
 
 	// Read activity after STDP
 	afterActivity := neuron.GetActivityLevel()
@@ -680,6 +840,21 @@ func TestSTDPNeuronBasic_HighContention(t *testing.T) {
 		},
 	}
 	mockMatrix.SetSynapseList(testSynapses)
+
+	// CRITICAL FIX: Record pre-spikes on the synapses
+	for _, synInfo := range testSynapses {
+		synObj, err := mockCallbacks.GetSynapse(synInfo.ID)
+		if err == nil {
+			if recorder, ok := synObj.(interface{ RecordPreSpike(time.Time) }); ok {
+				recorder.RecordPreSpike(synInfo.LastActivity)
+				t.Logf("Recorded pre-spike for %s at %v", synInfo.ID, synInfo.LastActivity)
+			}
+		}
+	}
+
+	// Create post-spike by firing the neuron
+	SendTestSignal(neuron, "high_contention_trigger", 2.0)
+	time.Sleep(10 * time.Millisecond)
 
 	// Create operations to run concurrently
 	operations := []func(){
@@ -827,6 +1002,20 @@ func TestSTDPNeuronBasic_DeadlockScenario(t *testing.T) {
 
 	mockMatrix.SetSynapseList([]types.SynapseInfo{testSynapse})
 
+	// CRITICAL FIX: Record pre-spike on the synapse
+	synObj, err := customCallbacks.GetSynapse("deadlock_test_synapse")
+	if err == nil {
+		if recorder, ok := synObj.(interface{ RecordPreSpike(time.Time) }); ok {
+			preTime := time.Now().Add(-5 * time.Millisecond)
+			recorder.RecordPreSpike(preTime)
+			t.Log("Recorded pre-spike for deadlock test")
+		}
+	}
+
+	// Create post-spike by firing the neuron
+	SendTestSignal(neuron, "deadlock_test_trigger", 2.0)
+	time.Sleep(10 * time.Millisecond)
+
 	// Add a timeout channel to detect deadlock
 	done := make(chan bool, 1)
 
@@ -888,6 +1077,21 @@ func TestSTDPNeuronBasic_MultipleThreadsReadingActivity(t *testing.T) {
 		},
 	}
 	mockMatrix.SetSynapseList(testSynapses)
+
+	// CRITICAL FIX: Record pre-spikes on the synapses
+	for _, synInfo := range testSynapses {
+		synObj, err := mockCallbacks.GetSynapse(synInfo.ID)
+		if err == nil {
+			if recorder, ok := synObj.(interface{ RecordPreSpike(time.Time) }); ok {
+				recorder.RecordPreSpike(synInfo.LastActivity)
+				t.Logf("Recorded pre-spike for %s at %v", synInfo.ID, synInfo.LastActivity)
+			}
+		}
+	}
+
+	// Create post-spike by firing the neuron
+	SendTestSignal(neuron, "multi_thread_trigger", 2.0)
+	time.Sleep(10 * time.Millisecond)
 
 	// Track successful activity reads
 	var activityReads int32
@@ -971,6 +1175,10 @@ func TestSTDPNeuronBasic_EmptySynapseList(t *testing.T) {
 	// Set an empty synapse list
 	mockMatrix.SetSynapseList([]types.SynapseInfo{})
 
+	// Create post-spike by firing the neuron
+	SendTestSignal(neuron, "empty_list_trigger", 2.0)
+	time.Sleep(10 * time.Millisecond)
+
 	// Trigger STDP - should not panic or error
 	neuron.SendSTDPFeedback()
 
@@ -1006,6 +1214,10 @@ func TestSTDPNeuronBasic_NilCallbacks(t *testing.T) {
 		t.Fatalf("Failed to start neuron: %v", err)
 	}
 	defer neuron.Stop()
+
+	// Create post-spike by firing the neuron (to establish spike history)
+	SendTestSignal(neuron, "nil_callbacks_trigger", 2.0)
+	time.Sleep(10 * time.Millisecond)
 
 	// Add a timeout channel to detect deadlock or hang
 	done := make(chan bool, 1)
@@ -1078,8 +1290,24 @@ func TestSTDPNeuronBasic_ExtremeTimings(t *testing.T) {
 		mockMatrix.ClearPlasticityAdjustments()
 		mockMatrix.SetSynapseList([]types.SynapseInfo{testSynapse})
 
+		// CRITICAL FIX: Record pre-spike on the synapse
+		synObj, err := mockCallbacks.GetSynapse("extreme_timing_synapse")
+		if err == nil {
+			if recorder, ok := synObj.(interface{ RecordPreSpike(time.Time) }); ok {
+				recorder.RecordPreSpike(lastActivity)
+				t.Logf("Recorded pre-spike for extreme timing test: %v", deltaT)
+			}
+		}
+
+		// Create post-spike by firing the neuron
+		SendTestSignal(neuron, "extreme_timing_trigger", 2.0)
+		time.Sleep(10 * time.Millisecond)
+
 		// Trigger STDP - should not panic with extreme timings
 		neuron.SendSTDPFeedback()
+
+		// Wait for processing
+		time.Sleep(20 * time.Millisecond)
 
 		// Verify adjustment happened
 		adjustments := mockMatrix.GetPlasticityAdjustments()
@@ -1134,8 +1362,25 @@ func TestSTDPNeuronBasic_ZeroLearningRate(t *testing.T) {
 
 	mockMatrix.SetSynapseList([]types.SynapseInfo{testSynapse})
 
+	// CRITICAL FIX: Record pre-spike on the synapse
+	synObj, err := mockCallbacks.GetSynapse("zero_rate_synapse")
+	if err == nil {
+		if recorder, ok := synObj.(interface{ RecordPreSpike(time.Time) }); ok {
+			preTime := time.Now().Add(-5 * time.Millisecond)
+			recorder.RecordPreSpike(preTime)
+			t.Log("Recorded pre-spike for zero learning rate test")
+		}
+	}
+
+	// Create post-spike by firing the neuron
+	SendTestSignal(neuron, "zero_rate_trigger", 2.0)
+	time.Sleep(10 * time.Millisecond)
+
 	// Trigger STDP - should not error with zero learning rate
 	neuron.SendSTDPFeedback()
+
+	// Wait for processing
+	time.Sleep(20 * time.Millisecond)
 
 	// Check the learning rate in the adjustment
 	adjustments := mockMatrix.GetPlasticityAdjustments()
@@ -1189,8 +1434,25 @@ func TestSTDPNeuronBasic_ExtremeLearningRate(t *testing.T) {
 
 	mockMatrix.SetSynapseList([]types.SynapseInfo{testSynapse})
 
+	// CRITICAL FIX: Record pre-spike on the synapse
+	synObj, err := mockCallbacks.GetSynapse("extreme_rate_synapse")
+	if err == nil {
+		if recorder, ok := synObj.(interface{ RecordPreSpike(time.Time) }); ok {
+			preTime := time.Now().Add(-5 * time.Millisecond)
+			recorder.RecordPreSpike(preTime)
+			t.Log("Recorded pre-spike for extreme learning rate test")
+		}
+	}
+
+	// Create post-spike by firing the neuron
+	SendTestSignal(neuron, "extreme_rate_trigger", 2.0)
+	time.Sleep(10 * time.Millisecond)
+
 	// Trigger STDP - should not error with extreme learning rate
 	neuron.SendSTDPFeedback()
+
+	// Wait for processing
+	time.Sleep(20 * time.Millisecond)
 
 	// Check the learning rate in the adjustment
 	adjustments := mockMatrix.GetPlasticityAdjustments()

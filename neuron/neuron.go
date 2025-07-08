@@ -72,6 +72,11 @@ type Neuron struct {
 	pruningCheckInterval time.Duration        // 0 = disabled, >0 = enabled with interval
 	stdpSystem           *STDPSignalingSystem // ADD: New STDP system
 
+	// Spike timing history for STDP
+	spikeHistory      []time.Time // Recent spike timestamps
+	spikeHistoryMutex sync.RWMutex
+	maxSpikeHistory   int // How many recent spikes to keep (e.g., 20)
+
 	// === DENDRITIC INTEGRATION ===
 	dendrite DendriticIntegrationMode
 
@@ -145,6 +150,10 @@ func NewNeuron(id string, threshold float64, decayRate float64, refractoryPeriod
 		receptors:       make([]types.LigandType, 0),
 		releasedLigands: make([]types.LigandType, 0),
 		signalTypes:     []types.SignalType{types.SignalFired},
+
+		// Initialize spike history
+		spikeHistory:    make([]time.Time, 0, 20),
+		maxSpikeHistory: 20, // Store 20 recent spikes
 
 		// Initialize processing
 		inputBuffer:     make(chan types.NeuralSignal, 100),
@@ -603,35 +612,157 @@ func (n *Neuron) ConnectToNeuron(targetNeuronID string, weight float64, synapseT
 
 // SendSTDPFeedback triggers STDP feedback to update synaptic weights
 // Forward this to the new DeliverFeedbackNow method
+// This is an improved implementation of the SendSTDPFeedback method
+// to be placed in the Neuron struct implementation
+
+// SendSTDPFeedback triggers STDP feedback to update synaptic weights
+// This is the corrected implementation of SendSTDPFeedback
+// The key fix is to NOT create a new post-spike in the current implementation
+// and instead use the existing spike history properly
+
+// SendSTDPFeedback triggers STDP feedback to update synaptic weights
+// Replace the SendSTDPFeedback method in neuron.go with this improved version
+
+// SendSTDPFeedback triggers STDP feedback to update synaptic weights
+// This method ensures proper usage of spike history for both LTP and LTD
 func (n *Neuron) SendSTDPFeedback() {
 	// Get my ID and the matrix callbacks
 	myID := n.ID()
 	callbacks := n.matrixCallbacks
 
 	if callbacks == nil {
+		fmt.Printf("STDP Error: No matrix callbacks available for neuron %s\n", myID)
 		return
 	}
+
+	// Check if STDP is enabled
+	if !n.stdpSystem.IsEnabled() {
+		// fmt.Printf("STDP Debug: STDP is disabled for neuron %s\n", myID)
+		return
+	}
+
+	// IMPORTANT: Do NOT create a new post-synaptic spike here!
+	// Instead, use ONLY existing spikes from history
 
 	// Get the neuron's last fire time
 	n.stateMutex.Lock()
 	lastFireTime := n.lastFireTime
 	n.stateMutex.Unlock()
 
-	// If the neuron hasn't fired yet, use current time as fallback
-	if lastFireTime.IsZero() {
-		lastFireTime = time.Now()
+	// Also get the spike history
+	n.spikeHistoryMutex.RLock()
+	spikeCount := len(n.spikeHistory)
+	n.spikeHistoryMutex.RUnlock()
+
+	// If neuron has never fired, we can't do STDP
+	if lastFireTime.IsZero() && spikeCount == 0 {
+		fmt.Printf("STDP Debug: No firing history for neuron %s, skipping STDP\n", myID)
+		return
 	}
 
-	// Forward to the STDP system with the actual fire time
-	feedbackCount := n.stdpSystem.DeliverFeedbackNow(myID, callbacks, lastFireTime)
+	// Get incoming synapses - we need to examine their spike history
+	incomingDirection := types.SynapseIncoming
+	synapses := callbacks.ListSynapses(types.SynapseCriteria{
+		TargetID:  &myID,
+		Direction: &incomingDirection,
+	})
 
-	// Update metadata if feedback was delivered
-	if feedbackCount > 0 {
-		n.UpdateMetadata("stdp_feedback", map[string]interface{}{
-			"synapse_count":         feedbackCount,
-			"post_neuron_fire_time": lastFireTime,
-			"timestamp":             time.Now(),
-		})
+	fmt.Printf("STDP Debug: Found %d incoming synapses to examine\n", len(synapses))
+
+	// For each synapse, manually look for LTD and LTP patterns
+	for _, synInfo := range synapses {
+		synapse, err := callbacks.GetSynapse(synInfo.ID)
+		if err != nil {
+			continue
+		}
+
+		// Get spike histories if available
+		if spikesGetter, ok := synapse.(interface {
+			GetPreSpikeTimes() []time.Time
+			GetPostSpikeTimes() []time.Time
+		}); ok {
+			preSpikes := spikesGetter.GetPreSpikeTimes()
+			postSpikes := spikesGetter.GetPostSpikeTimes()
+
+			//fmt.Printf("STDP History: Synapse=%s has %d pre-spikes and %d post-spikes\n",synInfo.ID, len(preSpikes), len(postSpikes))
+
+			// Skip if we don't have both pre and post spikes
+			if len(preSpikes) == 0 || len(postSpikes) == 0 {
+				continue
+			}
+
+			// EXPLICITLY SEARCH FOR LTD FIRST
+			// LTD requires post-spike BEFORE pre-spike (positive deltaT)
+			var bestLtdPreSpike, bestLtdPostSpike time.Time
+			var bestLtdDeltaT time.Duration
+			var foundLtd bool
+
+			for _, postSpike := range postSpikes {
+				for _, preSpike := range preSpikes {
+					if preSpike.After(postSpike) {
+						// This is a potential LTD pair (post before pre)
+						deltaT := preSpike.Sub(postSpike) // Should be positive
+
+						// Only consider reasonable timing windows (not too long or short)
+						if deltaT > 0 && deltaT < 300*time.Millisecond {
+							// If this is our first pair or better than previous
+							if !foundLtd || deltaT < bestLtdDeltaT {
+								bestLtdPostSpike = postSpike
+								bestLtdPreSpike = preSpike
+								bestLtdDeltaT = deltaT
+								foundLtd = true
+							}
+						}
+					}
+				}
+			}
+
+			_ = bestLtdPreSpike // Prevent unused variable warning
+
+			// If we found a good LTD pair, explicitly apply it
+			if foundLtd {
+				fmt.Printf("STDP Found LTD: post=%v, pre=%v, deltaT=%v\n", bestLtdPostSpike, bestLtdPreSpike, bestLtdDeltaT)
+
+				// Create and apply LTD adjustment
+				ltdAdjustment := types.PlasticityAdjustment{
+					DeltaT:       bestLtdDeltaT, // Positive for LTD
+					LearningRate: n.stdpSystem.learningRate,
+					PostSynaptic: true,
+					PreSynaptic:  true,
+					Timestamp:    bestLtdPostSpike,
+					EventType:    types.PlasticitySTDP,
+				}
+
+				// Apply directly to synapse
+				if adjuster, ok := synapse.(interface {
+					ApplyPlasticity(types.PlasticityAdjustment)
+				}); ok {
+					adjuster.ApplyPlasticity(ltdAdjustment)
+					// fmt.Printf("STDP Applied LTD: deltaT=%v, learning_rate=%.4f\n",bestLtdDeltaT, n.stdpSystem.learningRate)
+				}
+
+				// Since we've found and applied LTD, we can skip the rest of the processing
+				// for this synapse
+				continue
+			}
+
+			// FALLBACK: Use standard STDP feedback if no LTD pattern found
+			// This uses the last post-spike
+			if len(postSpikes) > 0 {
+				// Use the last post-spike time
+				lastPostSpike := postSpikes[len(postSpikes)-1]
+				fmt.Printf("STDP Fallback: Using last post-spike at %v\n", lastPostSpike)
+
+				// Delegate to standard STDP processing
+				n.stdpSystem.DeliverFeedbackNow(myID, callbacks, lastPostSpike)
+			}
+		} else {
+			// Fallback for synapses without spike history support
+			if !lastFireTime.IsZero() {
+				// Delegate to standard STDP processing with last fire time
+				n.stdpSystem.DeliverFeedbackNow(myID, callbacks, lastFireTime)
+			}
+		}
 	}
 }
 
@@ -797,19 +928,6 @@ func (n *Neuron) GetLastFireTime() time.Time {
 	n.stateMutex.Lock()
 	defer n.stateMutex.Unlock()
 	return n.lastFireTime
-}
-
-func (n *Neuron) calculateSTDPTiming(synapseInfo types.SynapseInfo) time.Duration {
-	// Simplified STDP timing calculation
-	// In real implementation, would track precise spike times
-	timeSinceActivity := time.Since(synapseInfo.LastActivity)
-
-	// Causal: synapse fired before neuron (negative deltaT = LTP)
-	// Anti-causal: synapse fired after neuron (positive deltaT = LTD)
-	if timeSinceActivity < STDP_FEEDBACK_DELAY_DEFAULT {
-		return -timeSinceActivity // Causal - strengthen
-	}
-	return timeSinceActivity // Anti-causal - weaken
 }
 
 func (n *Neuron) calculateScalingFactor(currentRate, targetRate float64) float64 {

@@ -76,6 +76,12 @@ type BasicSynapse struct {
 	eligibilityTimestamp time.Time     // When eligibility was last updated
 	eligibilityDecay     time.Duration // Time constant for eligibility decay
 
+	// Spike timing history for STDP
+	preSpikeTimes    []time.Time // Recent pre-synaptic spikes
+	postSpikeTimes   []time.Time // Recent post-synaptic spikes
+	spikeTimingMutex sync.RWMutex
+	maxSpikeHistory  int // How many recent spikes to keep (e.g., 20)
+
 	// === ACTIVITY TRACKING ===
 	// These track the synapse's recent activity for plasticity and pruning decisions
 	lastPlasticityEvent time.Time // Tracks the last time STDP was applied
@@ -170,6 +176,10 @@ func NewBasicSynapseWithMatrix(id string, pre component.MessageScheduler, post c
 		weight: initialWeight,
 		delay:  delay,
 
+		preSpikeTimes:   make([]time.Time, 0, 20),
+		postSpikeTimes:  make([]time.Time, 0, 20),
+		maxSpikeHistory: 20,
+
 		// Learning and plasticity configurations
 		stdpConfig:    stdpConfig,
 		pruningConfig: pruningConfig,
@@ -239,6 +249,8 @@ func (s *BasicSynapse) ID() string {
 //
 // Enhanced version that accounts for GABA inhibition effects.
 func (s *BasicSynapse) Transmit(signalValue float64) {
+	//fmt.Printf("SYNAPSE DEBUG: Synapse %s received transmission signal of strength %.2f\n", s.id, signalValue)
+
 	// === THREAD-SAFE STATE ACCESS ===
 	// Read current synapse state without holding lock during message delivery
 	s.mutex.RLock()
@@ -255,11 +267,22 @@ func (s *BasicSynapse) Transmit(signalValue float64) {
 	// === ACTIVITY TRACKING FOR PLASTICITY ===
 	// Update last transmission time for pruning and plasticity decisions
 	s.mutex.Lock()
-	s.lastTransmission = time.Now()
+	s.lastTransmission = time.Now() // TODO Clean up?
 
 	// Create a small positive eligibility trace for pre-synaptic activity
 	s.updateEligibilityTrace(0.2)
 	s.mutex.Unlock()
+
+	// Record pre-synaptic spike
+	now := time.Now()
+	s.spikeTimingMutex.Lock()
+	s.preSpikeTimes = append(s.preSpikeTimes, now)
+
+	// Maintain limited history size
+	if len(s.preSpikeTimes) > s.maxSpikeHistory {
+		s.preSpikeTimes = s.preSpikeTimes[len(s.preSpikeTimes)-s.maxSpikeHistory:]
+	}
+	s.spikeTimingMutex.Unlock()
 
 	// === MESSAGE CREATION ===
 	// Create neural signal with complete metadata for downstream processing
@@ -1136,6 +1159,63 @@ func (s *BasicSynapse) GetLastTransmissionTime() time.Time {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 	return s.lastTransmission
+}
+
+func (s *BasicSynapse) RecordPostSpike(time time.Time) {
+	//fmt.Printf("SYNAPSE RECORDING: %s recording post-spike at %v\n", s.id, time)
+
+	s.spikeTimingMutex.Lock()
+	defer s.spikeTimingMutex.Unlock()
+
+	s.postSpikeTimes = append(s.postSpikeTimes, time)
+
+	// Maintain limited history size
+	if len(s.postSpikeTimes) > s.maxSpikeHistory {
+		s.postSpikeTimes = s.postSpikeTimes[len(s.postSpikeTimes)-s.maxSpikeHistory:]
+	}
+}
+
+// GetPreSpikeTimes returns a copy of pre-synaptic spike times
+func (s *BasicSynapse) GetPreSpikeTimes() []time.Time {
+	s.spikeTimingMutex.RLock()
+	defer s.spikeTimingMutex.RUnlock()
+
+	result := make([]time.Time, len(s.preSpikeTimes))
+	copy(result, s.preSpikeTimes)
+	return result
+}
+
+// GetPostSpikeTimes returns a copy of post-synaptic spike times
+func (s *BasicSynapse) GetPostSpikeTimes() []time.Time {
+	s.spikeTimingMutex.RLock()
+	defer s.spikeTimingMutex.RUnlock()
+
+	result := make([]time.Time, len(s.postSpikeTimes))
+	copy(result, s.postSpikeTimes)
+	return result
+}
+
+// GetSynapseInfo returns information about the synapse including spike history
+func (s *BasicSynapse) GetSynapseInfo() types.SynapseInfo {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+
+	// Get most recent pre-spike time
+	var lastPreSpikeTime time.Time
+	s.spikeTimingMutex.RLock()
+	if len(s.preSpikeTimes) > 0 {
+		lastPreSpikeTime = s.preSpikeTimes[len(s.preSpikeTimes)-1]
+	}
+	s.spikeTimingMutex.RUnlock()
+
+	return types.SynapseInfo{
+		ID:               s.id,
+		SourceID:         s.preSynapticNeuron.ID(),
+		TargetID:         s.postSynapticNeuron.ID(),
+		Weight:           s.weight,
+		LastActivity:     lastPreSpikeTime,   // Use most recent pre-spike
+		LastTransmission: s.lastTransmission, // Keep this for compatibility
+	}
 }
 
 // =================================================================================

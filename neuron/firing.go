@@ -32,12 +32,24 @@ This separation ensures clean responsibilities and eliminates duplication.
 // fireUnsafe handles the complete firing process including all subsystem coordination
 // This method must be called with stateMutex already locked
 func (n *Neuron) fireUnsafe() {
+	//fmt.Printf("NEURON DEBUG: Neuron %s firing, notifying %d output callbacks\n", n.ID(), len(n.outputCallbacks))
+
 	now := time.Now()
 
 	// Early return if in refractory period
 	if !n.lastFireTime.IsZero() && now.Sub(n.lastFireTime) < n.refractoryPeriod {
 		return
 	}
+
+	// NEW: Record spike in history
+	n.spikeHistoryMutex.Lock()
+	n.spikeHistory = append(n.spikeHistory, now)
+
+	// Maintain limited history size
+	if len(n.spikeHistory) > n.maxSpikeHistory {
+		n.spikeHistory = n.spikeHistory[len(n.spikeHistory)-n.maxSpikeHistory:]
+	}
+	n.spikeHistoryMutex.Unlock()
 
 	// === STEP 1: Capture all data we need under stateMutex ===
 	// Store the current timestamp
@@ -75,6 +87,8 @@ func (n *Neuron) fireUnsafe() {
 
 	// === STEP 3: External callbacks (without any locks) ===
 	// Perform matrix callbacks without holding any locks
+	// === STEP 3: External callbacks (without any locks) ===
+	// Perform matrix callbacks without holding any locks
 	if matrixCallbacks != nil {
 		// Get connection count
 		var connectionCount int
@@ -98,6 +112,28 @@ func (n *Neuron) fireUnsafe() {
 		// Handle custom chemical release
 		if behaviors != nil && behaviors.CustomChemicalRelease != nil {
 			behaviors.CustomChemicalRelease(activityLevel, outputValue, matrixCallbacks.ReleaseChemical)
+		}
+
+		// NEW: Notify all incoming synapses about this post-synaptic spike
+		incomingDirection := types.SynapseIncoming
+		myID := n.ID()
+
+		incomingSynapses := matrixCallbacks.ListSynapses(types.SynapseCriteria{
+			Direction: &incomingDirection,
+			TargetID:  &myID,
+		})
+
+		// Notify each synapse about the post-synaptic spike
+		for _, synInfo := range incomingSynapses {
+			syn, err := matrixCallbacks.GetSynapse(synInfo.ID)
+			if err != nil {
+				continue
+			}
+
+			// If synapse supports recording post spikes, notify it
+			if recorder, ok := syn.(interface{ RecordPostSpike(time.Time) }); ok {
+				recorder.RecordPostSpike(now)
+			}
 		}
 	}
 

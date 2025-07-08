@@ -439,6 +439,12 @@ type MockSynapticProcessor struct {
 	transmissions          []float64
 	lastTransmission       time.Time
 	mutex                  sync.Mutex
+
+	// Add spike history tracking
+	preSpikes        []time.Time
+	postSpikes       []time.Time
+	spikeTimingMutex sync.RWMutex
+	maxSpikeHistory  int
 }
 
 // NewMockSynapticProcessor creates a properly initialized mock
@@ -450,7 +456,88 @@ func NewMockSynapticProcessor(synapseID string) *MockSynapticProcessor {
 		plasticityApplications: make([]types.PlasticityAdjustment, 0),
 		transmissions:          make([]float64, 0),
 		lastTransmission:       time.Now(),
+		preSpikes:              make([]time.Time, 0),
+		postSpikes:             make([]time.Time, 0),
+		maxSpikeHistory:        20, // Match neuron.maxSpikeHistory
 	}
+}
+
+// GetPreSpikeTimes returns the pre-synaptic spike times
+func (msp *MockSynapticProcessor) GetPreSpikeTimes() []time.Time {
+	msp.spikeTimingMutex.RLock()
+	defer msp.spikeTimingMutex.RUnlock()
+
+	result := make([]time.Time, len(msp.preSpikes))
+	copy(result, msp.preSpikes)
+	return result
+}
+
+// GetPostSpikeTimes returns the post-synaptic spike times
+func (msp *MockSynapticProcessor) GetPostSpikeTimes() []time.Time {
+	msp.spikeTimingMutex.RLock()
+	defer msp.spikeTimingMutex.RUnlock()
+
+	result := make([]time.Time, len(msp.postSpikes))
+	copy(result, msp.postSpikes)
+	return result
+}
+
+// RecordPreSpike records a pre-synaptic spike
+func (msp *MockSynapticProcessor) RecordPreSpike(t time.Time) {
+	msp.spikeTimingMutex.Lock()
+	defer msp.spikeTimingMutex.Unlock()
+
+	// Record the spike
+	msp.preSpikes = append(msp.preSpikes, t)
+
+	// Update last transmission time for compatibility
+	msp.mutex.Lock()
+	msp.lastTransmission = t
+	msp.mutex.Unlock()
+
+	// Maintain limited history size
+	if len(msp.preSpikes) > msp.maxSpikeHistory {
+		msp.preSpikes = msp.preSpikes[1:] // Remove oldest
+	}
+
+	//fmt.Printf("SYNAPSE RECORDING: %s recording pre-spike at %v\n", msp.synapseID, t)
+}
+
+// RecordPostSpike records a post-synaptic spike
+func (msp *MockSynapticProcessor) RecordPostSpike(t time.Time) {
+	msp.spikeTimingMutex.Lock()
+	defer msp.spikeTimingMutex.Unlock()
+
+	// Record the spike
+	msp.postSpikes = append(msp.postSpikes, t)
+
+	// Maintain limited history size
+	if len(msp.postSpikes) > msp.maxSpikeHistory {
+		msp.postSpikes = msp.postSpikes[1:] // Remove oldest
+	}
+
+	//fmt.Printf("SYNAPSE RECORDING: %s recording post-spike at %v\n", msp.synapseID, t)
+}
+
+// Update Transmit to also record pre-spike
+func (msp *MockSynapticProcessor) Transmit(signalValue float64) {
+	msp.mutex.Lock()
+	defer msp.mutex.Unlock()
+
+	// Store the transmission for testing verification
+	msp.transmissions = append(msp.transmissions, signalValue)
+	now := time.Now()
+	msp.lastTransmission = now
+
+	// Record pre-spike for STDP
+	msp.spikeTimingMutex.Lock()
+	msp.preSpikes = append(msp.preSpikes, now)
+	if len(msp.preSpikes) > msp.maxSpikeHistory {
+		msp.preSpikes = msp.preSpikes[1:]
+	}
+	msp.spikeTimingMutex.Unlock()
+
+	// fmt.Printf("SYNAPSE DEBUG: Synapse %s received transmission signal of strength %.2f\n",msp.synapseID, signalValue)
 }
 
 // ============================================================================
@@ -498,19 +585,6 @@ func (msp *MockSynapticProcessor) GetPresynapticID() string {
 
 func (msp *MockSynapticProcessor) Position() types.Position3D {
 	return types.Position3D{}
-}
-
-// Transmit implements component.SynapticProcessor - THIS WAS MISSING!
-func (msp *MockSynapticProcessor) Transmit(signalValue float64) {
-	msp.mutex.Lock()
-	defer msp.mutex.Unlock()
-
-	// Store the transmission for testing verification
-	msp.transmissions = append(msp.transmissions, signalValue)
-	msp.lastTransmission = time.Now()
-
-	// In a real implementation, this would schedule delayed delivery
-	// For testing, we just record the signal
 }
 
 // ApplyPlasticity implements component.SynapticProcessor

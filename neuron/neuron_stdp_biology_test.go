@@ -19,6 +19,13 @@ This file contains tests for STDP-based biological learning mechanisms:
 4. Learning consolidation
 
 All tests use the prefix TestSTDPNeuronBiology_ for easy isolation.
+
+IMPORTANT TESTING GUIDELINES:
+- STDP tests should simulate both pre-synaptic and post-synaptic spikes
+- Pre-spikes should be explicitly recorded using RecordPreSpike()
+- Use natural neuron firing (SendTestSignal()) to trigger post-spikes
+- Wait for STDP processing after firing (typically 30-50ms)
+- Avoid calling SendSTDPFeedback() directly in tests
 =================================================================================
 */
 
@@ -41,6 +48,11 @@ func TestSTDPNeuronBiology_HebbianRule(t *testing.T) {
 		10*time.Millisecond, // feedback delay
 		0.1,                 // learning rate
 	)
+
+	// Verify STDP is properly enabled
+	if !neuron.IsSTDPFeedbackEnabled() {
+		t.Fatalf("STDP should be enabled but IsSTDPFeedbackEnabled() returned false")
+	}
 
 	// Create mock matrix to track plasticity adjustments
 	mockMatrix := NewMockMatrix()
@@ -82,21 +94,33 @@ func TestSTDPNeuronBiology_HebbianRule(t *testing.T) {
 		}
 		mockMatrix.SetSynapseList(testSynapses)
 
-		// Send STDP feedback directly
-		t.Log("  Sending STDP feedback")
-		stdpDone := make(chan struct{})
-		go func() {
-			neuron.SendSTDPFeedback()
-			close(stdpDone)
-		}()
+		// CRITICAL: Record pre-spikes on the synapses to simulate pre-synaptic activity
+		// This is necessary for STDP to work correctly as it depends on spike timing history
+		for _, synInfo := range testSynapses {
+			synObj, err := mockCallbacks.GetSynapse(synInfo.ID)
+			if err != nil {
+				t.Logf("  Warning: Couldn't get synapse %s: %v", synInfo.ID, err)
+				continue
+			}
 
-		// Use timeout to avoid deadlock
-		select {
-		case <-stdpDone:
-			t.Log("  STDP feedback completed")
-		case <-time.After(200 * time.Millisecond):
-			t.Fatal("  STDP feedback timed out - deadlock detected")
+			// Record pre-spikes with the correct timing from LastActivity
+			if recorder, ok := synObj.(interface{ RecordPreSpike(time.Time) }); ok {
+				recorder.RecordPreSpike(synInfo.LastActivity)
+				t.Logf("  Recorded pre-spike for synapse %s at %v", synInfo.ID, synInfo.LastActivity)
+			} else {
+				t.Logf("  Warning: Synapse %s doesn't support RecordPreSpike", synInfo.ID)
+			}
 		}
+
+		// IMPORTANT: Trigger natural neuron firing to activate STDP processing
+		// This is the biological approach - neurons fire, then STDP occurs naturally
+		// The neuron will record a post-spike and schedule STDP feedback
+		t.Log("  Triggering neuron firing to activate STDP")
+		SendTestSignal(neuron, "hebbian_test_trigger", 2.0) // Strong signal to ensure firing
+
+		// Wait for firing and STDP scheduling/processing to complete
+		// Need to wait long enough for both firing and subsequent STDP processing
+		time.Sleep(50 * time.Millisecond)
 
 		// Brief delay between trials
 		time.Sleep(20 * time.Millisecond)
@@ -110,9 +134,9 @@ func TestSTDPNeuronBiology_HebbianRule(t *testing.T) {
 	var negativeCount, positiveCount int
 	for _, adj := range adjustments {
 		if adj.DeltaT < 0 {
-			negativeCount++
+			negativeCount++ // LTP (Long-Term Potentiation): pre before post
 		} else if adj.DeltaT > 0 {
-			positiveCount++
+			positiveCount++ // LTD (Long-Term Depression): post before pre
 		}
 	}
 
@@ -146,6 +170,11 @@ func TestSTDPNeuronBiology_LearningWindow(t *testing.T) {
 
 	neuron.EnableSTDPFeedback(20*time.Millisecond, 0.1)
 
+	// Verify STDP is properly enabled
+	if !neuron.IsSTDPFeedbackEnabled() {
+		t.Fatalf("STDP should be enabled but IsSTDPFeedbackEnabled() returned false")
+	}
+
 	// Create mock matrix
 	mockMatrix := NewMockMatrix()
 	mockCallbacks := NewMockNeuronCallbacks(mockMatrix)
@@ -156,6 +185,7 @@ func TestSTDPNeuronBiology_LearningWindow(t *testing.T) {
 	defer neuron.Stop()
 
 	// Test spike timing differences across the full STDP window
+	// These different timing values test both LTP and LTD in the STDP curve
 	timingDifferences := []time.Duration{
 		-50 * time.Millisecond, // Pre long before post (weak potentiation)
 		-30 * time.Millisecond, // Pre well before post (moderate potentiation)
@@ -189,20 +219,29 @@ func TestSTDPNeuronBiology_LearningWindow(t *testing.T) {
 		mockMatrix.ClearPlasticityAdjustments()
 		mockMatrix.SetSynapseList([]types.SynapseInfo{testSynapse})
 
-		// Directly trigger STDP with timeout for safety
-		stdpDone := make(chan struct{})
-		go func() {
-			neuron.SendSTDPFeedback()
-			close(stdpDone)
-		}()
-
-		// Wait for STDP to complete or timeout
-		select {
-		case <-stdpDone:
-			// STDP completed successfully
-		case <-time.After(200 * time.Millisecond):
-			t.Fatalf("STDP feedback timed out for deltaT = %v", deltaT)
+		// CRITICAL: Get the mock synapse and record a pre-spike with the proper timing
+		// This simulates the pre-synaptic neuron firing at the specific time we want
+		synObj, err := mockCallbacks.GetSynapse("timing_test_synapse")
+		if err != nil {
+			t.Logf("Warning: Couldn't get synapse: %v", err)
+		} else {
+			// Record pre-spike on the synapse with timing based on deltaT
+			if recorder, ok := synObj.(interface{ RecordPreSpike(time.Time) }); ok {
+				now := time.Now()
+				preTime := now.Add(deltaT) // For negative deltaT, pre comes before now
+				recorder.RecordPreSpike(preTime)
+				t.Logf("Recorded pre-spike at %v for deltaT = %v test", preTime, deltaT)
+			} else {
+				t.Logf("Warning: Synapse doesn't support RecordPreSpike")
+			}
 		}
+
+		// IMPORTANT: Trigger neuron firing to naturally activate STDP
+		// This creates the post-synaptic spike that interacts with the pre-spike
+		SendTestSignal(neuron, "window_test_trigger", 2.0) // Strong signal to ensure firing
+
+		// Wait for STDP processing to complete
+		time.Sleep(50 * time.Millisecond)
 
 		// Check adjustment
 		adjustments := mockMatrix.GetPlasticityAdjustments()
@@ -210,7 +249,7 @@ func TestSTDPNeuronBiology_LearningWindow(t *testing.T) {
 			t.Fatalf("No plasticity adjustment for deltaT = %v", deltaT)
 		}
 
-		// Store the measured DeltaT
+		// Store the measured DeltaT for analysis
 		results[deltaT] = adjustments[0].DeltaT
 	}
 
@@ -228,7 +267,7 @@ func TestSTDPNeuronBiology_LearningWindow(t *testing.T) {
 			float64(resultDeltaT)/float64(time.Millisecond),
 			signMatch)
 
-		// Check if sign is correct
+		// Check if sign is correct (negative for LTP, positive for LTD)
 		if !signMatch && deltaT != 0 {
 			t.Errorf("Expected same sign for input DeltaT %v and measured DeltaT %v", deltaT, resultDeltaT)
 		}
@@ -271,6 +310,16 @@ func TestSTDPNeuronBiology_NaturalScheduling(t *testing.T) {
 	}
 	mockMatrix.SetSynapseList(synapses)
 
+	// Record pre-spikes on the synapses
+	for _, synInfo := range synapses {
+		synObj, err := mockCallbacks.GetSynapse(synInfo.ID)
+		if err == nil {
+			if recorder, ok := synObj.(interface{ RecordPreSpike(time.Time) }); ok {
+				recorder.RecordPreSpike(synInfo.LastActivity)
+			}
+		}
+	}
+
 	// Start the neuron
 	err := neuron.Start()
 	if err != nil {
@@ -300,6 +349,7 @@ func TestSTDPNeuronBiology_NaturalScheduling(t *testing.T) {
 	}
 
 	// Wait for STDP delay to pass
+	// This test demonstrates how STDP is naturally scheduled after firing
 	t.Logf("Waiting for STDP delay (%v) to pass", stdpDelay)
 	// Wait longer than the delay to ensure processing
 	time.Sleep(stdpDelay + 100*time.Millisecond)
@@ -383,6 +433,16 @@ func TestSTDPNeuronBiology_IntegratedPlasticity(t *testing.T) {
 		}
 		mockMatrix.SetSynapseList(updatedSynapses)
 
+		// Record pre-spikes for synapses
+		for _, synInfo := range updatedSynapses {
+			synObj, err := mockCallbacks.GetSynapse(synInfo.ID)
+			if err == nil {
+				if recorder, ok := synObj.(interface{ RecordPreSpike(time.Time) }); ok {
+					recorder.RecordPreSpike(synInfo.LastActivity)
+				}
+			}
+		}
+
 		// Send sub-threshold signals
 		for j := 0; j < 3; j++ {
 			// Create and send signal with timeout
@@ -404,6 +464,7 @@ func TestSTDPNeuronBiology_IntegratedPlasticity(t *testing.T) {
 		}
 
 		// Send firing signal to trigger STDP
+		// This approach allows natural STDP to occur after firing
 		SendTestSignal(neuron, "firing_input", 1.0) // Above threshold
 		time.Sleep(20 * time.Millisecond)           // Allow time for STDP processing
 	}
@@ -461,6 +522,11 @@ func TestSTDPNeuronBiology_ConsolidatedLearning(t *testing.T) {
 	// Enable STDP with moderate learning rate
 	neuron.EnableSTDPFeedback(10*time.Millisecond, 0.05)
 
+	// Verify STDP is enabled
+	if !neuron.IsSTDPFeedbackEnabled() {
+		t.Fatalf("STDP should be enabled but IsSTDPFeedbackEnabled() returned false")
+	}
+
 	// Create mock matrix
 	mockMatrix := NewMockMatrix()
 	mockCallbacks := NewMockNeuronCallbacks(mockMatrix)
@@ -515,18 +581,25 @@ func TestSTDPNeuronBiology_ConsolidatedLearning(t *testing.T) {
 		allSynapses := append(patternSynapses, randomSynapses...)
 		mockMatrix.SetSynapseList(allSynapses)
 
-		// Trigger STDP feedback with timeout protection
-		stdpDone := make(chan struct{})
-		go func() {
-			neuron.SendSTDPFeedback()
-			close(stdpDone)
-		}()
-		select {
-		case <-stdpDone:
-			// STDP completed successfully
-		case <-time.After(200 * time.Millisecond):
-			t.Fatal("STDP feedback timed out - deadlock detected")
+		// CRITICAL: Record pre-spikes on all synapses with the correct timing
+		// This simulates pre-synaptic activity patterns
+		for _, synInfo := range allSynapses {
+			synObj, err := mockCallbacks.GetSynapse(synInfo.ID)
+			if err != nil {
+				continue
+			}
+
+			if recorder, ok := synObj.(interface{ RecordPreSpike(time.Time) }); ok {
+				recorder.RecordPreSpike(synInfo.LastActivity)
+			}
 		}
+
+		// IMPORTANT: Trigger neuron firing to naturally activate STDP
+		// This creates the post-synaptic spike needed for STDP
+		SendTestSignal(neuron, "consolidation_test_trigger", 2.0)
+
+		// Wait for firing and STDP processing
+		time.Sleep(30 * time.Millisecond)
 
 		// Allow time for processing
 		time.Sleep(5 * time.Millisecond)
@@ -595,9 +668,14 @@ func TestSTDPNeuronBiology_ConsolidatedLearning(t *testing.T) {
 }
 
 // Helper function for simulating multi-phase activity
+// This helper function sends multiple signals and triggers homeostasis and STDP
 func simulateActivityPhase(t *testing.T, neuron *Neuron, mockMatrix *MockMatrix,
 	baseSynapses []types.SynapseInfo, inputCount int,
 	intervalMs int, duration time.Duration) {
+
+	// Get the mockCallbacks from the neuron's context
+	// This is the key fix - we need to ensure we're using the correct mockCallbacks
+	mockCallbacks := NewMockNeuronCallbacks(mockMatrix)
 
 	// Calculate number of iterations instead of using time-based loop
 	numIterations := int(duration / (time.Duration(intervalMs) * time.Millisecond))
@@ -632,6 +710,16 @@ func simulateActivityPhase(t *testing.T, neuron *Neuron, mockMatrix *MockMatrix,
 		}
 
 		mockMatrix.SetSynapseList(updatedSynapses)
+
+		// Record pre-spikes for updated synapses
+		for _, synInfo := range updatedSynapses {
+			synObj, err := mockCallbacks.GetSynapse(synInfo.ID)
+			if err == nil {
+				if recorder, ok := synObj.(interface{ RecordPreSpike(time.Time) }); ok {
+					recorder.RecordPreSpike(synInfo.LastActivity)
+				}
+			}
+		}
 
 		// Send signals with timeout protection
 		signalsToSend := min(inputCount, 5) // Maximum 5 signals for safety
@@ -723,6 +811,14 @@ func TestSTDPNeuronBiology_BasicFunctionality(t *testing.T) {
 		0.1,                 // learning rate
 	)
 
+	// IMPORTANT: Verify STDP is properly enabled
+	// This helps diagnose issues where STDP appears to be enabled but isn't
+	if !neuron.IsSTDPFeedbackEnabled() {
+		stdpStatus := neuron.GetProcessingStatus()["stdp_system"]
+		t.Logf("STDP System Status: %+v", stdpStatus)
+		t.Fatalf("STDP should be enabled but IsSTDPFeedbackEnabled() returned false")
+	}
+
 	// Create a mock matrix to track STDP calls
 	mockMatrix := NewMockMatrix()
 	mockCallbacks := NewMockNeuronCallbacks(mockMatrix)
@@ -751,9 +847,28 @@ func TestSTDPNeuronBiology_BasicFunctionality(t *testing.T) {
 	// Setup our mock to return this synapse when ListSynapses is called
 	mockMatrix.SetSynapseList([]types.SynapseInfo{causalSynapse})
 
-	// Simulate a post-synaptic spike now (by calling SendSTDPFeedback)
-	// This should strengthen the synapse because pre fired before post
-	neuron.SendSTDPFeedback()
+	// CRITICAL: Get the mock synapse and record a pre-spike with proper timing
+	// This is necessary for the STDP system to find the pre-spike in history
+	synObj, err := mockCallbacks.GetSynapse("causal_synapse")
+	if err != nil {
+		t.Logf("Warning: Couldn't get synapse: %v", err)
+	} else {
+		// Record pre-spike on the synapse
+		if recorder, ok := synObj.(interface{ RecordPreSpike(time.Time) }); ok {
+			preTime := time.Now().Add(-5 * time.Millisecond)
+			recorder.RecordPreSpike(preTime)
+			t.Logf("Recorded pre-spike at %v (5ms ago) for causal test", preTime)
+		} else {
+			t.Logf("Warning: Synapse doesn't support RecordPreSpike")
+		}
+	}
+
+	// IMPORTANT: Trigger neuron firing instead of directly calling SendSTDPFeedback
+	// This creates the post-synaptic spike that STDP needs
+	SendTestSignal(neuron, "causal_test_trigger", 2.0) // Strong signal to ensure firing
+
+	// Wait for firing and STDP processing
+	time.Sleep(30 * time.Millisecond)
 
 	// Check for plasticity adjustments
 	adjustments := mockMatrix.GetPlasticityAdjustments()
@@ -849,6 +964,16 @@ func TestSTDPNeuronBiology_ScheduledFeedback(t *testing.T) {
 
 	mockMatrix.SetSynapseList([]types.SynapseInfo{testSynapse})
 
+	// Record a pre-spike on the synapse
+	synObj, err := mockCallbacks.GetSynapse("schedule_test_synapse")
+	if err == nil {
+		if recorder, ok := synObj.(interface{ RecordPreSpike(time.Time) }); ok {
+			preTime := time.Now().Add(-5 * time.Millisecond)
+			recorder.RecordPreSpike(preTime)
+			t.Logf("Recorded pre-spike at %v for scheduled feedback test", preTime)
+		}
+	}
+
 	// Start the neuron
 	neuron.Start()
 	defer neuron.Stop()
@@ -874,6 +999,7 @@ func TestSTDPNeuronBiology_ScheduledFeedback(t *testing.T) {
 	}
 
 	// Wait for scheduled feedback to execute
+	// This tests the automatic scheduling of STDP after firing
 	time.Sleep(feedbackDelay + 10*time.Millisecond)
 
 	// Now we should have STDP adjustments
