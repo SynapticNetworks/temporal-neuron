@@ -1,6 +1,7 @@
 package neuron
 
 import (
+	"log"
 	"sync"
 	"time"
 
@@ -16,6 +17,9 @@ type STDPSignalingSystem struct {
 	enabled       bool
 	feedbackDelay time.Duration
 	learningRate  float64
+
+	//store the post-spike time
+	postSpikeTime time.Time
 
 	// State
 	scheduledTime time.Time
@@ -90,6 +94,7 @@ func (s *STDPSignalingSystem) ScheduleFeedback(fireTime time.Time) bool {
 	// Only schedule if there's no pending feedback or this one is earlier
 	if s.scheduledTime.IsZero() || executeTime.Before(s.scheduledTime) {
 		s.scheduledTime = executeTime
+		s.postSpikeTime = fireTime // Store the actual post-spike time
 		return true
 	}
 
@@ -108,13 +113,17 @@ func (s *STDPSignalingSystem) CheckAndDeliverFeedback(neuronID string, callbacks
 		s.mutex.Unlock()
 		return false
 	}
+	// Get the stored post-spike time
+	postSpikeTime := s.postSpikeTime
 
 	// Reset scheduled time while holding the lock
 	s.scheduledTime = time.Time{}
+	s.postSpikeTime = time.Time{}
+
 	s.mutex.Unlock()
 
-	// Call the shared implementation
-	feedbackCount := s.processSTDPFeedback(neuronID, callbacks)
+	// Call the shared implementation with current time
+	feedbackCount := s.processSTDPFeedback(neuronID, callbacks, postSpikeTime)
 	return feedbackCount > 0
 }
 
@@ -122,12 +131,21 @@ func (s *STDPSignalingSystem) CheckAndDeliverFeedback(neuronID string, callbacks
 // This is useful for testing and direct control
 // Returns the number of synapses that received feedback
 // Fixed version of DeliverFeedbackNow to correct deltaT sign issue
-func (s *STDPSignalingSystem) DeliverFeedbackNow(neuronID string, callbacks component.NeuronCallbacks) int {
-	return s.processSTDPFeedback(neuronID, callbacks)
+// DeliverFeedbackNow forces immediate STDP feedback delivery with current neuron firing time
+// This is useful for testing and direct control
+// Returns the number of synapses that received feedback
+// Update the DeliverFeedbackNow method to accept an explicit fire time
+func (s *STDPSignalingSystem) DeliverFeedbackNow(neuronID string, callbacks component.NeuronCallbacks, postFiringTime time.Time) int {
+	// Use provided time or current time as fallback
+	if postFiringTime.IsZero() {
+		postFiringTime = time.Now()
+	}
+	return s.processSTDPFeedback(neuronID, callbacks, postFiringTime)
 }
 
-// processSTDPFeedback is the core implementation that both functions will use
-func (s *STDPSignalingSystem) processSTDPFeedback(neuronID string, callbacks component.NeuronCallbacks) int {
+// processSTDPFeedback is the core implementation
+// Modified to accept explicit postSpikeTime
+func (s *STDPSignalingSystem) processSTDPFeedback(neuronID string, callbacks component.NeuronCallbacks, postSpikeTime time.Time) int {
 	s.mutex.Lock()
 	// Quick exit conditions
 	if !s.enabled || callbacks == nil {
@@ -145,23 +163,42 @@ func (s *STDPSignalingSystem) processSTDPFeedback(neuronID string, callbacks com
 		Direction: &incomingDirection,
 	})
 
-	// Current time is the post-synaptic spike time
-	postSpikeTime := time.Now()
+	// NOTE: No longer using time.Now() here
 	feedbackCount := 0
 
 	for _, synapse := range synapses {
 		// Skip synapses with invalid LastActivity
-		if synapse.LastActivity.IsZero() {
-			// fmt.Printf("STDP DEBUG: Skipping synapse %s with zero LastActivity\n", synapse.ID)
+		//if synapse.LastActivity.IsZero() {
+		//	continue
+		//}
+
+		// Calculate timing difference
+		//deltaT := synapse.LastActivity.Sub(postSpikeTime)
+
+		// Skip synapses with invalid LastTransmission (instead of LastActivity)
+		if synapse.LastTransmission.IsZero() {
 			continue
 		}
 
-		// Calculate timing difference
-		deltaT := synapse.LastActivity.Sub(postSpikeTime)
+		// Calculate timing difference using LastTransmission
+		deltaT := synapse.LastTransmission.Sub(postSpikeTime)
+
+		// Add validation to ensure the sign is correct for biological interpretation
+		if deltaT > 0 && synapse.LastTransmission.After(postSpikeTime) {
+			// Correct: Post fired before Pre (LTD case)
+		} else if deltaT < 0 && synapse.LastTransmission.Before(postSpikeTime) {
+			// Correct: Pre fired before Post (LTP case)
+		} else if deltaT != 0 {
+			// Something is wrong with our timing calculation
+			log.Printf("STDP Warning: deltaT=%v but LastTransmission=%v, postSpikeTime=%v",
+				deltaT, synapse.LastTransmission, postSpikeTime)
+		}
+
+		// Add debugging
+		log.Printf("STDP Debug: synapse=%s, lastActivity=%v, postSpikeTime=%v, deltaT=%v\n", synapse.ID, synapse.LastActivity, postSpikeTime, deltaT)
 
 		// Skip synapses with zero deltaT
 		if deltaT == 0 {
-			//fmt.Printf("STDP DEBUG: Skipping synapse %s with zero deltaT\n", synapse.ID)
 			continue
 		}
 
@@ -174,9 +211,6 @@ func (s *STDPSignalingSystem) processSTDPFeedback(neuronID string, callbacks com
 			}
 		}
 
-		// Debug the values before creating the adjustment
-		// fmt.Printf("STDP DEBUG: Synapse %s, LastActivity=%v, postSpikeTime=%v, deltaT=%v (ns=%d)\n",synapse.ID, synapse.LastActivity, postSpikeTime, deltaT, deltaT.Nanoseconds())
-
 		// Create plasticity adjustment
 		adjustment := types.PlasticityAdjustment{
 			DeltaT:       deltaT,
@@ -187,15 +221,10 @@ func (s *STDPSignalingSystem) processSTDPFeedback(neuronID string, callbacks com
 			EventType:    types.PlasticitySTDP,
 		}
 
-		// Debug the adjustment struct right after creation
-		//fmt.Printf("STDP DEBUG: Created adjustment with DeltaT=%v (ns=%d), LR=%.4f\n",adjustment.DeltaT, adjustment.DeltaT.Nanoseconds(), adjustment.LearningRate)
-
 		// Apply plasticity
 		err := callbacks.ApplyPlasticity(synapse.ID, adjustment)
 		if err == nil {
 			feedbackCount++
-		} else {
-			//fmt.Printf("STDP DEBUG: Error applying plasticity: %v\n", err)
 		}
 	}
 

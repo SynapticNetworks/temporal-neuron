@@ -70,11 +70,12 @@ func TestSTDPNeuronBasic_BasicFunctionality(t *testing.T) {
 
 	// Create a test synapse that fired recently (causal - should strengthen)
 	causalSynapse := types.SynapseInfo{
-		ID:           "causal_synapse",
-		SourceID:     "source",
-		TargetID:     neuron.ID(),
-		Weight:       0.5,
-		LastActivity: time.Now().Add(-5 * time.Millisecond), // Pre-synaptic spike 5ms ago
+		ID:               "causal_synapse",
+		SourceID:         "source",
+		TargetID:         neuron.ID(),
+		Weight:           0.5,
+		LastActivity:     time.Now().Add(-5 * time.Millisecond), // Pre-synaptic spike 5ms ago
+		LastTransmission: time.Now().Add(-5 * time.Millisecond), // Same as LastActivity for simplicity
 	}
 
 	// Setup our mock to return this synapse when ListSynapses is called
@@ -105,11 +106,12 @@ func TestSTDPNeuronBasic_BasicFunctionality(t *testing.T) {
 
 	// Create a test synapse that will fire in the future (anti-causal - should weaken)
 	antiCausalSynapse := types.SynapseInfo{
-		ID:           "anticausal_synapse",
-		SourceID:     "source",
-		TargetID:     neuron.ID(),
-		Weight:       0.5,
-		LastActivity: time.Now().Add(15 * time.Millisecond), // Pre-synaptic spike will happen 15ms later
+		ID:               "anticausal_synapse",
+		SourceID:         "source",
+		TargetID:         neuron.ID(),
+		Weight:           0.5,
+		LastActivity:     time.Now().Add(15 * time.Millisecond), // Pre-synaptic spike will happen 15ms later
+		LastTransmission: time.Now().Add(15 * time.Millisecond), // Same as LastActivity for simplicity
 	}
 
 	// Update our mock to return this synapse
@@ -168,11 +170,12 @@ func TestSTDPNeuronBasic_LearningRateEffects(t *testing.T) {
 
 		// Create a test synapse
 		testSynapse := types.SynapseInfo{
-			ID:           "test_synapse",
-			SourceID:     "source",
-			TargetID:     neuron.ID(),
-			Weight:       0.5,
-			LastActivity: time.Now().Add(-5 * time.Millisecond),
+			ID:               "test_synapse",
+			SourceID:         "source",
+			TargetID:         neuron.ID(),
+			Weight:           0.5,
+			LastActivity:     time.Now().Add(-5 * time.Millisecond),
+			LastTransmission: time.Now().Add(-5 * time.Millisecond), // Use LastActivity for simplicity
 		}
 
 		// Setup our mock
@@ -249,11 +252,12 @@ func TestSTDPNeuronBasic_TimingCurve(t *testing.T) {
 
 		// Create a test synapse with this timing
 		testSynapse := types.SynapseInfo{
-			ID:           "timing_test_synapse",
-			SourceID:     "source",
-			TargetID:     neuron.ID(),
-			Weight:       0.5,
-			LastActivity: lastActivity,
+			ID:               "timing_test_synapse",
+			SourceID:         "source",
+			TargetID:         neuron.ID(),
+			Weight:           0.5,
+			LastActivity:     lastActivity,
+			LastTransmission: lastActivity, // Use LastActivity for simplicity
 		}
 
 		// Setup mock and clear previous adjustments
@@ -315,11 +319,12 @@ func TestSTDPNeuronBasic_DisableEnable(t *testing.T) {
 
 	// Create a test synapse
 	testSynapse := types.SynapseInfo{
-		ID:           "toggle_test_synapse",
-		SourceID:     "source",
-		TargetID:     neuron.ID(),
-		Weight:       0.5,
-		LastActivity: time.Now().Add(-5 * time.Millisecond),
+		ID:               "toggle_test_synapse",
+		SourceID:         "source",
+		TargetID:         neuron.ID(),
+		Weight:           0.5,
+		LastActivity:     time.Now().Add(-5 * time.Millisecond),
+		LastTransmission: time.Now().Add(-5 * time.Millisecond), // Use LastActivity for simplicity
 	}
 
 	mockMatrix.SetSynapseList([]types.SynapseInfo{testSynapse})
@@ -403,11 +408,12 @@ func TestSTDPNeuronBasic_ScheduledFeedback(t *testing.T) {
 
 	// Setup a test synapse
 	testSynapse := types.SynapseInfo{
-		ID:           "schedule_test_synapse",
-		SourceID:     "source",
-		TargetID:     neuron.ID(),
-		Weight:       0.5,
-		LastActivity: time.Now().Add(-5 * time.Millisecond),
+		ID:               "schedule_test_synapse",
+		SourceID:         "source",
+		TargetID:         neuron.ID(),
+		Weight:           0.5,
+		LastActivity:     time.Now().Add(-5 * time.Millisecond),
+		LastTransmission: time.Now().Add(-5 * time.Millisecond), // Pre-synaptic spike 5ms ago
 	}
 
 	mockMatrix.SetSynapseList([]types.SynapseInfo{testSynapse})
@@ -485,18 +491,20 @@ func TestSTDPNeuronBasic_ConcurrentAccess(t *testing.T) {
 	// Setup some test synapses
 	testSynapses := []types.SynapseInfo{
 		{
-			ID:           "synapse1",
-			SourceID:     "source1",
-			TargetID:     neuron.ID(),
-			Weight:       0.5,
-			LastActivity: time.Now().Add(-5 * time.Millisecond),
+			ID:               "synapse1",
+			SourceID:         "source1",
+			TargetID:         neuron.ID(),
+			Weight:           0.5,
+			LastActivity:     time.Now().Add(-5 * time.Millisecond),
+			LastTransmission: time.Now().Add(-5 * time.Millisecond), // Use LastActivity for simplicity
 		},
 		{
-			ID:           "synapse2",
-			SourceID:     "source2",
-			TargetID:     neuron.ID(),
-			Weight:       0.5,
-			LastActivity: time.Now().Add(-10 * time.Millisecond),
+			ID:               "synapse2",
+			SourceID:         "source2",
+			TargetID:         neuron.ID(),
+			Weight:           0.5,
+			LastActivity:     time.Now().Add(-10 * time.Millisecond),
+			LastTransmission: time.Now().Add(-10 * time.Millisecond), // Use LastActivity for simplicity
 		},
 	}
 	mockMatrix.SetSynapseList(testSynapses)
@@ -584,11 +592,12 @@ func TestSTDPNeuronBasic_STDPandActivity(t *testing.T) {
 
 	// Setup a test synapse
 	testSynapse := types.SynapseInfo{
-		ID:           "activity_test_synapse",
-		SourceID:     "source",
-		TargetID:     neuron.ID(),
-		Weight:       0.5,
-		LastActivity: time.Now().Add(-5 * time.Millisecond),
+		ID:               "activity_test_synapse",
+		SourceID:         "source",
+		TargetID:         neuron.ID(),
+		Weight:           0.5,
+		LastActivity:     time.Now().Add(-5 * time.Millisecond),
+		LastTransmission: time.Now().Add(-5 * time.Millisecond), // Use LastActivity for simplicity
 	}
 
 	mockMatrix.SetSynapseList([]types.SynapseInfo{testSynapse})
@@ -808,11 +817,12 @@ func TestSTDPNeuronBasic_DeadlockScenario(t *testing.T) {
 
 	// Setup a test synapse
 	testSynapse := types.SynapseInfo{
-		ID:           "deadlock_test_synapse",
-		SourceID:     "source",
-		TargetID:     neuron.ID(),
-		Weight:       0.5,
-		LastActivity: time.Now().Add(-5 * time.Millisecond),
+		ID:               "deadlock_test_synapse",
+		SourceID:         "source",
+		TargetID:         neuron.ID(),
+		Weight:           0.5,
+		LastActivity:     time.Now().Add(-5 * time.Millisecond),
+		LastTransmission: time.Now().Add(-5 * time.Millisecond), // Use LastActivity for simplicity
 	}
 
 	mockMatrix.SetSynapseList([]types.SynapseInfo{testSynapse})
@@ -869,11 +879,12 @@ func TestSTDPNeuronBasic_MultipleThreadsReadingActivity(t *testing.T) {
 	// Setup test synapses
 	testSynapses := []types.SynapseInfo{
 		{
-			ID:           "synapse1",
-			SourceID:     "source1",
-			TargetID:     neuron.ID(),
-			Weight:       0.5,
-			LastActivity: time.Now().Add(-5 * time.Millisecond),
+			ID:               "synapse1",
+			SourceID:         "source1",
+			TargetID:         neuron.ID(),
+			Weight:           0.5,
+			LastActivity:     time.Now().Add(-5 * time.Millisecond),
+			LastTransmission: time.Now().Add(-5 * time.Millisecond), // Use LastActivity for simplicity
 		},
 	}
 	mockMatrix.SetSynapseList(testSynapses)
@@ -1055,11 +1066,12 @@ func TestSTDPNeuronBasic_ExtremeTimings(t *testing.T) {
 
 		// Create a test synapse with this timing
 		testSynapse := types.SynapseInfo{
-			ID:           "extreme_timing_synapse",
-			SourceID:     "source",
-			TargetID:     neuron.ID(),
-			Weight:       0.5,
-			LastActivity: lastActivity,
+			ID:               "extreme_timing_synapse",
+			SourceID:         "source",
+			TargetID:         neuron.ID(),
+			Weight:           0.5,
+			LastActivity:     lastActivity,
+			LastTransmission: lastActivity, // Use LastActivity for simplicity
 		}
 
 		// Setup mock and clear previous adjustments
@@ -1112,11 +1124,12 @@ func TestSTDPNeuronBasic_ZeroLearningRate(t *testing.T) {
 
 	// Create a test synapse
 	testSynapse := types.SynapseInfo{
-		ID:           "zero_rate_synapse",
-		SourceID:     "source",
-		TargetID:     neuron.ID(),
-		Weight:       0.5,
-		LastActivity: time.Now().Add(-5 * time.Millisecond),
+		ID:               "zero_rate_synapse",
+		SourceID:         "source",
+		TargetID:         neuron.ID(),
+		Weight:           0.5,
+		LastActivity:     time.Now().Add(-5 * time.Millisecond),
+		LastTransmission: time.Now().Add(-5 * time.Millisecond), // Use LastActivity for simplicity
 	}
 
 	mockMatrix.SetSynapseList([]types.SynapseInfo{testSynapse})
@@ -1166,11 +1179,12 @@ func TestSTDPNeuronBasic_ExtremeLearningRate(t *testing.T) {
 
 	// Create a test synapse
 	testSynapse := types.SynapseInfo{
-		ID:           "extreme_rate_synapse",
-		SourceID:     "source",
-		TargetID:     neuron.ID(),
-		Weight:       0.5,
-		LastActivity: time.Now().Add(-5 * time.Millisecond),
+		ID:               "extreme_rate_synapse",
+		SourceID:         "source",
+		TargetID:         neuron.ID(),
+		Weight:           0.5,
+		LastActivity:     time.Now().Add(-5 * time.Millisecond),
+		LastTransmission: time.Now().Add(-5 * time.Millisecond), // Use LastActivity for simplicity
 	}
 
 	mockMatrix.SetSynapseList([]types.SynapseInfo{testSynapse})

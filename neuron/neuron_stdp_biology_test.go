@@ -63,19 +63,21 @@ func TestSTDPNeuronBiology_HebbianRule(t *testing.T) {
 		testSynapses := []types.SynapseInfo{
 			// Highly correlated synapse (fires consistently before the neuron)
 			{
-				ID:           "synapse_correlated",
-				SourceID:     "source1",
-				TargetID:     neuron.ID(),
-				Weight:       0.5,
-				LastActivity: time.Now().Add(-3 * time.Millisecond),
+				ID:               "synapse_correlated",
+				SourceID:         "source1",
+				TargetID:         neuron.ID(),
+				Weight:           0.5,
+				LastActivity:     time.Now().Add(-3 * time.Millisecond),
+				LastTransmission: time.Now().Add(-3 * time.Millisecond),
 			},
 			// Anti-correlated synapse (fires consistently after the neuron)
 			{
-				ID:           "synapse_anticorrelated",
-				SourceID:     "source3",
-				TargetID:     neuron.ID(),
-				Weight:       0.5,
-				LastActivity: time.Now().Add(5 * time.Millisecond),
+				ID:               "synapse_anticorrelated",
+				SourceID:         "source3",
+				TargetID:         neuron.ID(),
+				Weight:           0.5,
+				LastActivity:     time.Now().Add(5 * time.Millisecond),
+				LastTransmission: time.Now().Add(5 * time.Millisecond),
 			},
 		}
 		mockMatrix.SetSynapseList(testSynapses)
@@ -175,11 +177,12 @@ func TestSTDPNeuronBiology_LearningWindow(t *testing.T) {
 
 		// Create a test synapse with this timing
 		testSynapse := types.SynapseInfo{
-			ID:           "timing_test_synapse",
-			SourceID:     "source",
-			TargetID:     neuron.ID(),
-			Weight:       0.5,
-			LastActivity: lastActivity,
+			ID:               "timing_test_synapse",
+			SourceID:         "source",
+			TargetID:         neuron.ID(),
+			Weight:           0.5,
+			LastActivity:     lastActivity,
+			LastTransmission: lastActivity, // Use LastActivity for simplicity
 		}
 
 		// Setup mock and clear previous adjustments
@@ -259,8 +262,12 @@ func TestSTDPNeuronBiology_NaturalScheduling(t *testing.T) {
 
 	// Set up test synapses with clear timing patterns
 	synapses := []types.SynapseInfo{
-		{ID: "corr", SourceID: "src1", TargetID: neuron.ID(), Weight: 0.5, LastActivity: time.Now().Add(-5 * time.Millisecond)},
-		{ID: "anti", SourceID: "src2", TargetID: neuron.ID(), Weight: 0.5, LastActivity: time.Now().Add(5 * time.Millisecond)},
+		{
+			ID:       "corr",
+			SourceID: "src1",
+			TargetID: neuron.ID(),
+			Weight:   0.5, LastActivity: time.Now().Add(-5 * time.Millisecond), LastTransmission: time.Now().Add(-5 * time.Millisecond)},
+		{ID: "anti", SourceID: "src2", TargetID: neuron.ID(), Weight: 0.5, LastActivity: time.Now().Add(5 * time.Millisecond), LastTransmission: time.Now().Add(-5 * time.Millisecond)},
 	}
 	mockMatrix.SetSynapseList(synapses)
 
@@ -733,11 +740,12 @@ func TestSTDPNeuronBiology_BasicFunctionality(t *testing.T) {
 
 	// Create a test synapse that fired recently (causal - should strengthen)
 	causalSynapse := types.SynapseInfo{
-		ID:           "causal_synapse",
-		SourceID:     "source",
-		TargetID:     neuron.ID(),
-		Weight:       0.5,
-		LastActivity: time.Now().Add(-5 * time.Millisecond), // Pre-synaptic spike 5ms ago
+		ID:               "causal_synapse",
+		SourceID:         "source",
+		TargetID:         neuron.ID(),
+		Weight:           0.5,
+		LastActivity:     time.Now().Add(-5 * time.Millisecond), // Pre-synaptic spike 5ms ago
+		LastTransmission: time.Now().Add(-5 * time.Millisecond), // Same as LastActivity for simplicity
 	}
 
 	// Setup our mock to return this synapse when ListSynapses is called
@@ -831,11 +839,12 @@ func TestSTDPNeuronBiology_ScheduledFeedback(t *testing.T) {
 
 	// Setup a test synapse
 	testSynapse := types.SynapseInfo{
-		ID:           "schedule_test_synapse",
-		SourceID:     "source",
-		TargetID:     neuron.ID(),
-		Weight:       0.5,
-		LastActivity: time.Now().Add(-5 * time.Millisecond),
+		ID:               "schedule_test_synapse",
+		SourceID:         "source",
+		TargetID:         neuron.ID(),
+		Weight:           0.5,
+		LastActivity:     time.Now().Add(-5 * time.Millisecond),
+		LastTransmission: time.Now().Add(-5 * time.Millisecond), // Pre-synaptic spike 5ms ago
 	}
 
 	mockMatrix.SetSynapseList([]types.SynapseInfo{testSynapse})

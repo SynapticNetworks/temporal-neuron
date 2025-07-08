@@ -605,11 +605,12 @@ func (cb *matrixNeuronCallbacks) ListSynapses(criteria types.SynapseCriteria) []
 		}
 
 		synapseInfo := types.SynapseInfo{
-			ID:           synapse.ID(),
-			SourceID:     synapse.GetPresynapticID(),
-			TargetID:     synapse.GetPostsynapticID(),
-			Weight:       synapse.GetWeight(),
-			LastActivity: lastActivity,
+			ID:               synapse.ID(),
+			SourceID:         synapse.GetPresynapticID(),
+			TargetID:         synapse.GetPostsynapticID(),
+			Weight:           synapse.GetWeight(),
+			LastActivity:     lastActivity,
+			LastTransmission: synapse.GetActivityInfo().LastTransmission,
 		}
 
 		synapseInfos = append(synapseInfos, synapseInfo)

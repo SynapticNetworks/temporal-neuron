@@ -12,7 +12,7 @@ import (
 )
 
 // TestSTDPSignal_DeltaTSignConvention verifies the sign convention is consistent
-func TestSTDPSignal_DeltaTSignConvention(t *testing.T) {
+func TestSTDPSignaling_DeltaTSignConvention(t *testing.T) {
 	// Create system
 	stdp := NewSTDPSignalingSystem(true, 10*time.Millisecond, 0.1)
 
@@ -26,24 +26,26 @@ func TestSTDPSignal_DeltaTSignConvention(t *testing.T) {
 
 	testSynapses := []types.SynapseInfo{
 		{
-			ID:           "pre_before_post", // Should produce negative deltaT
-			SourceID:     "source1",
-			TargetID:     "target_neuron",
-			Weight:       0.5,
-			LastActivity: preSpikeTimeBefore,
+			ID:               "pre_before_post", // Should produce negative deltaT
+			SourceID:         "source1",
+			TargetID:         "target_neuron",
+			Weight:           0.5,
+			LastActivity:     preSpikeTimeBefore,
+			LastTransmission: preSpikeTimeBefore, // Use LastActivity for simplicity
 		},
 		{
-			ID:           "post_before_pre", // Should produce positive deltaT
-			SourceID:     "source2",
-			TargetID:     "target_neuron",
-			Weight:       0.5,
-			LastActivity: preSpikeTimeAfter,
+			ID:               "post_before_pre", // Should produce positive deltaT
+			SourceID:         "source2",
+			TargetID:         "target_neuron",
+			Weight:           0.5,
+			LastActivity:     preSpikeTimeAfter,
+			LastTransmission: preSpikeTimeAfter, // Use LastActivity for simplicity
 		},
 	}
 	mock.SetSynapses(testSynapses)
 
 	// Force feedback delivery now
-	feedbackCount := stdp.DeliverFeedbackNow("target_neuron", mock)
+	feedbackCount := stdp.DeliverFeedbackNow("target_neuron", mock, time.Now())
 	if feedbackCount != 2 {
 		t.Fatalf("Expected 2 synapses to receive feedback, got %d", feedbackCount)
 	}
@@ -255,24 +257,26 @@ func TestSTDPSignaling_FeedbackDelivery(t *testing.T) {
 	now := time.Now()
 	testSynapses := []types.SynapseInfo{
 		{
-			ID:           "causal_synapse",
-			SourceID:     "source1",
-			TargetID:     "target_neuron",
-			Weight:       0.5,
-			LastActivity: now.Add(-5 * time.Millisecond), // Pre before post (causal)
+			ID:               "causal_synapse",
+			SourceID:         "source1",
+			TargetID:         "target_neuron",
+			Weight:           0.5,
+			LastActivity:     now.Add(-5 * time.Millisecond), // Pre before post (causal)
+			LastTransmission: now.Add(-5 * time.Millisecond), // Use LastActivity for simplicity
 		},
 		{
-			ID:           "anticausal_synapse",
-			SourceID:     "source2",
-			TargetID:     "target_neuron",
-			Weight:       0.5,
-			LastActivity: now.Add(5 * time.Millisecond), // Post before pre (anti-causal)
+			ID:               "anticausal_synapse",
+			SourceID:         "source2",
+			TargetID:         "target_neuron",
+			Weight:           0.5,
+			LastActivity:     now.Add(5 * time.Millisecond),  // Post before pre (anti-causal)
+			LastTransmission: now.Add(-5 * time.Millisecond), // Use LastActivity for simplicity
 		},
 	}
 	mock.SetSynapses(testSynapses)
 
 	// Test direct feedback delivery
-	feedbackCount := stdp.DeliverFeedbackNow("target_neuron", mock)
+	feedbackCount := stdp.DeliverFeedbackNow("target_neuron", mock, time.Now())
 	if feedbackCount != 2 {
 		t.Errorf("Expected 2 synapses to receive feedback, got %d", feedbackCount)
 	}
@@ -328,11 +332,12 @@ func TestSTDPSignaling_IsolatedConcurrency(t *testing.T) {
 	// Set up test synapses
 	testSynapses := []types.SynapseInfo{
 		{
-			ID:           "test_synapse",
-			SourceID:     "source",
-			TargetID:     "test_neuron",
-			Weight:       0.5,
-			LastActivity: time.Now().Add(-5 * time.Millisecond),
+			ID:               "test_synapse",
+			SourceID:         "source",
+			TargetID:         "test_neuron",
+			Weight:           0.5,
+			LastActivity:     time.Now().Add(-5 * time.Millisecond),
+			LastTransmission: time.Now().Add(-5 * time.Millisecond), // Use LastActivity for simplicity
 		},
 	}
 	mock.SetSynapses(testSynapses)
@@ -384,7 +389,7 @@ func TestSTDPSignaling_IsolatedConcurrency(t *testing.T) {
 					stdpSignaling.CheckAndDeliverFeedback("test_neuron", mock)
 				case 3:
 					// Force feedback delivery
-					stdpSignaling.DeliverFeedbackNow("test_neuron", mock)
+					stdpSignaling.DeliverFeedbackNow("test_neuron", mock, time.Now())
 				case 4:
 					// Get status
 					_ = stdpSignaling.GetStatus()
@@ -434,7 +439,7 @@ func TestSTDPSignaling_IsolatedConcurrency(t *testing.T) {
 	}
 
 	// Verify system is still functional after intense concurrency
-	if stdpSignaling.DeliverFeedbackNow("test_neuron", mock) == 0 {
+	if stdpSignaling.DeliverFeedbackNow("test_neuron", mock, time.Now()) == 0 {
 		t.Error("System is not functional after concurrency test")
 	}
 }
@@ -629,11 +634,12 @@ func TestSTDPSignaling_RaceConditions(t *testing.T) {
 	// Set up test synapses
 	testSynapses := []types.SynapseInfo{
 		{
-			ID:           "race_test_synapse",
-			SourceID:     "source",
-			TargetID:     "test_neuron",
-			Weight:       0.5,
-			LastActivity: time.Now().Add(-5 * time.Millisecond),
+			ID:               "race_test_synapse",
+			SourceID:         "source",
+			TargetID:         "test_neuron",
+			Weight:           0.5,
+			LastActivity:     time.Now().Add(-5 * time.Millisecond),
+			LastTransmission: time.Now().Add(-5 * time.Millisecond), // Use LastActivity for simplicity
 		},
 	}
 	mock.SetSynapses(testSynapses)
@@ -725,11 +731,12 @@ func TestSTDPSignaling_EnableDisableRace(t *testing.T) {
 	// Set up test synapses
 	testSynapses := []types.SynapseInfo{
 		{
-			ID:           "enable_disable_test",
-			SourceID:     "source",
-			TargetID:     "test_neuron",
-			Weight:       0.5,
-			LastActivity: time.Now().Add(-5 * time.Millisecond),
+			ID:               "enable_disable_test",
+			SourceID:         "source",
+			TargetID:         "test_neuron",
+			Weight:           0.5,
+			LastActivity:     time.Now().Add(-5 * time.Millisecond),
+			LastTransmission: time.Now().Add(-5 * time.Millisecond), // Use LastActivity for simplicity
 		},
 	}
 	mock.SetSynapses(testSynapses)
@@ -776,7 +783,7 @@ func TestSTDPSignaling_EnableDisableRace(t *testing.T) {
 				case 3:
 					// Try to force feedback
 					atomic.AddInt32(&forceCount, 1)
-					feedbackCount := stdpSignaling.DeliverFeedbackNow("test_neuron", mock)
+					feedbackCount := stdpSignaling.DeliverFeedbackNow("test_neuron", mock, time.Now())
 					if feedbackCount > 0 {
 						atomic.AddInt32(&forceSuccess, 1)
 					}
@@ -834,11 +841,12 @@ func TestSTDPSignaling_ExtremeConditions(t *testing.T) {
 		mock := NewThreadSafeMockCallbacks()
 		mock.SetSynapses([]types.SynapseInfo{
 			{
-				ID:           "extreme_test",
-				SourceID:     "source",
-				TargetID:     "test_neuron",
-				Weight:       0.5,
-				LastActivity: time.Now().Add(-5 * time.Millisecond),
+				ID:               "extreme_test",
+				SourceID:         "source",
+				TargetID:         "test_neuron",
+				Weight:           0.5,
+				LastActivity:     time.Now().Add(-5 * time.Millisecond),
+				LastTransmission: time.Now().Add(-5 * time.Millisecond), // Use LastActivity for simplicity
 			},
 		})
 
@@ -877,7 +885,7 @@ func TestSTDPSignaling_ExtremeConditions(t *testing.T) {
 
 		// Should gracefully handle nil callbacks
 		result1 := stdp.CheckAndDeliverFeedback("test_neuron", nil)
-		result2 := stdp.DeliverFeedbackNow("test_neuron", nil)
+		result2 := stdp.DeliverFeedbackNow("test_neuron", nil, time.Now())
 
 		if result1 == true || result2 > 0 {
 			t.Error("System incorrectly reported success with nil callbacks")
@@ -893,11 +901,12 @@ func TestSTDPSignaling_ExtremeConditions(t *testing.T) {
 		mock := NewThreadSafeMockCallbacks()
 		mock.SetSynapses([]types.SynapseInfo{
 			{
-				ID:           "concurrent_test",
-				SourceID:     "source",
-				TargetID:     "test_neuron",
-				Weight:       0.5,
-				LastActivity: time.Now().Add(-5 * time.Millisecond),
+				ID:               "concurrent_test",
+				SourceID:         "source",
+				TargetID:         "test_neuron",
+				Weight:           0.5,
+				LastActivity:     time.Now().Add(-5 * time.Millisecond),
+				LastTransmission: time.Now().Add(-5 * time.Millisecond), // Use LastActivity for simplicity
 			},
 		})
 

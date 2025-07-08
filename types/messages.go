@@ -121,18 +121,19 @@ type ElectricalSignal struct {
 // SynapseInfo provides read-only information about synapses
 // Used by ListSynapses callbacks for synapse analysis
 type SynapseInfo struct {
-	ID           string                 `json:"id"`            // Unique synapse identifier
-	SourceID     string                 `json:"source_id"`     // Pre-synaptic neuron ID
-	TargetID     string                 `json:"target_id"`     // Post-synaptic neuron ID
-	Weight       float64                `json:"weight"`        // Current synaptic weight/strength
-	Delay        time.Duration          `json:"delay"`         // Transmission delay
-	LastActivity time.Time              `json:"last_activity"` // Most recent transmission time
-	Direction    SynapseDirection       `json:"direction"`     // Direction relative to querying neuron
-	SynapseType  string                 `json:"synapse_type"`  // Type: "excitatory", "inhibitory", "modulatory"
-	Position     Position3D             `json:"position"`      // 3D spatial location
-	LigandType   LigandType             `json:"ligand_type"`   // Neurotransmitter type
-	IsActive     bool                   `json:"is_active"`     // Whether synapse is currently active
-	Metadata     map[string]interface{} `json:"metadata"`      // Additional synapse data
+	ID               string                 `json:"id"`            // Unique synapse identifier
+	SourceID         string                 `json:"source_id"`     // Pre-synaptic neuron ID
+	TargetID         string                 `json:"target_id"`     // Post-synaptic neuron ID
+	Weight           float64                `json:"weight"`        // Current synaptic weight/strength
+	Delay            time.Duration          `json:"delay"`         // Transmission delay
+	LastActivity     time.Time              `json:"last_activity"` // Most recent transmission time
+	LastTransmission time.Time              // Specifically the last transmission time (for STDP)
+	Direction        SynapseDirection       `json:"direction"`    // Direction relative to querying neuron
+	SynapseType      string                 `json:"synapse_type"` // Type: "excitatory", "inhibitory", "modulatory"
+	Position         Position3D             `json:"position"`     // 3D spatial location
+	LigandType       LigandType             `json:"ligand_type"`  // Neurotransmitter type
+	IsActive         bool                   `json:"is_active"`    // Whether synapse is currently active
+	Metadata         map[string]interface{} `json:"metadata"`     // Additional synapse data
 }
 
 // ComponentInfo provides comprehensive information about any component

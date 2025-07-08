@@ -612,14 +612,25 @@ func (n *Neuron) SendSTDPFeedback() {
 		return
 	}
 
-	// Forward to the STDP system
-	feedbackCount := n.stdpSystem.DeliverFeedbackNow(myID, callbacks)
+	// Get the neuron's last fire time
+	n.stateMutex.Lock()
+	lastFireTime := n.lastFireTime
+	n.stateMutex.Unlock()
+
+	// If the neuron hasn't fired yet, use current time as fallback
+	if lastFireTime.IsZero() {
+		lastFireTime = time.Now()
+	}
+
+	// Forward to the STDP system with the actual fire time
+	feedbackCount := n.stdpSystem.DeliverFeedbackNow(myID, callbacks, lastFireTime)
 
 	// Update metadata if feedback was delivered
 	if feedbackCount > 0 {
 		n.UpdateMetadata("stdp_feedback", map[string]interface{}{
-			"synapse_count": feedbackCount,
-			"timestamp":     time.Now(),
+			"synapse_count":         feedbackCount,
+			"post_neuron_fire_time": lastFireTime,
+			"timestamp":             time.Now(),
 		})
 	}
 }
@@ -781,6 +792,12 @@ func (n *Neuron) GetConnectionMetrics() map[string]interface{} {
 // ============================================================================
 // ENHANCED HELPER METHODS
 // ============================================================================
+
+func (n *Neuron) GetLastFireTime() time.Time {
+	n.stateMutex.Lock()
+	defer n.stateMutex.Unlock()
+	return n.lastFireTime
+}
 
 func (n *Neuron) calculateSTDPTiming(synapseInfo types.SynapseInfo) time.Duration {
 	// Simplified STDP timing calculation

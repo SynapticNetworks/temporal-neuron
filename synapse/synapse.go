@@ -1131,6 +1131,13 @@ func calculateSTDPWeightChange(timeDifference time.Duration, config types.Plasti
 	return -config.AsymmetryRatio * 0.1
 }
 
+// GetLastTransmissionTime returns the timestamp of the most recent signal transmission
+func (s *BasicSynapse) GetLastTransmissionTime() time.Time {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return s.lastTransmission
+}
+
 // =================================================================================
 // CONFIGURATION HELPERS
 // =================================================================================
