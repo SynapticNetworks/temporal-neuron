@@ -10,7 +10,7 @@ import (
 
 /*
 =================================================================================
-NEURON ION CHANNEL GATING TESTS - LIGAND-BASED PATHWAY SWITCHING (CORRECTED)
+NEURON ION CHANNEL GATING TESTS - LIGAND-BASED PATHWAY SWITCHING
 =================================================================================
 
 This test validates the core "gating" paradigm by using a specific, realistic
