@@ -18,8 +18,6 @@ ion channel (`RealisticGabaAChannel`) to dynamically switch a neural pathway off
 A control neuron releases a ligand (GABA), which activates the channel on a
 target neuron's dendrite, thereby inhibiting it and rerouting the signal flow.
 
-This is a concrete implementation of the abstract "transient rewiring" concept.
-
 =================================================================================
 */
 
